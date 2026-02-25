@@ -1,0 +1,164 @@
+# Governance Proposal: Approve & Apply button on governance dashboard
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:42:01Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add a single "Approve & Apply" button to each pending commit tile on the governance dashboard.
+Currently users must: (1) approve via dashboard, (2) manually run apply_commits.py from CLI.
+The new button calls a new endpoint that does both steps atomically.
+
+## Proposed Changes
+
+### File: server.py
+**Location:** After the existing `/api/governance/reject` endpoint (around line 1530)
+
+Change from:
+```python
+# --- Governance Audit Chain ---
+```
+
+To:
+```python
+@app.post("/api/governance/approve_and_apply")
+async def governance_approve_and_apply(request: Request):
+    """Approve and immediately apply a pending commit in one step."""
+    import subprocess
+    try:
+        body = await request.json()
+        commit_id = body.get("commit_id", "").strip()
+        if not commit_id:
+            return {"success": False, "error": "commit_id required"}
+
+        # Step 1: Approve (move .pending -> .commit)
+        pending = GOV_COMMITS_DIR / f"{commit_id}.pending"
+        commit_file = GOV_COMMITS_DIR / f"{commit_id}.commit"
+
+        if not pending.exists():
+            if commit_file.exists():
+                pass  # Already approved, just apply
+            else:
+                return {"success": False, "error": f"Commit not found: {commit_id}"}
+        else:
+            pending.rename(commit_file)
+
+        # Step 2: Apply via apply_commits.py
+        apply_script = Path(__file__).parent / "governance" / "apply_commits.py"
+        result = subprocess.run(
+            [sys.executable, str(apply_script), commit_id],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        output = result.stdout + result.stderr
+        success = result.returncode == 0 and "[FAIL]" not in result.stdout
+
+        return {
+            "success": success,
+            "commit_id": commit_id,
+            "output": output,
+            "error": None if success else "Apply step failed — see output"
+        }
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Apply timed out after 30s"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# --- Governance Audit Chain ---
+```
+
+### File: governance/dashboard.html
+**Location:** Inside `loadPending()` — the `.commit-actions` div on each commit card
+
+Change from:
+```javascript
+        <div class="commit-actions">
+          <button class="btn-view" onclick="viewCommit('${commit.id}')">View Diff</button>
+          <button class="btn-primary" onclick="viewCommit('${commit.id}')">Review</button>
+        </div>
+```
+
+To:
+```javascript
+        <div class="commit-actions">
+          <button class="btn-view" onclick="viewCommit('${commit.id}')">View Diff</button>
+          <button class="btn-primary" onclick="viewCommit('${commit.id}')">Review</button>
+          <button class="btn-apply" onclick="approveAndApply('${commit.id}')">Approve & Apply</button>
+        </div>
+```
+
+And add the `.btn-apply` style and `approveAndApply()` function:
+
+Change from:
+```css
+  .batch-count { margin-left: auto; font-size: 0.8rem; color: var(--dim); }
+```
+
+To:
+```css
+  .batch-count { margin-left: auto; font-size: 0.8rem; color: var(--dim); }
+  .btn-apply { background: var(--green); color: #000; }
+  .btn-apply:hover { opacity: 0.9; }
+```
+
+Change from:
+```javascript
+// Load on boot
+loadPending();
+loadHistory();
+```
+
+To:
+```javascript
+async function approveAndApply(commitId) {
+  if (!confirm(`Approve AND apply commit "${commitId}"?\n\nThis will ratify the proposal and run apply_commits.py immediately.`)) return;
+  try {
+    const r = await fetch('/api/governance/approve_and_apply', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({commit_id: commitId})
+    });
+    const data = await r.json();
+    if (data.success) {
+      alert(`Applied ✓\n\n${data.output || ''}`);
+      loadPending();
+      loadHistory();
+    } else {
+      alert(`Error: ${data.error || 'Unknown'}\n\n${data.output || ''}`);
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// Load on boot
+loadPending();
+loadHistory();
+```
+
+## Rationale
+- Eliminates the manual CLI step after every approval
+- Once fix-apply-commits-prose-fallback is applied, this works end-to-end
+- Output shown in alert so user can see apply results
+- Still shows confirm dialog before acting
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — remove endpoint and button
+- **Dependencies:** fix-apply-commits-prose-fallback-2026-02-25 (must be applied first)
+- **Testing:** Approve & Apply a pending commit — should move to .applied with no CLI step
+
+## ΔE Impact
+Expected ΔE: +0.012 (reduces governance friction significantly)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

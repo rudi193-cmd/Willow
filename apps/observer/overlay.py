@@ -10,7 +10,10 @@ VERSION: 1.0
 CHECKSUM: ΔΣ=42
 """
 
+import io
 import sys
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 import requests
 from pathlib import Path
 from datetime import datetime

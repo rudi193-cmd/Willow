@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Willow Control Desktop</title>
+    <title>UI Dashboard — Willow</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -74,7 +74,7 @@
     </style>
 </head>
 <body>
-    <h1>🧠 WILLOW CONTROL DESKTOP</h1>
+    <h1>🧠 UI Dashboard</h1>
 
     <div class="cards">
         <div class="card" onclick="openModal('providers')">
@@ -101,8 +101,8 @@
             <h2>📊 Patterns</h2>
             <p id="patterns-summary">Loading...</p>
         </div>
-        <div class="card" onclick="openModal('governance')">
-            <h2>⚖️ Governance</h2>
+        <div class="card" onclick="window.location.href='/governance'">
+            <h2>⚖️ Governance Dashboard</h2>
             <p id="governance-summary">Loading...</p>
         </div>
         <div class="card" onclick="openModal('safe')">

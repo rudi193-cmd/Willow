@@ -1,0 +1,150 @@
+# Governance Proposal: Batch ratify on governance dashboard
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T18:56:20Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+The governance dashboard currently requires opening each pending commit in a modal to approve it. With multiple pending commits, this is one click per commit minimum. Add checkbox selection to each pending commit card and an "Approve Selected" button so multiple commits can be ratified in a single action. No server changes needed — the frontend loops through selections and calls the existing /api/governance/approve endpoint for each.
+
+## Proposed Changes
+
+### File: governance/dashboard.html
+
+**Change A:** Add batch control styles to the <style> block. After the last style rule (`.badge-rejected` block), add:
+
+```css
+  .batch-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+  .batch-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; color: var(--dim); }
+  .commit-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+  .batch-count { margin-left: auto; font-size: 0.8rem; color: var(--dim); }
+```
+
+**Change B:** In the HTML body, replace the Pending Commits section:
+
+Change from:
+```html
+<div class="section">
+  <h2>Pending Commits</h2>
+  <div id="pending-list" class="pending-list">
+    <div class="empty-state">Loading...</div>
+  </div>
+</div>
+```
+
+To:
+```html
+<div class="section">
+  <h2>Pending Commits</h2>
+  <div id="batch-controls" class="batch-controls" style="display:none">
+    <label><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"> Select All</label>
+    <span id="batch-count" class="batch-count">0 selected</span>
+    <button class="btn-primary" onclick="approveSelected()">Approve Selected</button>
+  </div>
+  <div id="pending-list" class="pending-list">
+    <div class="empty-state">Loading...</div>
+  </div>
+</div>
+```
+
+**Change C:** In the loadPending() function, update the commit card template:
+
+Change from:
+```javascript
+    list.innerHTML = data.pending.map(commit => `
+      <div class="commit-card">
+        <div class="commit-header">
+          <span class="commit-id">${commit.id}</span>
+          <span class="commit-timestamp">${new Date(commit.timestamp).toLocaleString()}</span>
+        </div>
+        <div class="commit-actions">
+          <button class="btn-view" onclick="viewCommit('${commit.id}')">View Diff</button>
+          <button class="btn-primary" onclick="viewCommit('${commit.id}')">Review</button>
+        </div>
+      </div>
+    `).join('');
+```
+
+To:
+```javascript
+    document.getElementById('batch-controls').style.display = 'flex';
+    list.innerHTML = data.pending.map(commit => `
+      <div class="commit-card">
+        <div class="commit-header">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" class="commit-checkbox" value="${commit.id}" onchange="updateBatchCount()">
+            <span class="commit-id">${commit.id}</span>
+          </label>
+          <span class="commit-timestamp">${new Date(commit.timestamp).toLocaleString()}</span>
+        </div>
+        <div class="commit-actions">
+          <button class="btn-view" onclick="viewCommit('${commit.id}')">View Diff</button>
+          <button class="btn-primary" onclick="viewCommit('${commit.id}')">Review</button>
+        </div>
+      </div>
+    `).join('');
+    updateBatchCount();
+```
+
+**Change D:** In the <script> block, after `let currentCommitId = null;`, add three new functions:
+
+```javascript
+function updateBatchCount() {
+  const checked = document.querySelectorAll('.commit-checkbox:checked').length;
+  document.getElementById('batch-count').textContent = `${checked} selected`;
+  document.getElementById('select-all').indeterminate =
+    checked > 0 && checked < document.querySelectorAll('.commit-checkbox').length;
+}
+
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.commit-checkbox').forEach(el => el.checked = cb.checked);
+  updateBatchCount();
+}
+
+async function approveSelected() {
+  const ids = [...document.querySelectorAll('.commit-checkbox:checked')].map(el => el.value);
+  if (ids.length === 0) { alert('No commits selected.'); return; }
+  if (!confirm(`Approve ${ids.length} commit(s)?\n\n${ids.join('\n')}`)) return;
+
+  let passed = 0, failed = [];
+  for (const id of ids) {
+    try {
+      const r = await fetch('/api/governance/approve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({commit_id: id})
+      });
+      const data = await r.json();
+      if (data.success) passed++;
+      else failed.push(id);
+    } catch(e) { failed.push(id); }
+  }
+
+  const msg = `Approved: ${passed}` + (failed.length ? `\nFailed: ${failed.join(', ')}` : '');
+  alert(msg);
+  loadPending();
+  loadHistory();
+}
+```
+
+## Rationale
+- Zero server-side changes — reuses existing /api/governance/approve endpoint
+- Select All + indeterminate state follows standard checkbox pattern
+- Sequential approve (not parallel) ensures each commit gets properly logged
+- Batch count gives immediate feedback on selection state
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — pure HTML/JS, no schema changes
+- **Dependencies:** Existing /api/governance/approve endpoint
+- **Testing:** Open dashboard with 3+ pending commits, check Select All, click Approve Selected — all 3 approve in sequence
+
+## ΔE Impact
+Expected ΔE: +0.012 (eliminates modal-per-commit friction for multi-commit sessions)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

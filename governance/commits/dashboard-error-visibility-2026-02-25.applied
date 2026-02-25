@@ -1,0 +1,147 @@
+# Governance Proposal: Dashboard error visibility + server status indicator
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:20:50Z
+**Type:** UX Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+The governance dashboard currently catches API errors and dumps them into the same empty-state div as "no results" — visually indistinguishable from a healthy empty list. Add a persistent error banner below the header that shows when any API call fails, a server status dot in the header (green = connected, red = server unreachable), and a clearError() path so banners dismiss when the next call succeeds.
+
+## Proposed Changes
+
+### File: governance/dashboard.html
+
+**Change A:** Add error banner and status dot CSS. After the `.badge-rejected` rule (or after the `.batch-count` rule if batch-ratify was already applied), add:
+
+```css
+  #error-banner { display: none; background: rgba(248,113,113,0.15); border: 1px solid var(--red); border-radius: 6px; padding: 12px 16px; margin-bottom: 20px; color: var(--red); font-size: 0.9rem; }
+  #error-banner.show { display: block; }
+  .server-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--dim); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .status-dot.online { background: var(--green); }
+  .status-dot.offline { background: var(--red); }
+```
+
+**Change B:** Update the header HTML. Find:
+```html
+<header>
+  <h1>🛡️ Governance Dashboard</h1>
+  <p class="subtitle">Dual Commit — Review and ratify AI proposals</p>
+</header>
+```
+
+Replace with:
+```html
+<header>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <h1>Governance Dashboard</h1>
+      <p class="subtitle">Dual Commit — Review and ratify AI proposals</p>
+    </div>
+    <span class="server-status"><span id="status-dot" class="status-dot"></span><span id="status-text">checking...</span></span>
+  </div>
+</header>
+<div id="error-banner"></div>
+```
+
+**Change C:** In the script block, after `let currentCommitId = null;` (or after the batch functions if already applied), add these helper functions:
+
+```javascript
+function showError(msg) {
+  const b = document.getElementById('error-banner');
+  b.textContent = 'Error: ' + msg;
+  b.classList.add('show');
+}
+
+function clearError() {
+  document.getElementById('error-banner').classList.remove('show');
+}
+
+async function checkServerStatus() {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  try {
+    const r = await fetch('/api/health', {signal: AbortSignal.timeout(2000)});
+    if (r.ok) {
+      dot.className = 'status-dot online';
+      txt.textContent = 'server online';
+      clearError();
+    } else {
+      throw new Error('non-ok');
+    }
+  } catch(e) {
+    dot.className = 'status-dot offline';
+    txt.textContent = 'server offline';
+    showError('Cannot reach Willow server at port 8420. Check the WILLOW - SERVER window.');
+  }
+}
+```
+
+**Change D:** Update the `loadPending()` catch block. Find:
+```javascript
+  } catch(e) {
+    document.getElementById('pending-list').innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+  }
+```
+
+Replace with:
+```javascript
+  } catch(e) {
+    document.getElementById('pending-list').innerHTML = '<div class="empty-state">Failed to load pending commits.</div>';
+    showError('Pending commits: ' + e.message);
+  }
+```
+
+**Change E:** Update the `loadHistory()` catch block. Find:
+```javascript
+  } catch(e) {
+    document.getElementById('history-list').innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+  }
+```
+
+Replace with:
+```javascript
+  } catch(e) {
+    document.getElementById('history-list').innerHTML = '<div class="empty-state">Failed to load history.</div>';
+    showError('History: ' + e.message);
+  }
+```
+
+**Change F:** Update the boot section at the bottom of the script. Find:
+```javascript
+// Load on boot
+loadPending();
+loadHistory();
+```
+
+Replace with:
+```javascript
+// Load on boot
+checkServerStatus();
+loadPending();
+loadHistory();
+setInterval(checkServerStatus, 30000);
+```
+
+## Rationale
+- Error banner is visually distinct (red border, semi-transparent red bg) — impossible to miss
+- Server status dot in header gives persistent connection state at a glance
+- clearError() in checkServerStatus() means banner auto-dismisses when server comes back
+- 30s poll interval keeps status fresh without hammering the server
+- Removes the emoji from the h1 (consistent with system aesthetic)
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — pure HTML/CSS/JS, no schema changes
+- **Dependencies:** /api/health endpoint (already exists)
+- **Testing:** Stop the server — red dot appears, error banner shows. Restart server — green dot, banner clears within 30s
+
+## ΔE Impact
+Expected ΔE: +0.005 (eliminates silent failure mode from the governance dashboard)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

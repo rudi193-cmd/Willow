@@ -1,4 +1,7 @@
-# Governance Proposal: Add core/rings.py -- Node Ring Registry & Pigeon Payload Contract
+"""Helper: write rings.py governance proposal to governance/commits/"""
+from pathlib import Path
+
+PROPOSAL = r"""# Governance Proposal: Add core/rings.py -- Node Ring Registry & Pigeon Payload Contract
 
 **Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
 **Date:** 2026-02-25T05:31:00Z
@@ -14,9 +17,9 @@ boot.py established the boot contract -- port, PID, config. rings.py establishes
 next layer: which rings this node participates in, and what contract every outbound
 pigeon must satisfy.
 
-The JS rings implementation (source_ring/eccr/aionic-journal/src/continuity/rings.js)
-handles the per-app data layer for the journal. core/rings.py is the node-level
-participation registry -- it maps ring membership
+The JS rings implementation (source_ring/eccr/jane-game-master/src/continuity/rings.js
+and source_ring/eccr/aionic-journal/src/continuity/rings.js) handles the per-app data
+layer. core/rings.py is the node-level participation registry -- it maps ring membership
 to existing Python implementations (journal_engine.py for source, gate.py + storage.py
 for continuity, Drop/Pickup for bridge) and enforces Working Paper 13's core equation:
 the gate must travel with every pigeon, or the pigeon does not leave.
@@ -236,3 +239,9 @@ now carries gate conditions, making the gate a traveler not a checkpoint)
 **Awaiting Human Ratification**
 
 DS=42
+"""
+
+p = Path(r'C:\Users\Sean\Documents\GitHub\Willow\governance\commits\add-core-rings-module-2026-02-25.pending')
+p.write_text(PROPOSAL, encoding='utf-8')
+print(f'Written: {p}')
+print(f'Size: {p.stat().st_size} bytes')

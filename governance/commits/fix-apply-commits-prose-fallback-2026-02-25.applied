@@ -1,3 +1,31 @@
+# Governance Proposal: Add prose-format fallback to apply_commits.py
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:40:28Z
+**Type:** Bug Fix / Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+`apply_commits.py` currently requires a ```diff block in every proposal and uses `git apply`,
+which fails for two reasons: (1) most proposals are written in prose "Change from/to" format,
+not unified diff; (2) the Willow repo has no git history, so `git apply` always fails.
+This adds a Python string-replacement fallback that parses prose proposals directly.
+
+## Proposed Changes
+
+### File: governance/apply_commits.py
+**Location:** Replace entire file content
+
+The new version adds:
+1. `extract_prose_patch()` — parses `### File:` + ````python ... Change from/to` blocks
+2. `apply_prose_patch()` — does string replacement on the target file
+3. Updated `apply_commit()` — tries diff first, falls back to prose, falls back to manual
+4. Context-store cleanup on success (removes stale `governance:pending_apply:*` entries)
+5. Marks `.commit` → `.applied` after success
+
+## Implementation
+
+```python
 #!/usr/bin/env python3
 import io as _io, sys as _sys
 _sys.stdout = _io.TextIOWrapper(_sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -238,3 +266,26 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
+
+## Rationale
+- Willow repo has no git history — `git apply` always fails
+- All current proposals use "Change from/to" prose format
+- Prose fallback covers 100% of existing proposal style
+- Context-store cleanup prevents stale GANESHA CHECKIN noise
+- Accepts `.pending` as well as `.commit` for emergency manual applies
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — restore original file
+- **Dependencies:** context_store (optional, silently skipped if unavailable)
+- **Testing:** Run `python governance/apply_commits.py fix-kart-fstring-braces-2026-02-25` on a prose proposal — should apply and mark .applied
+
+## ΔE Impact
+Expected ΔE: +0.015 (governance apply flow now works end-to-end without manual intervention)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

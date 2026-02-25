@@ -51,14 +51,31 @@
   .batch-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; color: var(--dim); }
   .commit-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
   .batch-count { margin-left: auto; font-size: 0.8rem; color: var(--dim); }
+  .btn-apply { background: var(--green); color: #000; }
+  .btn-apply:hover { opacity: 0.9; }
+  #error-banner { display: none; background: rgba(248,113,113,0.15); border: 1px solid var(--red); border-radius: 6px; padding: 12px 16px; margin-bottom: 20px; color: var(--red); font-size: 0.9rem; }
+  #error-banner.show { display: block; }
+  .server-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--dim); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .status-dot.online { background: var(--green); }
+  .status-dot.offline { background: var(--red); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>🛡️ Governance Dashboard</h1>
-  <p class="subtitle">Dual Commit — Review and ratify AI proposals</p>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <h1>🛡️ Governance Dashboard</h1>
+      <p class="subtitle">Dual Commit — Review and ratify AI proposals</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <span class="server-status"><span id="status-dot" class="status-dot"></span><span id="status-text">checking...</span></span>
+      <a href="/system" style="color:var(--dim);font-size:0.8rem;text-decoration:none;">← UI Dashboard</a>
+    </div>
+  </div>
 </header>
+<div id="error-banner"></div>
 
 <div class="section">
   <h2>Pending Commits</h2>
@@ -118,6 +135,33 @@
 <script>
 let currentCommitId = null;
 
+function showError(msg) {
+  const b = document.getElementById('error-banner');
+  b.textContent = 'Error: ' + msg;
+  b.classList.add('show');
+}
+
+function clearError() {
+  document.getElementById('error-banner').classList.remove('show');
+}
+
+async function checkServerStatus() {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  try {
+    const r = await fetch('/api/health', {signal: AbortSignal.timeout(2000)});
+    if (r.ok) {
+      dot.className = 'status-dot online';
+      txt.textContent = 'server online';
+      clearError();
+    } else { throw new Error('non-ok'); }
+  } catch(e) {
+    dot.className = 'status-dot offline';
+    txt.textContent = 'server offline';
+    showError('Cannot reach Willow server at port 8420. Check the WILLOW - SERVER window.');
+  }
+}
+
 function updateBatchCount() {
   const checked = document.querySelectorAll('.commit-checkbox:checked').length;
   document.getElementById('batch-count').textContent = `${checked} selected`;
@@ -133,10 +177,7 @@ function toggleSelectAll(cb) {
 async function approveSelected() {
   const ids = [...document.querySelectorAll('.commit-checkbox:checked')].map(el => el.value);
   if (ids.length === 0) { alert('No commits selected.'); return; }
-  if (!confirm(`Approve ${ids.length} commit(s)?
-
-${ids.join('
-')}`)) return;
+  if (!confirm(`Approve ${ids.length} commit(s)?\n\n${ids.join('\n')}`)) return;
 
   let passed = 0, failed = [];
   for (const id of ids) {
@@ -183,12 +224,14 @@ async function loadPending() {
         <div class="commit-actions">
           <button class="btn-view" onclick="viewCommit('${commit.id}')">View Diff</button>
           <button class="btn-primary" onclick="viewCommit('${commit.id}')">Review</button>
+          <button class="btn-apply" onclick="approveAndApply('${commit.id}')">Approve & Apply</button>
         </div>
       </div>
     `).join('');
     updateBatchCount();
   } catch(e) {
-    document.getElementById('pending-list').innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+    document.getElementById('pending-list').innerHTML = '<div class="empty-state">Failed to load pending commits.</div>';
+    showError('Pending commits: ' + e.message);
   }
 }
 
@@ -215,7 +258,8 @@ async function loadHistory() {
       </div>
     `).join('');
   } catch(e) {
-    document.getElementById('history-list').innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+    document.getElementById('history-list').innerHTML = '<div class="empty-state">Failed to load history.</div>';
+    showError('History: ' + e.message);
   }
 }
 
@@ -312,8 +356,10 @@ async function confirmReject() {
 }
 
 // Load on boot
+checkServerStatus();
 loadPending();
 loadHistory();
+setInterval(checkServerStatus, 30000);
 </script>
 </body>
 </html>

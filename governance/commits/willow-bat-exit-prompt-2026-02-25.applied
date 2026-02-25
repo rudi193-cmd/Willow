@@ -1,0 +1,76 @@
+# Governance Proposal: WILLOW.bat "Press Any Key To Exit" + return to prompt
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:07:38Z
+**Type:** UX Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+WILLOW.bat uses bare `pause` at two points — the ready banner and after shutdown. `pause` always prints "Press any key to continue . . ." which implies the process will resume, and closes the window on keypress (hard exit). Replace both with `echo Press Any Key To Exit` + `pause >nul` (suppresses default message). Add `cmd /k` as the final line so the window drops to an interactive cmd prompt instead of closing — the user lands back at a usable shell.
+
+## Proposed Changes
+
+### File: WILLOW.bat
+
+**Change A:** In the no-cloudflared ready banner (around line 149-154), replace:
+
+```batch
+    echo    Close this window to shutdown all.
+    echo   ========================================
+    echo.
+    pause
+    goto :shutdown
+```
+
+With:
+```batch
+    echo    Press Any Key To Exit
+    echo   ========================================
+    echo.
+    pause >nul
+    goto :shutdown
+```
+
+**Change B:** In the shutdown section (around line 192-194), replace:
+
+```batch
+echo   Done. (Ollama left running)
+pause
+```
+
+With:
+```batch
+echo   Done. (Ollama left running)
+echo.
+echo   Press Any Key To Exit
+pause >nul
+```
+
+**Change C:** After the final `pause >nul` (end of file), add one new line:
+
+```batch
+cmd /k
+```
+
+This drops to an interactive cmd prompt in the same window instead of closing it.
+
+## Rationale
+- `pause >nul` suppresses "Press any key to continue . . ." while still waiting for a keypress
+- Custom echo gives the correct "Press Any Key To Exit" message
+- `cmd /k` at EOF ensures the window stays open as an interactive shell regardless of how WILLOW.bat was launched (double-click, shortcut, or from existing cmd)
+- Zero impact on the startup or shutdown logic — purely UX
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — swap `pause >nul` back to `pause`, remove `cmd /k`
+- **Dependencies:** None
+- **Testing:** Run WILLOW.bat — ready banner shows "Press Any Key To Exit"; press key → shutdown runs → "Press Any Key To Exit" → press key → cmd prompt remains open
+
+## ΔE Impact
+Expected ΔE: +0.003 (removes misleading UX cue, window no longer vanishes on exit)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

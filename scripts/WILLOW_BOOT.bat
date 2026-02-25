@@ -38,9 +38,9 @@ if not exist core\storage.py (
 )
 echo [OK] Governance Core verified.
 
-:: 3. START THE ENGINE (Background — file intake + processing)
-echo [*] Igniting AIOS Engine...
-start "AIOS ENGINE" python aios_loop.py
+:: 3. START THE ENGINE — DEPRECATED, replaced by modular daemons in WILLOW.bat
+:: echo [*] Igniting AIOS Engine...
+:: start "AIOS ENGINE" python aios_loop.py
 
 :: 4. START KART (Background — fast pre-classifier fallback)
 echo [*] Starting Kartikeya Refinery...
