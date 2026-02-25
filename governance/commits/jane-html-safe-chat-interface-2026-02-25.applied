@@ -1,0 +1,852 @@
+# Governance Proposal: Add jane.html — SAFE-compliant consumer chat interface
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T00:00:00Z
+**Type:** New Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Create `SAFE/web/jane.html` — the consumer-facing AI chat interface built on the SAFE consent framework. This is a new file (not a modification). It implements Jane as a standalone, zero-dependency HTML page with a three-screen flow: consent gate → chat interface → session end. API wired to `http://localhost:8421`. Fully offline-degradable.
+
+## Proposed Changes
+
+**File:** `C:/Users/Sean/Documents/GitHub/SAFE/web/jane.html`
+**Location:** New file — does not exist yet
+
+## Rationale
+
+- Jane is the public-facing SAFE agent persona. A reference implementation HTML file makes her accessible without requiring the full Willow stack to be running.
+- Consent gate before chat enforces the SAFE session-authorization model in the UI itself.
+- Offline-degradable: if `localhost:8421` is unavailable, the page still renders and shows an inline notice rather than crashing.
+- No external dependencies — pure HTML/CSS/JS, consistent with the SAFE design ethic.
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — new file only, no modifications to existing files
+- **Dependencies:** None (reads from existing index.html design tokens only by visual reference)
+- **Testing:** Open `jane.html` in browser. Verify: (1) consent gate renders, (2) Authorize transitions to chat, (3) greeting message appears, (4) End Session transitions to end screen, (5) Start new session returns to consent gate, (6) Offline notice appears when `localhost:8421` is unreachable.
+
+## ΔE Impact
+
+Expected ΔE: +0.040 (new consumer-facing surface for Jane, low risk, high coherence with SAFE mission)
+
+## Implementation
+
+This is a new file creation. Full content below (no diff — file does not exist):
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jane — SAFE Compliant AI Assistant</title>
+  <meta name="description" content="Jane is a consumer-facing AI assistant built on the SAFE consent framework. Your conversation is local to this session and deleted when you leave.">
+  <style>
+    :root {
+      --bg: #f9f9f7;
+      --fg: #1c1c1a;
+      --fg-muted: #555550;
+      --accent: #2d6a4f;
+      --accent-light: #e8f4ee;
+      --border: #e2e2de;
+      --max: 680px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.75;
+      font-size: 17px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Nav */
+    nav {
+      position: sticky; top: 0;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      z-index: 100; padding: 0 1.5rem;
+      flex-shrink: 0;
+    }
+    .nav-inner {
+      max-width: var(--max); margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between; height: 52px;
+    }
+    .nav-wordmark {
+      font-size: 14px; font-weight: 700; letter-spacing: 0.12em;
+      color: var(--fg); text-decoration: none; text-transform: uppercase;
+    }
+    .nav-links { display: flex; gap: 1.5rem; list-style: none; }
+    .nav-links a { font-size: 14px; color: var(--fg-muted); text-decoration: none; transition: color 0.15s; }
+    .nav-links a:hover { color: var(--accent); }
+
+    /* Buttons */
+    .btn-primary {
+      background: var(--accent); color: white; padding: 0.65rem 1.4rem;
+      border-radius: 4px; font-size: 15px; font-weight: 600;
+      text-decoration: none; border: none; cursor: pointer;
+      transition: background 0.15s; display: inline-block;
+    }
+    .btn-primary:hover { background: #1e4d38; }
+    .btn-primary:disabled { background: #9ab8ad; cursor: not-allowed; }
+    .btn-secondary {
+      background: transparent; color: var(--fg); padding: 0.65rem 1.4rem;
+      border-radius: 4px; border: 1px solid var(--border); font-size: 15px; font-weight: 500;
+      text-decoration: none; cursor: pointer;
+      transition: border-color 0.15s, color 0.15s; display: inline-block;
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+    .section-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
+      text-transform: uppercase; color: var(--accent); margin-bottom: 0.75rem;
+    }
+
+    /* Rights list */
+    .rights-list { list-style: none; display: flex; flex-direction: column; gap: 0.85rem; margin-top: 1.25rem; }
+    .rights-list li {
+      padding: 0.9rem 1.1rem; background: var(--accent-light); border-radius: 4px;
+      display: grid; grid-template-columns: 1.4rem 1fr; gap: 0.75rem; align-items: start;
+    }
+    .rights-list .right-icon { color: var(--accent); font-weight: 700; font-size: 15px; line-height: 1.5; }
+    .rights-list .right-body strong { display: block; font-size: 15px; color: var(--fg); margin-bottom: 0.15rem; }
+    .rights-list .right-body p { font-size: 14px; color: var(--fg-muted); margin: 0; line-height: 1.5; }
+
+    /* SCREEN 1: CONSENT GATE */
+    #consent-gate {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1.5rem;
+    }
+    .consent-card { max-width: 560px; width: 100%; }
+    .consent-card .section-label { margin-bottom: 1rem; }
+    .consent-card h1 {
+      font-size: clamp(1.75rem, 4vw, 2.25rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+    .consent-card .lead {
+      font-size: 17px;
+      color: var(--fg-muted);
+      margin-bottom: 0.5rem;
+      line-height: 1.7;
+    }
+    .consent-actions {
+      display: flex;
+      gap: 0.85rem;
+      flex-wrap: wrap;
+      margin-top: 1.75rem;
+    }
+    .consent-fine-print {
+      margin-top: 1rem;
+      font-size: 13px;
+      color: var(--fg-muted);
+      line-height: 1.5;
+    }
+
+    /* SCREEN 2: CHAT INTERFACE */
+    #chat-interface {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #chat-interface.active { display: flex; }
+
+    .chat-layout {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 0;
+      gap: 1.5rem;
+      align-items: flex-start;
+    }
+
+    .chat-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      flex-shrink: 0;
+    }
+    .chat-header h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .chat-header-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .session-status {
+      font-size: 13px;
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .session-dot { color: #2d6a4f; font-size: 10px; }
+    .btn-end-session {
+      background: transparent;
+      color: var(--fg-muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 0.35rem 0.85rem;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-end-session:hover { border-color: #c0392b; color: #c0392b; }
+
+    .messages-wrap {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding-right: 0.25rem;
+      min-height: 200px;
+      max-height: calc(100vh - 260px);
+    }
+    .message-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .message-group.user { align-items: flex-end; }
+    .message-group.jane { align-items: flex-start; }
+
+    .message-sender {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--fg-muted);
+      margin-bottom: 0.1rem;
+    }
+    .message-bubble {
+      padding: 12px 16px;
+      border-radius: 4px;
+      max-width: 85%;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+    .message-bubble.jane-bubble {
+      background: var(--accent-light);
+      border-left: 3px solid var(--accent);
+      color: var(--fg);
+    }
+    .message-bubble.user-bubble {
+      background: white;
+      border: 1px solid var(--border);
+      color: var(--fg);
+    }
+    .message-bubble.system-bubble {
+      background: transparent;
+      color: var(--fg-muted);
+      font-size: 13px;
+      font-style: italic;
+      border: none;
+      padding: 4px 0;
+      max-width: 100%;
+    }
+
+    .input-bar {
+      display: flex;
+      gap: 0.75rem;
+      padding: 1rem 0 1.5rem;
+      flex-shrink: 0;
+      align-items: flex-end;
+    }
+    .input-bar textarea {
+      flex: 1;
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--fg);
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.65rem 0.9rem;
+      resize: none;
+      min-height: 44px;
+      max-height: 140px;
+      line-height: 1.5;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .input-bar textarea:focus { border-color: var(--accent); }
+    .input-bar textarea:disabled { background: #f3f3f1; color: var(--fg-muted); cursor: not-allowed; }
+    .input-bar textarea::placeholder { color: #aaa; }
+
+    .chat-sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      padding-bottom: 1.5rem;
+    }
+
+    .sidebar-section {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1rem;
+    }
+    .sidebar-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.85rem;
+    }
+    .sidebar-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      margin-bottom: 0.75rem;
+    }
+    .sidebar-row:last-of-type { margin-bottom: 0; }
+    .sidebar-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+    }
+    .sidebar-value {
+      font-size: 13px;
+      color: var(--fg);
+      font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+    }
+    .sidebar-note {
+      font-size: 12px;
+      color: var(--fg-muted);
+      line-height: 1.4;
+      margin-top: 0.5rem;
+    }
+    .sidebar-offline-notice {
+      font-size: 12px;
+      color: #a0720a;
+      background: #fef9e7;
+      border-radius: 3px;
+      padding: 0.4rem 0.6rem;
+      margin-top: 0.5rem;
+      line-height: 1.4;
+      display: none;
+    }
+    .sidebar-offline-notice.visible { display: block; }
+    .sidebar-permission {
+      font-size: 12px;
+      color: var(--fg-muted);
+      border-left: 2px solid var(--accent);
+      padding-left: 0.6rem;
+      margin-bottom: 0.6rem;
+      line-height: 1.45;
+    }
+    .sidebar-permission strong { color: var(--fg); display: block; font-size: 12px; }
+    .sidebar-permission:last-of-type { margin-bottom: 0; }
+
+    .sidebar-back-link {
+      font-size: 13px;
+      color: var(--fg-muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .sidebar-back-link:hover { color: var(--accent); }
+
+    .btn-end-sidebar {
+      width: 100%;
+      margin-top: 0.75rem;
+      background: transparent;
+      color: var(--fg-muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 0.45rem 0.85rem;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-end-sidebar:hover { border-color: #c0392b; color: #c0392b; }
+
+    .typing-indicator {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 14px;
+      background: var(--accent-light);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      width: fit-content;
+    }
+    .typing-indicator.visible { display: flex; }
+    .typing-dot {
+      width: 6px; height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: typingPulse 1.2s infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingPulse {
+      0%, 60%, 100% { opacity: 0.3; transform: scale(0.85); }
+      30% { opacity: 1; transform: scale(1); }
+    }
+
+    /* SCREEN 3: SESSION END */
+    #session-end {
+      display: none;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1.5rem;
+    }
+    #session-end.active { display: flex; }
+    .end-card {
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+    .end-card h1 {
+      font-size: clamp(1.75rem, 4vw, 2.25rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+    .end-card p {
+      font-size: 16px;
+      color: var(--fg-muted);
+      margin-bottom: 1.5rem;
+      line-height: 1.7;
+    }
+    .safe-badge {
+      display: inline-block;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 0.4rem 0.9rem;
+      border-radius: 3px;
+      margin-bottom: 1.75rem;
+    }
+
+    /* Footer */
+    footer {
+      padding: 1.5rem 0;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .footer-inner {
+      max-width: 1100px; margin: 0 auto; padding: 0 1.5rem;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+    }
+    .footer-left { font-size: 13px; color: var(--fg-muted); }
+    .footer-left strong { color: var(--fg); }
+    .footer-right { font-size: 13px; color: var(--fg-muted); display: flex; gap: 1.5rem; }
+    .footer-right a { color: var(--fg-muted); text-decoration: none; transition: color 0.15s; }
+    .footer-right a:hover { color: var(--accent); }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+      .chat-layout {
+        flex-direction: column;
+        padding: 1rem 1rem 0;
+      }
+      .chat-sidebar {
+        width: 100%;
+        order: -1;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+      .sidebar-section { flex: 1; min-width: 200px; }
+      .messages-wrap { max-height: calc(100vh - 320px); }
+      .nav-links { gap: 1rem; }
+    }
+    @media (max-width: 480px) {
+      .nav-links li:nth-child(1) { display: none; }
+      .chat-sidebar { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="index.html" class="nav-wordmark">SAFE</a>
+      <ul class="nav-links">
+        <li><a href="#" id="nav-how-jane">How Jane works</a></li>
+        <li><a href="index.html#rights">Rights</a></li>
+        <li><a href="index.html">SAFE ↗</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- SCREEN 1: CONSENT GATE -->
+  <section id="consent-gate">
+    <div class="consent-card">
+      <p class="section-label">SAFE Session Authorization</p>
+      <h1>Before we begin.</h1>
+      <p class="lead">
+        Jane is requesting access to your conversation for this session.
+        When you end the session, your conversation is deleted.
+        Jane cannot access anything you haven't explicitly shared.
+      </p>
+      <ul class="rights-list">
+        <li>
+          <span class="right-icon">→</span>
+          <div class="right-body">
+            <strong>Conversation history</strong>
+            <p>Jane can read what you type in this session. This access expires at session end.</p>
+          </div>
+        </li>
+        <li>
+          <span class="right-icon">→</span>
+          <div class="right-body">
+            <strong>Session memory</strong>
+            <p>Jane can reference earlier messages in this conversation. Not stored after session ends.</p>
+          </div>
+        </li>
+      </ul>
+      <div class="consent-actions">
+        <button class="btn-primary" id="btn-authorize">Authorize Session</button>
+        <button class="btn-secondary" id="btn-decline">Decline</button>
+      </div>
+      <p class="consent-fine-print">
+        This authorization expires when you close this session or click End Session.
+      </p>
+    </div>
+  </section>
+
+  <!-- SCREEN 2: CHAT INTERFACE -->
+  <div id="chat-interface">
+    <div class="chat-layout">
+      <div class="chat-pane">
+        <div class="chat-header">
+          <h2>Jane</h2>
+          <div class="chat-header-right">
+            <span class="session-status">
+              <span class="session-dot">●</span>
+              Session active
+            </span>
+            <button class="btn-end-session" id="btn-end-top">End Session</button>
+          </div>
+        </div>
+        <div class="messages-wrap" id="messages-wrap"></div>
+        <div class="typing-indicator" id="typing-indicator">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+        <div class="input-bar">
+          <textarea
+            id="chat-input"
+            placeholder="Type a message…"
+            rows="1"
+            aria-label="Message input"
+          ></textarea>
+          <button class="btn-primary" id="btn-send">Send</button>
+        </div>
+      </div>
+
+      <aside class="chat-sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">SAFE Session</div>
+          <div class="sidebar-row">
+            <span class="sidebar-label">Session ID</span>
+            <span class="sidebar-value" id="sidebar-session-id">—</span>
+          </div>
+          <div class="sidebar-row">
+            <span class="sidebar-label">Started</span>
+            <span class="sidebar-value" id="sidebar-start-time">—</span>
+          </div>
+          <div class="sidebar-note">Session data is local only — nothing is stored beyond this session.</div>
+          <div class="sidebar-offline-notice" id="sidebar-offline-notice">
+            Jane offline — connect to start chatting
+          </div>
+          <button class="btn-end-sidebar" id="btn-end-sidebar">End Session</button>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Permissions Granted</div>
+          <div class="sidebar-permission">
+            <strong>Conversation history</strong>
+            Read access, this session only
+          </div>
+          <div class="sidebar-permission">
+            <strong>Session memory</strong>
+            In-memory only, cleared at end
+          </div>
+        </div>
+
+        <a href="index.html" class="sidebar-back-link">← Back to SAFE</a>
+      </aside>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: SESSION END -->
+  <section id="session-end">
+    <div class="end-card">
+      <h1>Session ended.</h1>
+      <p>Your conversation has been deleted from this device. Nothing was stored beyond this session.</p>
+      <div><span class="safe-badge">SAFE Compliant ✓</span></div>
+      <button class="btn-primary" id="btn-new-session">Start new session</button>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-left"><strong>Jane</strong> — built on the SAFE consent framework</div>
+      <div class="footer-right">
+        <a href="index.html">SAFE ↗</a>
+        <a href="index.html#rights">Rights</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const JANE_API = 'http://localhost:8421';
+    const GUEST_USER = 'guest';
+
+    let sessionId = null;
+    let startTime = null;
+    let conversationHistory = [];
+    let janeOnline = true;
+
+    const consentGate     = document.getElementById('consent-gate');
+    const chatInterface   = document.getElementById('chat-interface');
+    const sessionEnd      = document.getElementById('session-end');
+    const messagesWrap    = document.getElementById('messages-wrap');
+    const chatInput       = document.getElementById('chat-input');
+    const btnSend         = document.getElementById('btn-send');
+    const btnAuthorize    = document.getElementById('btn-authorize');
+    const btnDecline      = document.getElementById('btn-decline');
+    const btnEndTop       = document.getElementById('btn-end-top');
+    const btnEndSidebar   = document.getElementById('btn-end-sidebar');
+    const btnNewSession   = document.getElementById('btn-new-session');
+    const sidebarSessionId = document.getElementById('sidebar-session-id');
+    const sidebarStartTime = document.getElementById('sidebar-start-time');
+    const sidebarOffline  = document.getElementById('sidebar-offline-notice');
+    const typingIndicator = document.getElementById('typing-indicator');
+
+    function generateLocalId() {
+      return Math.random().toString(36).slice(2, 10).toUpperCase();
+    }
+
+    function formatTime(date) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function showScreen(name) {
+      consentGate.style.display   = name === 'consent' ? '' : 'none';
+      chatInterface.classList.toggle('active', name === 'chat');
+      sessionEnd.style.display    = 'none';
+      sessionEnd.classList.toggle('active', name === 'end');
+      if (name === 'end') sessionEnd.style.display = '';
+    }
+
+    function setOffline(offline) {
+      janeOnline = !offline;
+      sidebarOffline.classList.toggle('visible', offline);
+      chatInput.disabled = offline;
+      btnSend.disabled   = offline;
+    }
+
+    function appendMessage(role, text) {
+      const group = document.createElement('div');
+      group.className = `message-group ${role === 'user' ? 'user' : (role === 'system' ? 'system' : 'jane')}`;
+
+      if (role !== 'system') {
+        const sender = document.createElement('div');
+        sender.className = 'message-sender';
+        sender.textContent = role === 'user' ? 'You' : 'Jane';
+        group.appendChild(sender);
+      }
+
+      const bubble = document.createElement('div');
+      bubble.className = `message-bubble ${
+        role === 'user'   ? 'user-bubble'   :
+        role === 'system' ? 'system-bubble' :
+                            'jane-bubble'
+      }`;
+      bubble.textContent = text;
+      group.appendChild(bubble);
+
+      messagesWrap.appendChild(group);
+      messagesWrap.scrollTop = messagesWrap.scrollHeight;
+    }
+
+    function showTyping(visible) {
+      typingIndicator.classList.toggle('visible', visible);
+      if (visible) messagesWrap.scrollTop = messagesWrap.scrollHeight;
+    }
+
+    function autoResizeTextarea() {
+      chatInput.style.height = 'auto';
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + 'px';
+    }
+
+    async function startSession() {
+      try {
+        const res = await fetch(`${JANE_API}/session/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: GUEST_USER })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        sessionId = data.session_id || data.sessionId || generateLocalId();
+        setOffline(false);
+      } catch {
+        sessionId = generateLocalId();
+        setOffline(true);
+      }
+
+      startTime = new Date();
+      sidebarSessionId.textContent = sessionId.slice(0, 8).toUpperCase();
+      sidebarStartTime.textContent = formatTime(startTime);
+    }
+
+    async function endSession() {
+      if (sessionId && janeOnline) {
+        try {
+          await fetch(`${JANE_API}/session/end`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: GUEST_USER, session_id: sessionId })
+          });
+        } catch {
+          // ignore — session ends locally regardless
+        }
+      }
+      sessionId = null;
+      startTime = null;
+      conversationHistory = [];
+      messagesWrap.innerHTML = '';
+    }
+
+    async function sendMessage(text) {
+      if (!text.trim()) return;
+
+      appendMessage('user', text);
+      conversationHistory.push({ role: 'user', content: text });
+
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+      btnSend.disabled = true;
+      showTyping(true);
+
+      if (!janeOnline) {
+        showTyping(false);
+        appendMessage('system', 'Jane is currently offline. Your message could not be sent.');
+        btnSend.disabled = false;
+        return;
+      }
+
+      try {
+        const res = await fetch(`${JANE_API}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            username: GUEST_USER,
+            session_id: sessionId,
+            conversation_history: conversationHistory
+          })
+        });
+
+        showTyping(false);
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const reply = data.response || data.message || data.content || "Sorry, I didn't get a response.";
+        appendMessage('jane', reply);
+        conversationHistory.push({ role: 'assistant', content: reply });
+
+      } catch (err) {
+        showTyping(false);
+        appendMessage('system', 'Something went wrong reaching Jane. Please try again.');
+      }
+
+      btnSend.disabled = false;
+      chatInput.focus();
+    }
+
+    btnAuthorize.addEventListener('click', async () => {
+      btnAuthorize.disabled = true;
+      btnAuthorize.textContent = 'Starting…';
+      await startSession();
+      showScreen('chat');
+      appendMessage('jane', "Hello. What's on your mind?");
+      chatInput.focus();
+    });
+
+    btnDecline.addEventListener('click', () => {
+      window.location.href = 'index.html';
+    });
+
+    async function doEndSession() {
+      await endSession();
+      showScreen('end');
+    }
+
+    btnEndTop.addEventListener('click', doEndSession);
+    btnEndSidebar.addEventListener('click', doEndSession);
+
+    btnNewSession.addEventListener('click', () => {
+      btnAuthorize.disabled = false;
+      btnAuthorize.textContent = 'Authorize Session';
+      showScreen('consent');
+    });
+
+    btnSend.addEventListener('click', () => sendMessage(chatInput.value));
+
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage(chatInput.value);
+      }
+    });
+
+    chatInput.addEventListener('input', autoResizeTextarea);
+
+    document.getElementById('nav-how-jane').addEventListener('click', (e) => {
+      e.preventDefault();
+      consentGate.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    showScreen('consent');
+  </script>
+
+</body>
+</html>
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

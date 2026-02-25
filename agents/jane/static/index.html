@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jane</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0d1117;
+      --surface:      #161b22;
+      --surface-alt:  #1c2128;
+      --border:       #2d333b;
+      --jane-bg:      #1a3a2e;
+      --jane-text:    #7ef5b5;
+      --user-bg:      #1e2a4a;
+      --user-text:    #a0c4ff;
+      --meta:         #8b949e;
+      --sidebar-w:    240px;
+      --header-h:     56px;
+      --input-h:      72px;
+      --green:        #3fb950;
+      --grey:         #484f58;
+      --accent:       #58a6ff;
+      --danger:       #f85149;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: #cdd9e5;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    #app {
+      display: grid;
+      grid-template-rows: var(--header-h) 1fr var(--input-h);
+      grid-template-columns: 1fr var(--sidebar-w);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    #header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+
+    #header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #header-left h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #e6edf3;
+      letter-spacing: 0.01em;
+    }
+
+    #header-left .tagline {
+      font-size: 12px;
+      color: var(--meta);
+    }
+
+    #header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--grey);
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+
+    .status-dot.active { background: var(--green); }
+
+    #session-label {
+      font-size: 12px;
+      color: var(--meta);
+    }
+
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: #cdd9e5;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+
+    .btn:hover { background: #2d333b; border-color: #444c56; }
+
+    .btn.primary {
+      background: #1f6feb;
+      border-color: #388bfd;
+      color: #fff;
+    }
+
+    .btn.primary:hover { background: #388bfd; }
+
+    .btn.danger {
+      background: transparent;
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .btn.danger:hover { background: rgba(248, 81, 73, 0.1); }
+
+    /* ── Chat area ───────────────────────────────────────── */
+    #chat {
+      grid-column: 1 / 2;
+      overflow-y: auto;
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+
+    #chat::-webkit-scrollbar { width: 6px; }
+    #chat::-webkit-scrollbar-track { background: transparent; }
+    #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .bubble-row {
+      display: flex;
+      flex-direction: column;
+      max-width: 72%;
+    }
+
+    .bubble-row.jane { align-self: flex-start; }
+    .bubble-row.user { align-self: flex-end; align-items: flex-end; }
+
+    .bubble-sender {
+      font-size: 11px;
+      color: var(--meta);
+      margin-bottom: 4px;
+      padding: 0 4px;
+    }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 12px;
+      line-height: 1.65;
+      word-break: break-word;
+    }
+
+    .bubble-row.jane .bubble {
+      background: var(--jane-bg);
+      color: var(--jane-text);
+      border-bottom-left-radius: 3px;
+    }
+
+    .bubble-row.user .bubble {
+      background: var(--user-bg);
+      color: var(--user-text);
+      border-bottom-right-radius: 3px;
+    }
+
+    .bubble.loading {
+      opacity: 0.7;
+      letter-spacing: 0.1em;
+    }
+
+    .bubble.error {
+      background: rgba(248, 81, 73, 0.12);
+      color: #f85149;
+      border: 1px solid rgba(248, 81, 73, 0.3);
+    }
+
+    .bubble-time {
+      font-size: 10px;
+      color: var(--meta);
+      margin-top: 4px;
+      padding: 0 4px;
+      opacity: 0.7;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────── */
+    #sidebar {
+      grid-row: 2 / 4;
+      grid-column: 2 / 3;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      padding: 20px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    #sidebar::-webkit-scrollbar { width: 4px; }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .sidebar-section h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--meta);
+      margin-bottom: 10px;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 13px;
+      color: #cdd9e5;
+    }
+
+    .status-row .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--grey);
+      flex-shrink: 0;
+    }
+
+    .status-row .dot.online { background: var(--green); }
+    .status-row .dot.offline { background: var(--danger); }
+
+    .badge {
+      margin-left: auto;
+      background: rgba(248, 81, 73, 0.18);
+      color: var(--danger);
+      font-size: 11px;
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .badge.zero {
+      background: rgba(63, 185, 80, 0.12);
+      color: var(--green);
+    }
+
+    .sidebar-link {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 13px;
+      padding: 5px 0;
+      transition: color 0.15s;
+    }
+
+    .sidebar-link:hover { color: #79c0ff; }
+
+    .sidebar-link::before {
+      content: "→";
+      font-size: 12px;
+      opacity: 0.7;
+    }
+
+    /* Sessions list */
+    .session-item {
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      margin-bottom: 6px;
+      font-size: 12px;
+      cursor: default;
+    }
+
+    .session-item .session-date {
+      color: #cdd9e5;
+      font-weight: 500;
+    }
+
+    .session-item .session-meta {
+      color: var(--meta);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .sessions-empty {
+      font-size: 12px;
+      color: var(--meta);
+      font-style: italic;
+    }
+
+    /* ── Input bar ───────────────────────────────────────── */
+    #input-bar {
+      grid-column: 1 / 2;
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+
+    #message-input {
+      flex: 1;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #e6edf3;
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 10px 14px;
+      resize: none;
+      min-height: 44px;
+      max-height: 160px;
+      outline: none;
+      transition: border-color 0.15s;
+      overflow-y: auto;
+    }
+
+    #message-input:focus { border-color: #444c56; }
+
+    #message-input::placeholder { color: var(--meta); }
+
+    #send-btn {
+      flex-shrink: 0;
+      height: 44px;
+      padding: 0 18px;
+      border-radius: 8px;
+      background: #1f6feb;
+      border: 1px solid #388bfd;
+      color: #fff;
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+      align-self: flex-end;
+    }
+
+    #send-btn:hover:not(:disabled) { background: #388bfd; }
+
+    #send-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* ── Welcome state ───────────────────────────────────── */
+    #welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex: 1;
+      color: var(--meta);
+      text-align: center;
+      pointer-events: none;
+    }
+
+    #welcome h2 {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--jane-text);
+      opacity: 0.7;
+    }
+
+    #welcome p {
+      font-size: 13px;
+      max-width: 300px;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header id="header">
+    <div id="header-left">
+      <h1>Jane</h1>
+      <span class="tagline">SAFE Consumer Interface</span>
+    </div>
+    <div id="header-right">
+      <div class="status-dot" id="session-dot"></div>
+      <span id="session-label">No active session</span>
+      <button class="btn" id="session-btn" onclick="toggleSession()">Start Session</button>
+    </div>
+  </header>
+
+  <!-- Chat -->
+  <main id="chat">
+    <div id="welcome">
+      <h2>Hello.</h2>
+      <p>I'm Jane. What's on your mind today?</p>
+    </div>
+  </main>
+
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-section" id="system-status-section">
+      <h3>System</h3>
+      <div class="status-row">
+        <div class="dot" id="willow-dot"></div>
+        <span id="willow-label">Checking...</span>
+      </div>
+      <div class="status-row">
+        <span>Governance</span>
+        <span class="badge zero" id="gov-badge">0 pending</span>
+      </div>
+      <a class="sidebar-link" href="http://localhost:8420/system" target="_blank">Dashboard</a>
+      <a class="sidebar-link" href="http://localhost:8420/governance" target="_blank">Governance</a>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Recent Sessions</h3>
+      <div id="sessions-list"><span class="sessions-empty">Loading...</span></div>
+    </div>
+  </aside>
+
+  <!-- Input bar -->
+  <div id="input-bar">
+    <textarea
+      id="message-input"
+      placeholder="Type a message..."
+      rows="1"
+      onkeydown="handleKey(event)"
+      oninput="autoResize(this)"
+    ></textarea>
+    <button id="send-btn" onclick="sendMessage()">Send</button>
+  </div>
+
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────
+  const state = {
+    sessionId: null,
+    username: "Sweet-Pea-Rudi19",
+    history: [],       // [{role, content}]
+    sending: false,
+    loadingBubble: null,
+  };
+
+  // ── Init ───────────────────────────────────────────────────
+  document.addEventListener("DOMContentLoaded", () => {
+    loadStatus();
+    loadSessions();
+    setInterval(loadStatus, 30_000);
+  });
+
+  // ── Status ─────────────────────────────────────────────────
+  async function loadStatus() {
+    try {
+      const r = await fetch("/status");
+      const data = await r.json();
+
+      const dot = document.getElementById("willow-dot");
+      const label = document.getElementById("willow-label");
+      const badge = document.getElementById("gov-badge");
+
+      if (data.willow_online) {
+        dot.className = "dot online";
+        label.textContent = "Willow online";
+      } else {
+        dot.className = "dot offline";
+        label.textContent = "Willow offline";
+      }
+
+      const pending = data.governance_pending || 0;
+      badge.textContent = `${pending} pending`;
+      badge.className = pending > 0 ? "badge" : "badge zero";
+    } catch {
+      document.getElementById("willow-dot").className = "dot offline";
+      document.getElementById("willow-label").textContent = "Willow offline";
+    }
+  }
+
+  // ── Sessions ───────────────────────────────────────────────
+  async function loadSessions() {
+    const container = document.getElementById("sessions-list");
+    try {
+      const r = await fetch(`/sessions?username=${encodeURIComponent(state.username)}`);
+      const data = await r.json();
+      const sessions = Array.isArray(data) ? data : (data.sessions || []);
+      const recent = sessions.slice(-5).reverse();
+
+      if (recent.length === 0) {
+        container.innerHTML = '<span class="sessions-empty">No sessions yet.</span>';
+        return;
+      }
+
+      container.innerHTML = recent.map(s => {
+        const date = formatDate(s.started_at || s.timestamp || s.id);
+        const events = s.event_count != null ? `${s.event_count} events` : "";
+        return `<div class="session-item">
+          <div class="session-date">${date}</div>
+          ${events ? `<div class="session-meta">${events}</div>` : ""}
+        </div>`;
+      }).join("");
+    } catch {
+      container.innerHTML = '<span class="sessions-empty">Could not load sessions.</span>';
+    }
+  }
+
+  function formatDate(raw) {
+    if (!raw) return "Unknown";
+    const d = new Date(raw);
+    if (isNaN(d)) return String(raw).slice(0, 16);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  // ── Session control ────────────────────────────────────────
+  async function toggleSession() {
+    if (state.sessionId) {
+      await endSession();
+    } else {
+      await startSession();
+    }
+  }
+
+  async function startSession() {
+    try {
+      const r = await fetch("/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: state.username })
+      });
+      const data = await r.json();
+      state.sessionId = data.session_id || data.id || crypto.randomUUID();
+      updateSessionUI(true);
+      loadSessions();
+    } catch (e) {
+      state.sessionId = crypto.randomUUID(); // fallback — still track locally
+      updateSessionUI(true);
+    }
+  }
+
+  async function endSession() {
+    if (!state.sessionId) return;
+    try {
+      await fetch("/session/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: state.sessionId, username: state.username })
+      });
+    } catch { /* best effort */ }
+    state.sessionId = null;
+    updateSessionUI(false);
+    loadSessions();
+  }
+
+  function updateSessionUI(active) {
+    const dot = document.getElementById("session-dot");
+    const label = document.getElementById("session-label");
+    const btn = document.getElementById("session-btn");
+    if (active) {
+      dot.className = "status-dot active";
+      label.textContent = "Session active";
+      btn.textContent = "End Session";
+      btn.className = "btn danger";
+    } else {
+      dot.className = "status-dot";
+      label.textContent = "No active session";
+      btn.textContent = "Start Session";
+      btn.className = "btn";
+    }
+  }
+
+  // ── Messaging ──────────────────────────────────────────────
+  function handleKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function autoResize(el) {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById("message-input");
+    const text = input.value.trim();
+    if (!text || state.sending) return;
+
+    // Clear welcome
+    const welcome = document.getElementById("welcome");
+    if (welcome) welcome.remove();
+
+    // Append user bubble
+    appendBubble("user", text);
+    state.history.push({ role: "user", content: text });
+    input.value = "";
+    input.style.height = "auto";
+
+    // Show loading
+    state.loadingBubble = appendBubble("jane", "...", true);
+    state.sending = true;
+    document.getElementById("send-btn").disabled = true;
+
+    try {
+      const r = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          username: state.username,
+          session_id: state.sessionId,
+          conversation_history: state.history.slice(0, -1)  // exclude current user msg
+        })
+      });
+
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+
+      const reply = data.response || data.message || data.content || JSON.stringify(data);
+      removeLoadingBubble();
+      appendBubble("jane", reply);
+      state.history.push({ role: "assistant", content: reply });
+
+    } catch (err) {
+      removeLoadingBubble();
+      appendBubble("jane", `Something went wrong: ${err.message}`, false, true);
+    } finally {
+      state.sending = false;
+      document.getElementById("send-btn").disabled = false;
+      input.focus();
+    }
+  }
+
+  function appendBubble(role, text, loading = false, error = false) {
+    const chat = document.getElementById("chat");
+
+    const row = document.createElement("div");
+    row.className = `bubble-row ${role}`;
+
+    const sender = document.createElement("div");
+    sender.className = "bubble-sender";
+    sender.textContent = role === "jane" ? "Jane" : "You";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble" + (loading ? " loading" : "") + (error ? " error" : "");
+    bubble.textContent = text;
+
+    const time = document.createElement("div");
+    time.className = "bubble-time";
+    time.textContent = nowTime();
+
+    row.appendChild(sender);
+    row.appendChild(bubble);
+    row.appendChild(time);
+    chat.appendChild(row);
+    chat.scrollTop = chat.scrollHeight;
+
+    return row;
+  }
+
+  function removeLoadingBubble() {
+    if (state.loadingBubble) {
+      state.loadingBubble.remove();
+      state.loadingBubble = null;
+    }
+  }
+
+  function nowTime() {
+    return new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+</script>
+</body>
+</html>

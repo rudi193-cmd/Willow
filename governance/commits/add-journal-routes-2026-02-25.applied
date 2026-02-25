@@ -1,0 +1,49 @@
+# Governance Proposal: Add Journal API Routes to server.py
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-02-25
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Wire the new `api/journal_routes.py` into `server.py` so Jane's server and other clients can manage journal sessions and events via HTTP. This is the API foundation for Jane's chat interface.
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove include_router line to disable
+- **Dependencies:** api/journal_routes.py (new file, already created)
+- **Testing:** POST /api/journal/session/start with {"username": "Sweet-Pea-Rudi19"}
+
+## Implementation
+
+### File: server.py
+
+Change from:
+```python
+from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes
+```
+
+To:
+```python
+from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes
+```
+
+### File: server.py
+
+Change from:
+```python
+app.include_router(die_namic_routes.router) # Die-namic system state (read-only)
+```
+
+To:
+```python
+app.include_router(die_namic_routes.router) # Die-namic system state (read-only)
+app.include_router(journal_routes.router)   # Journal sessions + events (Jane's pipeline)
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

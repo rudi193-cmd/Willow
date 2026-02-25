@@ -66,7 +66,9 @@ def init_agent_tables(username):
             agent_type TEXT DEFAULT 'persona',
             profile_path TEXT,
             registered_at TEXT,
-            last_seen TEXT
+            last_seen TEXT,
+            port INTEGER,
+            server_type TEXT DEFAULT 'persona'
         );
         CREATE TABLE IF NOT EXISTS agent_mailbox (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,6 +251,32 @@ def mark_onboarding_complete(username):
 def is_onboarding_complete(username):
     """Check if onboarding is complete."""
     return _get_state(username, "onboarding_complete", "false") == "true"
+
+
+PORT_BASE = 8421  # Willow is 8420; primaries start at 8421
+
+
+def assign_port(username: str, agent_name: str, server_type: str = "interface") -> int:
+    """Assign next available 84xx port to an agent. Returns assigned port."""
+    conn = _conn(username)
+    # Find highest assigned port
+    row = conn.execute("SELECT MAX(port) FROM agents WHERE port IS NOT NULL").fetchone()
+    next_port = (row[0] + 1) if row and row[0] else PORT_BASE
+    conn.execute(
+        "UPDATE agents SET port=?, server_type=? WHERE name=?",
+        (next_port, server_type, agent_name)
+    )
+    conn.commit()
+    conn.close()
+    return next_port
+
+
+def get_agent_url(username: str, agent_name: str) -> str | None:
+    """Get the local URL for an agent's server. Returns None if no port assigned."""
+    agent = get_agent(username, agent_name)
+    if agent and agent.get("port"):
+        return f"http://localhost:{agent['port']}"
+    return None
 
 
 def register_default_agents(username):

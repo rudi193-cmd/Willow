@@ -45,7 +45,7 @@ from core import agent_registry
 from core import tool_engine, kart_orchestrator, kart_tasks
 from core.awareness import on_scan_complete, on_organize_complete, on_coherence_update, on_topology_update, say as willow_say
 from apps.pa import drive_scan, drive_organize
-from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes
+from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes
 
 app = FastAPI(title="Willow", docs_url=None, redoc_url=None)
 
@@ -74,6 +74,7 @@ app.include_router(utety_routes.router)    # UTETY chat + professors + sessions
 app.include_router(vision_routes.router)   # Vision board image classification
 app.include_router(dating_routes.router)   # Dating wellbeing red flag analysis
 app.include_router(die_namic_routes.router) # Die-namic system state (read-only)
+app.include_router(journal_routes.router)   # Journal sessions + events (Jane's pipeline)
 # Governance endpoints already defined in server.py (lines 1023-1155)
 
 
@@ -1526,6 +1527,54 @@ async def governance_reject(request: Request):
         return {"success": True, "action": "rejected", "commit_id": commit_id}
     except Exception as e:
         return {"error": str(e), "success": False}
+
+
+@app.post("/api/governance/approve_and_apply")
+async def governance_approve_and_apply(request: Request):
+    """Approve and immediately apply a pending commit in one step."""
+    import subprocess
+    try:
+        body = await request.json()
+        commit_id = body.get("commit_id", "").strip()
+        if not commit_id:
+            return {"success": False, "error": "commit_id required"}
+
+        # Step 1: Approve (move .pending -> .commit)
+        pending = GOV_COMMITS_DIR / f"{commit_id}.pending"
+        commit_file = GOV_COMMITS_DIR / f"{commit_id}.commit"
+
+        if not pending.exists():
+            if commit_file.exists():
+                pass  # Already approved, just apply
+            else:
+                return {"success": False, "error": f"Commit not found: {commit_id}"}
+        else:
+            pending.rename(commit_file)
+
+        # Step 2: Apply via apply_commits.py
+        apply_script = Path(__file__).parent / "governance" / "apply_commits.py"
+        result = subprocess.run(
+            [sys.executable, str(apply_script), commit_id],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        output = result.stdout + result.stderr
+        success = result.returncode == 0 and "[FAIL]" not in result.stdout
+
+        return {
+            "success": success,
+            "commit_id": commit_id,
+            "output": output,
+            "error": None if success else "Apply step failed — see output"
+        }
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Apply timed out after 30s"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # --- Governance Audit Chain ---
