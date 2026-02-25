@@ -243,6 +243,7 @@ Rules:
 4. Explain your reasoning at each step
 5. If a tool fails, try an alternative approach
 6. If stuck after 3 attempts, ask for human guidance
+7. For conversational messages or questions (greetings, explanations, status), use {"action": "complete", "response": "your answer"} without calling any tools
 
 Current user: {self.username}
 Your trust level: ENGINEER
@@ -332,20 +333,36 @@ ASSISTANT (respond with JSON):"""
                 return {"type": "error", "message": f"Invalid JSON from LLM: {json_str[:300]}\nError: {str(e)}"}
 
             # Validate action
-            if action.get("action") == "tool_call":
+            action_val = action.get("action")
+            tool_names = {t["name"] for t in self.tools}
+
+            if action_val == "tool_call":
                 return {
                     "type": "tool_call",
                     "tool": action.get("tool"),
                     "params": action.get("params", {}),
                     "reasoning": action.get("reasoning", "")
                 }
-            elif action.get("action") == "complete":
+            elif action_val == "complete":
                 return {
                     "type": "complete",
                     "response": action.get("response", "Task completed")
                 }
+            elif action_val in tool_names:
+                # LLM put tool name directly in action field instead of using "tool_call"
+                return {
+                    "type": "tool_call",
+                    "tool": action_val,
+                    "params": action.get("params", {}),
+                    "reasoning": action.get("reasoning", "")
+                }
             else:
-                return {"type": "error", "message": f"Unknown action: {action.get('action')}"}
+                # LLM invented a non-standard action (e.g. "explain", "end_session")
+                # Treat as conversational complete rather than hard error
+                return {
+                    "type": "complete",
+                    "response": action.get("response") or action.get("message") or "Done."
+                }
 
         except Exception as e:
             return {"type": "error", "message": f"LLM call failed: {str(e)}"}

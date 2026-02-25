@@ -1,0 +1,103 @@
+# Governance Proposal: Fix kart_orchestrator unknown action errors
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T18:45:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Free-tier LLMs in kart_orchestrator._get_next_action() sometimes return non-standard JSON action formats: tool name directly in the "action" field (e.g. `{"action": "write_file"}`) or invented conversational actions (e.g. `{"action": "explain"}`). Both cases hit the bare `else: return {"type": "error"}` branch, causing every conversational REPL interaction to report FAILED. Two-part fix: recognize tool names in the action field as tool_call, and treat all other unknown actions as conversational complete.
+
+## Proposed Changes
+
+### File: core/kart_orchestrator.py
+
+#### Change 1: _get_next_action() — defensive action parsing (lines 335-348)
+
+Change from:
+```python
+            # Validate action
+            if action.get("action") == "tool_call":
+                return {
+                    "type": "tool_call",
+                    "tool": action.get("tool"),
+                    "params": action.get("params", {}),
+                    "reasoning": action.get("reasoning", "")
+                }
+            elif action.get("action") == "complete":
+                return {
+                    "type": "complete",
+                    "response": action.get("response", "Task completed")
+                }
+            else:
+                return {"type": "error", "message": f"Unknown action: {action.get('action')}"}
+```
+
+To:
+```python
+            # Validate action
+            action_val = action.get("action")
+            tool_names = {t["name"] for t in self.tools}
+
+            if action_val == "tool_call":
+                return {
+                    "type": "tool_call",
+                    "tool": action.get("tool"),
+                    "params": action.get("params", {}),
+                    "reasoning": action.get("reasoning", "")
+                }
+            elif action_val == "complete":
+                return {
+                    "type": "complete",
+                    "response": action.get("response", "Task completed")
+                }
+            elif action_val in tool_names:
+                # LLM put tool name directly in action field instead of using "tool_call"
+                return {
+                    "type": "tool_call",
+                    "tool": action_val,
+                    "params": action.get("params", {}),
+                    "reasoning": action.get("reasoning", "")
+                }
+            else:
+                # LLM invented a non-standard action (e.g. "explain", "end_session")
+                # Treat as conversational complete rather than hard error
+                return {
+                    "type": "complete",
+                    "response": action.get("response") or action.get("message") or "Done."
+                }
+```
+
+#### Change 2: _build_system_prompt() — conversational guidance (Rules section)
+
+Change from:
+```
+6. If stuck after 3 attempts, ask for human guidance
+```
+
+To:
+```
+6. If stuck after 3 attempts, ask for human guidance
+7. For conversational messages or questions (greetings, explanations, status), use {"action": "complete", "response": "your answer"} without calling any tools
+```
+
+## Rationale
+- LLM provider inconsistency: free-tier models (Gemini Flash, Groq, Cerebras) don't always follow strict JSON protocols
+- Tool name in action field is unambiguous — we know exactly what tool was intended
+- Conversational fallback prevents FAILED status on every greeting/question in the REPL
+- Both changes are additive — the happy path (tool_call / complete) is unchanged
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — revert 20 lines
+- **Dependencies:** None
+- **Testing:** Kart REPL — send "good morning", "walk me through it", "end session" — all should return [COMPLETED] not [FAILED]
+
+## ΔE Impact
+Expected ΔE: +0.010 (removes failure noise, makes REPL usable for conversation)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
