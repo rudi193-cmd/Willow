@@ -53,18 +53,17 @@ if %missing%==1 (
 echo       OK (state, gate, storage)
 
 :: ---------------------------------------------------------------
-:: 3. AIOS ENGINE  (background, logs only)
+:: 3. AIOS ENGINE  — DEPRECATED, replaced by modular daemons below
 :: ---------------------------------------------------------------
-echo [3/5] AIOS Engine...
-start "WILLOW-ENGINE" /min cmd /c "python aios_loop.py >> logs\aios_engine.log 2>&1"
-echo       started  --  tail: logs\aios_engine.log
+echo [3/5] AIOS Engine... (deprecated -- skipped)
+:: start "WILLOW-ENGINE" /min cmd /c "python aios_loop.py >> logs\aios_engine.log 2>&1"
 
 :: ---------------------------------------------------------------
 :: 4. KART  (VISIBLE window -- watch what Kart is doing)
 :: ---------------------------------------------------------------
 echo [4/5] Kart...
-start "WILLOW - KART" python kart.py --user Sweet-Pea-Rudi19
-echo       started in visible window
+start "WILLOW - KART" cmd /k python kart.py
+echo       REPL started in visible window
 
 :: ---------------------------------------------------------------
 :: 5. SERVER  (VISIBLE window -- see errors when it breaks)

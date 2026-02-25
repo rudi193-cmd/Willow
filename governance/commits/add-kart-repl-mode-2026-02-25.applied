@@ -1,0 +1,146 @@
+# Governance Proposal: Add Kart REPL Interactive Mode
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T17:45:00Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+The WILLOW.bat boots Kart with `python kart.py --status` which exits immediately — the window opens and closes. Kart should boot into an interactive REPL so the window stays open and the user can issue tasks and commands directly from the Kart terminal.
+
+## Proposed Changes
+
+### File 1: cli/kart_cli.py
+**Location:** After cmd_tools() function (after line 207), before main()
+
+Add new function cmd_repl():
+
+```python
+def cmd_repl():
+    cmd_status()
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :quit\n")
+    while True:
+        try:
+            line = input("kart> ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nBye.")
+            break
+        if not line:
+            continue
+        if line in (":quit", ":exit", "quit", "exit"):
+            print("Bye.")
+            break
+        elif line == ":status":
+            cmd_status()
+        elif line == ":tasks":
+            cmd_tasks(None)
+        elif line == ":tools":
+            cmd_tools()
+        elif line.startswith(":"):
+            print(f"Unknown command: {line}")
+        else:
+            cmd_execute(line)
+    return 0
+```
+
+Change the else branch in main() from:
+```python
+    else:
+        parser.print_help()
+        return 1
+```
+To:
+```python
+    else:
+        return cmd_repl()
+```
+
+### File 2: WILLOW.bat
+**Location:** Step 4 (Kart launch), line starting with `start "WILLOW - KART"`
+
+Change from:
+```batch
+start "WILLOW - KART" python kart.py --status
+echo       started in visible window
+```
+To:
+```batch
+start "WILLOW - KART" cmd /k python kart.py
+echo       REPL started in visible window
+```
+
+## Rationale
+- WILLOW.bat step 4 comments say "VISIBLE window -- watch what Kart is doing" — but the window closes immediately
+- Kart is the production orchestrator window; it should stay open for direct task input
+- No-arg launch now drops into REPL (shows status on boot, then prompt)
+- `cmd /k` ensures the window stays open even if kart.py exits unexpectedly
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — revert the two diff hunks
+- **Dependencies:** None (pure stdlib input() loop)
+- **Testing:** Run `python kart.py` with no args — should show status then `kart>` prompt
+
+## ΔE Impact
+Expected ΔE: +0.008 (UX improvement, zero architectural impact)
+
+## Implementation
+```diff
+--- a/cli/kart_cli.py
++++ b/cli/kart_cli.py
+@@ -207,6 +207,22 @@ def cmd_tools():
+     return 0
+
+
++def cmd_repl():
++    cmd_status()
++    print("\nKart REPL  |  type a task, or :status :tasks :tools :quit\n")
++    while True:
++        try:
++            line = input("kart> ").strip()
++        except (KeyboardInterrupt, EOFError):
++            print("\nBye.")
++            break
++        if not line:
++            continue
++        if line in (":quit", ":exit", "quit", "exit"):
++            print("Bye.")
++            break
++        elif line == ":status":
++            cmd_status()
++        elif line == ":tasks":
++            cmd_tasks(None)
++        elif line == ":tools":
++            cmd_tools()
++        elif line.startswith(":"):
++            print(f"Unknown command: {line}")
++        else:
++            cmd_execute(line)
++    return 0
++
++
+ def main():
+@@ -246,7 +262,7 @@ def main():
+     elif args.task:
+         return cmd_execute(args.task)
+     else:
+-        parser.print_help()
+-        return 1
++        return cmd_repl()
+```
+
+```diff
+--- a/WILLOW.bat
++++ b/WILLOW.bat
+@@ -Kart section
+-start "WILLOW - KART" python kart.py --status
+-echo       started in visible window
++start "WILLOW - KART" cmd /k python kart.py
++echo       REPL started in visible window
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

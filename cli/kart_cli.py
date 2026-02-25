@@ -207,6 +207,33 @@ def cmd_tools():
     return 0
 
 
+def cmd_repl():
+    cmd_status()
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :quit\n")
+    while True:
+        try:
+            line = input("kart> ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nBye.")
+            break
+        if not line:
+            continue
+        if line in (":quit", ":exit", "quit", "exit"):
+            print("Bye.")
+            break
+        elif line == ":status":
+            cmd_status()
+        elif line == ":tasks":
+            cmd_tasks(None)
+        elif line == ":tools":
+            cmd_tools()
+        elif line.startswith(":"):
+            print(f"Unknown command: {line}")
+        else:
+            cmd_execute(line)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Kart Orchestrator CLI",
@@ -244,8 +271,7 @@ Examples:
     elif args.task:
         return cmd_execute(args.task)
     else:
-        parser.print_help()
-        return 1
+        return cmd_repl()
 
 
 if __name__ == "__main__":
