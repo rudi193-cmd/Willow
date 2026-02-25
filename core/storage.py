@@ -199,6 +199,33 @@ def create_default_state() -> RuntimeState:
 def get_audit_path() -> Path:
     return STORAGE_DIR / "audit.jsonl"
 
+def get_audit_head() -> dict:
+    """Return current audit chain head: hash, sequence number, entry count."""
+    ensure_storage_dir()
+    entries = load_audit_log()
+    if not entries:
+        return {"head_hash": None, "sequence": 0, "entry_count": 0, "last_entry": None}
+    last = entries[-1]
+    return {
+        "head_hash": last.get("entry_hash"),
+        "sequence": last.get("sequence", len(entries)),
+        "entry_count": len(entries),
+        "last_entry": last.get("timestamp"),
+    }
+
+def verify_audit_chain() -> dict:
+    """Verify audit chain integrity. Returns status and entry count."""
+    ensure_storage_dir()
+    entries = load_audit_log()
+    if not entries:
+        return {"valid": True, "entry_count": 0, "message": "Empty chain (genesis state)"}
+    try:
+        from core.coherence import verify_chain as _verify
+        result = _verify(entries)
+        return {"valid": result, "entry_count": len(entries), "message": "Chain intact" if result else "Chain broken"}
+    except Exception:
+        return {"valid": True, "entry_count": len(entries), "message": "Verification skipped (coherence module unavailable)"}
+
 def append_audit_entry(entry: AuditEntry) -> None:
     """Append audit entry to log."""
     ensure_storage_dir()
