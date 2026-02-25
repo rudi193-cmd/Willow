@@ -1,0 +1,263 @@
+# Governance Proposal: Add core/boot.py — Willow Startup & Port Lifecycle Manager
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T04:35:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+**Commit ID:** add-core-boot-module-2026-02-25
+
+---
+
+## Summary
+
+Willow currently has no canonical startup contract. Port conflict detection, PID tracking, and boot state are scattered across `app.py` and ad-hoc launch scripts, leaving no single source of truth for whether an instance is already running. `core/boot.py` establishes that contract: it defines `WillowConfig` (the persisted runtime identity stored at `~/.willow/config.json`), provides `load_config()`/`save_config()` for safe round-trip serialization, a `check_port()` utility that distinguishes four distinct port states (free, our own instance, stale PID, unknown conflict), and a `boot_check()` entry point that returns a structured `(status, config, message)` tuple so callers can branch cleanly. A `get_willow_url()` helper exposes the canonical base URL for use by SAFE apps, binder.html, and any peer that needs to locate this node without hardcoding. The module is stdlib-only, under 150 lines, and has no side effects on import.
+
+**Note for follow-up:** `binder.html` currently hardcodes `const API = 'http://localhost:8420'`. Once this module is in place, that constant should be replaced by a config-driven value fetched from `/api/config/url` or injected at build time. That change is deferred to a separate proposal and is not included in this diff.
+
+## Proposed Changes
+
+**File:** `core/boot.py` (NEW)
+
+## Rationale
+
+- No single module currently owns Willow's runtime identity — port, PID, host, boot count, and peering config live in different places or not at all
+- Double-boot race conditions are undetectable without a persistent PID record; `check_port()` makes stale locks distinguishable from live conflicts
+- `get_willow_url()` gives SAFE apps and `binder.html` a single authoritative source for the API base URL, eliminating hardcoded `localhost:8420` strings across the codebase
+- `WillowConfig` as a dataclass provides a typed, serializable schema that future modules (peering, health, SAFE sync) can import without reimplementing config parsing
+- Stdlib-only keeps the dependency surface at zero; no new `requirements.txt` entries needed
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — new file only, no existing module is modified; removing `core/boot.py` fully reverts the change
+- **Dependencies:** None beyond Python stdlib (`dataclasses`, `pathlib`, `json`, `os`, `socket`); `~/.willow/` directory is created on first `save_config()` call
+- **Testing:** Import `core.boot` in a Python REPL, call `boot_check()` with Willow stopped (expect `"start"`), start Willow, call again (expect `"already_running"`), kill Willow without cleanup and call again (expect `"stale_reclaimed"`); bind a foreign process to port 8420 and call again (expect `"conflict"`)
+
+## ΔE Impact
+
+Expected ΔE: +0.031 (establishes a missing system primitive — startup coherence and port lifecycle — reducing ambiguity at the boot boundary and enabling reliable multi-instance detection)
+
+## Implementation
+
+```diff
+--- /dev/null
++++ b/core/boot.py
+@@ -0,0 +1,148 @@
++"""
++BOOT v1.0.0
++Willow Startup & Port Lifecycle Manager
++
++Owner: Sean Campbell
++System: Willow / Die-namic Bridge Ring
++Version: 1.0.0
++Status: Active
++Last Updated: 2026-02-25T04:35:00Z
++Checksum: ΔΣ=42
++
++Responsibilities:
++- Persist runtime identity to ~/.willow/config.json
++- Detect port state: free / our instance / stale lock / conflict
++- Provide canonical base URL for SAFE apps and binder.html
++- No side effects on import; all mutation is explicit
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import socket
++from dataclasses import dataclass, field, asdict
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Optional
++
++# ---------------------------------------------------------------------------
++# Config schema
++# ---------------------------------------------------------------------------
++
++CONFIG_PATH: Path = Path.home() / ".willow" / "config.json"
++
++
++@dataclass
++class PeeringConfig:
++    enabled: bool = False
++    port: int = 8421
++    allowed_peers: list = field(default_factory=list)
++
++
++@dataclass
++class WillowConfig:
++    port: int = 8420
++    locked: bool = False
++    host: str = "127.0.0.1"
++    instance_id: str = ""
++    pid: Optional[int] = None
++    boot_count: int = 0
++    last_boot: str = ""
++    peering: PeeringConfig = field(default_factory=PeeringConfig)
++    db_path: str = ""
++
++
++# ---------------------------------------------------------------------------
++# Serialization
++# ---------------------------------------------------------------------------
++
++def _default_instance_id() -> str:
++    """Generate a stable instance ID from hostname + default port."""
++    return f"{socket.gethostname()}-8420"
++
++
++def _config_to_dict(config: WillowConfig) -> dict:
++    d = asdict(config)
++    # asdict recurses into PeeringConfig automatically
++    return d
++
++
++def _dict_to_config(d: dict) -> WillowConfig:
++    peering_raw = d.pop("peering", {})
++    peering = PeeringConfig(
++        enabled=peering_raw.get("enabled", False),
++        port=peering_raw.get("port", 8421),
++        allowed_peers=peering_raw.get("allowed_peers", []),
++    )
++    return WillowConfig(peering=peering, **d)
++
++
++def load_config() -> WillowConfig:
++    """
++    Read ~/.willow/config.json and return a WillowConfig.
++    Creates and persists a default config on first boot.
++    """
++    if not CONFIG_PATH.exists():
++        config = WillowConfig(
++            instance_id=_default_instance_id(),
++            db_path=str(Path.home() / ".willow" / "willow.db"),
++        )
++        save_config(config)
++        return config
++
++    try:
++        raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
++        return _dict_to_config(raw)
++    except (json.JSONDecodeError, TypeError, KeyError) as exc:
++        # Corrupted config — return safe default rather than crashing
++        return WillowConfig(
++            instance_id=_default_instance_id(),
++            db_path=str(Path.home() / ".willow" / "willow.db"),
++        )
++
++
++def save_config(config: WillowConfig) -> None:
++    """Write config to ~/.willow/config.json (creates directory if absent)."""
++    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
++    CONFIG_PATH.write_text(
++        json.dumps(_config_to_dict(config), indent=2),
++        encoding="utf-8",
++    )
++
++
++# ---------------------------------------------------------------------------
++# Port state detection
++# ---------------------------------------------------------------------------
++
++def _port_open(host: str, port: int) -> bool:
++    """Return True if something is listening on host:port."""
++    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
++        s.settimeout(0.5)
++        return s.connect_ex((host, port)) == 0
++
++
++def _pid_alive(pid: Optional[int]) -> bool:
++    """Return True if pid exists in the OS process table."""
++    if pid is None:
++        return False
++    try:
++        os.kill(pid, 0)
++        return True
++    except (ProcessLookupError, PermissionError):
++        return False
++
++
++def check_port(port: int, host: str = "127.0.0.1") -> str:
++    """
++    Inspect port state relative to our persisted config.
++
++    Returns one of:
++        "free"            — port is not bound by anything
++        "willow_running"  — port is bound AND config PID matches a live process
++        "stale_lock"      — config records a PID but that process is gone
++        "conflict"        — port is bound by an unknown process
++    """
++    config = load_config()
++    port_in_use = _port_open(host, port)
++
++    if not port_in_use:
++        if config.pid is not None and not _pid_alive(config.pid):
++            return "stale_lock"
++        return "free"
++
++    # Port is bound — is it ours?
++    if config.pid is not None and _pid_alive(config.pid):
++        return "willow_running"
++
++    return "conflict"
++
++
++# ---------------------------------------------------------------------------
++# Boot entry point
++# ---------------------------------------------------------------------------
++
++def boot_check() -> tuple[str, WillowConfig, str]:
++    """
++    Main entry point for app.py or any launcher.
++
++    Returns (status, config, message) where status is one of:
++        "start"            — port is free, safe to bind
++        "already_running"  — our instance is live; caller should abort or attach
++        "conflict"         — port taken by unknown process; caller must handle
++        "stale_reclaimed"  — stale PID cleared, port is now free, safe to start
++    """
++    config = load_config()
++    state = check_port(config.port, config.host)
++
++    if state == "free":
++        config.boot_count += 1
++        config.last_boot = datetime.now(timezone.utc).isoformat()
++        config.pid = os.getpid()
++        save_config(config)
++        return ("start", config, f"Port {config.port} is free. Boot #{config.boot_count}.")
++
++    if state == "willow_running":
++        return ("already_running", config, f"Willow already running on {get_willow_url()} (PID {config.pid}).")
++
++    if state in ("stale_lock", "conflict") and state == "stale_lock":
++        # Clear the dead PID and proceed
++        config.pid = None
++        config.boot_count += 1
++        config.last_boot = datetime.now(timezone.utc).isoformat()
++        config.pid = os.getpid()
++        save_config(config)
++        return ("stale_reclaimed", config, f"Stale lock cleared. Boot #{config.boot_count}.")
++
++    return ("conflict", config, f"Port {config.port} is bound by an unknown process. Cannot start.")
++
++
++# ---------------------------------------------------------------------------
++# URL helper
++# ---------------------------------------------------------------------------
++
++def get_willow_url() -> str:
++    """
++    Return the canonical Willow base URL for this instance.
++    Reads ~/.willow/config.json — does not require a running server.
++    Intended for use by SAFE apps, binder.html, and peer nodes.
++    """
++    config = load_config()
++    return f"http://{config.host}:{config.port}"
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
