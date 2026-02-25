@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 # Core imports
-from core import agent_engine, agent_registry
+from core import agent_engine, agent_registry, agent_auth
 
 # Default username (TODO: get from auth context)
 USERNAME = "Sweet-Pea-Rudi19"
@@ -307,3 +307,31 @@ async def agents_health():
             "status": "error",
             "error": str(e)
         }
+
+
+class CheckinRequest(BaseModel):
+    """Agent check-in request."""
+    agent_name: str
+
+
+class CheckinResponse(BaseModel):
+    """Agent check-in response."""
+    token: str
+    trust_level: str
+    expires_at: str
+    agent_name: str
+
+
+@router.post("/checkin", response_model=CheckinResponse)
+async def agent_checkin(request: CheckinRequest):
+    """
+    Issue a 24h session token for a registered agent.
+    Include as X-Willow-Agent header in subsequent requests.
+    Trust level enforced based on DB registration.
+    """
+    try:
+        result = agent_auth.checkin(request.agent_name)
+        return CheckinResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
