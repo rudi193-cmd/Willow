@@ -2474,8 +2474,21 @@ if UI_DIST.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    print("Willow UI: http://127.0.0.1:8420")
-    uvicorn.run("server:app", host="0.0.0.0", port=8420, log_level="info")
+    from core.boot import boot_check
+
+    status, cfg, msg = boot_check()
+    if status == "already_running":
+        print(f"[BOOT] {msg}")
+        sys.exit(0)
+    elif status == "conflict":
+        print(f"[BOOT] ERROR: {msg}")
+        print("[BOOT] Free port 8420 or change Willow port in ~/.willow/config.json")
+        sys.exit(1)
+    else:
+        print(f"[BOOT] {msg}")  # start or stale_reclaimed
+
+    print(f"Willow UI: http://{cfg.host}:{cfg.port}")
+    uvicorn.run("server:app", host=cfg.host, port=cfg.port, log_level="info")
 
 # BASE 17 Compact Communication Endpoint
 @app.route('/api/compact', methods=['POST'])
