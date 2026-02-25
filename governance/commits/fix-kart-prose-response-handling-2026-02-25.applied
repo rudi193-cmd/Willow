@@ -1,0 +1,53 @@
+# Governance Proposal: Treat prose-only LLM responses as complete, not error
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T20:08:02Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+When the LLM returns a plain prose answer (no JSON wrapper), `_get_next_action()` hits
+`start_index == -1` and returns `{"type": "error", "message": "No JSON object found in LLM
+response: <content>"}`. This causes the task to FAIL even though the LLM gave a correct answer.
+The fix: treat no-JSON prose responses as a conversational `complete` action, identical to how
+we already handle unrecognized action types.
+
+## Proposed Changes
+
+### File: core/kart_orchestrator.py
+**Location:** `_get_next_action()`, no-JSON branch
+
+Change from:
+```python
+            if start_index == -1:
+                return {"type": "error", "message": f"No JSON object found in LLM response: {content[:300]}"}
+```
+
+To:
+```python
+            if start_index == -1:
+                # LLM returned prose without JSON wrapper — treat as conversational completion
+                return {"type": "complete", "response": content}
+```
+
+## Rationale
+- Free-tier LLMs frequently answer "summarize X" tasks with plain prose, no JSON
+- The content is correct — the LLM understood the task — only the format is wrong
+- Rule 7 in the system prompt already handles this for unrecognized action fields
+- This extends the same logic to the no-JSON case
+- Prevents TASK FAILED on valid conversational/summary responses
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — revert the single changed line
+- **Dependencies:** None
+- **Testing:** Ask Kart "What paths do you have access to?" — should return COMPLETED not FAILED
+
+## ΔE Impact
+Expected ΔE: +0.008 (eliminates false TASK FAILED on valid prose responses)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

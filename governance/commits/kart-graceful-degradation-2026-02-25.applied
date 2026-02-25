@@ -1,0 +1,109 @@
+# Governance Proposal: Kart graceful degradation + context persistence
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:05:00Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Kart CLI and orchestrator already bypass the Willow API server for LLM routing (llm_router calls fleet/Ollama directly) and DB access (core/ reads SQLite directly). The missing pieces are: (1) server status awareness in the REPL so users see "OFFLINE — local mode" instead of silent failures, and (2) SEED_PACKET saved after every successful step so conversation context survives to disk continuously — not only on halt/error. Together these close the graceful degradation spec: Kart keeps working when the server is down and restores full context when it comes back.
+
+## Proposed Changes
+
+### File 1: cli/kart_cli.py
+
+**Change A:** Add _server_online() helper after the USERNAME/AGENT_NAME constants:
+
+```python
+def _server_online() -> bool:
+    """Quick connectivity check — returns True if Willow server is reachable."""
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://localhost:8420/api/agents/health", timeout=1)
+        return True
+    except Exception:
+        return False
+```
+
+**Change B:** In cmd_status(), add server status line after the agent_info block and before the tools block. After the line:
+```python
+    else:
+        print(f"Agent: {AGENT_NAME} (NOT REGISTERED)")
+```
+Add:
+```python
+    # Server connectivity
+    server_up = _server_online()
+    print(f"\nServer: {'ONLINE (port 8420)' if server_up else 'OFFLINE — local mode active'}")
+```
+
+**Change C:** In cmd_repl(), after cmd_status() and before the banner print, add offline warning:
+
+Change from:
+```python
+def cmd_repl():
+    cmd_status()
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :quit\n")
+```
+
+To:
+```python
+def cmd_repl():
+    cmd_status()
+    if not _server_online():
+        print("\n[OFFLINE] Willow server not detected — running in local mode")
+        print("  Fleet LLM and local tools available.")
+        print("  Server-dependent tools (delegate_to_agent) will skip gracefully.")
+        print("  Run :status after starting the server to confirm reconnection.\n")
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :quit\n")
+```
+
+### File 2: core/kart_orchestrator.py
+
+**Change:** In the execute() while loop, after appending the tool result to self.context (around line 162), add per-step SEED_PACKET save:
+
+Change from:
+```python
+                # Add result to context
+                self.context.append({
+                    "role": "assistant",
+                    "content": f"Tool: {action['tool']}\nResult: {json.dumps(tool_result, indent=2)}"
+                })
+
+                # Check for repetition (infinite loop detection)
+```
+
+To:
+```python
+                # Add result to context
+                self.context.append({
+                    "role": "assistant",
+                    "content": f"Tool: {action['tool']}\nResult: {json.dumps(tool_result, indent=2)}"
+                })
+
+                # Persist context after every step — survives server outages
+                self._save_seed_packet(user_request, steps_executed, "IN_PROGRESS")
+
+                # Check for repetition (infinite loop detection)
+```
+
+## Rationale
+- llm_router already falls back to Ollama when fleet providers are unavailable
+- tool_engine reads/writes SQLite directly — no server dependency for most tools
+- Per-step SEED_PACKET means "context until server restored" is literally true: any interrupted session can resume from the last successful step
+- The offline banner sets correct expectations without blocking any functionality
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — remove _server_online() + 4 REPL lines + 1 orchestrator line
+- **Dependencies:** urllib.request (stdlib, no new imports)
+- **Testing:** Stop the server, open Kart REPL — should show OFFLINE banner and continue working; restart server, type :status — should show ONLINE
+
+## ΔE Impact
+Expected ΔE: +0.015 (closes offline/standalone spec — Kart now context-persistent across server outages)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

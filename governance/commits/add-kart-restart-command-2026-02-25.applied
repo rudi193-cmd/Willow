@@ -1,0 +1,106 @@
+# Governance Proposal: Add :server_restart command to Kart REPL
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:02:18Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add a :server_restart command to the Kart REPL that restarts the Willow server without losing the REPL session context. Distinguished from :agent_restart (separate proposal) which resets Kart's own context without touching the server. When server code changes (new rules, governance commits), users need a way to apply them without knowing about uvicorn internals. The REPL session stays alive; the server process is replaced. Two parts: a POST /api/admin/restart endpoint in server.py, and a :server_restart REPL command in kart_cli.py that calls it and waits for the server to come back.
+
+## Proposed Changes
+
+### File 1: server.py
+
+Add after the existing routes (before or after the last route definition), a new admin restart endpoint:
+
+```python
+@app.post("/api/admin/restart")
+async def admin_restart():
+    """Hot-restart the Willow server. Called by Kart REPL :server_restart command."""
+    import threading
+    def _do_restart():
+        import time, os, sys, subprocess
+        time.sleep(0.5)
+        subprocess.Popen(
+            [sys.executable, __file__],
+            cwd=str(Path(__file__).parent),
+        )
+        os._exit(0)
+    threading.Thread(target=_do_restart, daemon=True).start()
+    return {"status": "restarting", "message": "Server restarting in 0.5s — reconnect in ~5s"}
+```
+
+### File 2: cli/kart_cli.py
+
+**Change A:** Add cmd_server_restart() function (add after cmd_status, before cmd_tasks):
+
+```python
+def cmd_server_restart():
+    """Restart the Willow server. REPL context stays; new server code is loaded."""
+    import urllib.request
+    import time
+    print("Sending restart signal to Willow server...")
+    try:
+        req = urllib.request.Request(
+            "http://localhost:8420/api/admin/restart",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=3)
+    except Exception:
+        pass  # Connection drops mid-restart — expected
+    print("Waiting for server", end="", flush=True)
+    for _ in range(20):
+        time.sleep(1)
+        print(".", end="", flush=True)
+        try:
+            urllib.request.urlopen("http://localhost:8420/api/agents/health", timeout=1)
+            print(" back up!")
+            return
+        except Exception:
+            pass
+    print("\nTimed out — server may still be starting.")
+```
+
+**Change B:** In cmd_repl(), update the banner line from:
+```python
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :quit\n")
+```
+To:
+```python
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :server_restart :agent_restart :quit\n")
+```
+
+**Change C:** In cmd_repl(), add the :server_restart handler in the elif chain. After:
+```python
+            elif line == ":tools":
+                cmd_tools()
+```
+Add:
+```python
+            elif line in (":server_restart", ":sr"):
+                cmd_server_restart()
+```
+
+## Rationale
+- Users updating Kart/server code need a way to reload without closing the REPL window
+- :restart keeps the session alive — no lost context, no re-typing :status
+- /api/admin/restart uses os._exit(0) after Popen — clean process replacement on Windows
+- The poll loop gives 20 seconds for uvicorn to boot; prints dots so user sees progress
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — remove endpoint + 3 REPL lines
+- **Dependencies:** None (stdlib only: urllib.request, threading, subprocess, os)
+- **Testing:** Type :server_restart in Kart REPL — server restarts, REPL stays open, dots print until server is back
+
+## ΔE Impact
+Expected ΔE: +0.008 (reduces friction for code-change iteration cycles)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

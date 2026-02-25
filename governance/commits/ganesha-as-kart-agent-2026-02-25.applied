@@ -1,0 +1,118 @@
+# Governance Proposal: Register Ganesha as a Kart subagent
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:14:11Z
+**Type:** Architecture Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Ganesha currently checks in to Willow as a peer agent (POST /api/agents/checkin) and receives governance notifications via context_store. This wires Ganesha into Kart's infrastructure as a subagent: (B) session-sync.py registers each Claude Code session as a kart_task so Kart has visibility into Ganesha's active sessions, and (A) when Kart delegates to Ganesha via delegate_to_agent, it writes to context_store (not HTTP — Ganesha is a CLI agent) and session-sync surfaces the pending tasks alongside governance notifications. The governance notification loop already proves this pattern works.
+
+## Architecture
+
+```
+session-sync.py (each session start/turn):
+  → POST /api/agents/checkin (Willow — unchanged)
+  → kart_tasks.create_task() or update if exists (NEW — registers Ganesha as active kart task)
+  → read context_store for agent:ganesha:tasks:pending:* (NEW — surface delegated tasks)
+
+Kart delegate_to_agent → ganesha:
+  → cs.put("agent:ganesha:tasks:pending:{id}", task_description) instead of HTTP call
+  → Ganesha sees it at next session-sync turn
+```
+
+## Proposed Changes
+
+### File 1: ~/.claude/hooks/session-sync.py
+
+The session-sync.py hook currently has 3 steps: verify, update sessions, read sessions, plus the Ganesha checkin block. Add two new sub-steps within the checkin block:
+
+After the existing checkin block that surfaces governance notifications, add:
+
+```python
+    # Register this Claude Code session as a kart_task
+    try:
+        import sys as _sys
+        _sys.path.insert(0, r"C:\Users\Sean\Documents\GitHub\Willow")
+        from core import kart_tasks as _kt
+        # Create or update the session task
+        _session_key = f"ganesha-claude-session-{_session_id[:8]}" if '_session_id' in dir() else "ganesha-claude-session"
+        _existing = _kt.list_tasks("Sweet-Pea-Rudi19", "ganesha", status="in_progress")
+        if not _existing:
+            _kt.create_task(
+                "Sweet-Pea-Rudi19",
+                subject=f"Ganesha CLI session",
+                description=f"Active Claude Code CLI session. Turn {_total_turns}.",
+                agent="ganesha"
+            )
+    except Exception:
+        pass  # kart_tasks unavailable — silent
+
+    # Check for delegated tasks from Kart
+    try:
+        import importlib.util as _ilu2
+        _cs_path2 = Path.home() / ".claude" / "context_store.py"
+        _cs_spec2 = _ilu2.spec_from_file_location("context_store2", str(_cs_path2))
+        _cs2 = _ilu2.module_from_spec(_cs_spec2)
+        _cs_spec2.loader.exec_module(_cs2)
+        _delegated = [
+            v for k, v in _cs2._get_all().items()
+            if k.startswith("agent:ganesha:tasks:pending:")
+        ] if hasattr(_cs2, '_get_all') else []
+        if _delegated:
+            lines.append(f"\n[KART → GANESHA — {len(_delegated)} delegated task(s)]")
+            for _task in _delegated:
+                lines.append(f"  → {str(_task)[:120]}")
+    except Exception:
+        pass
+```
+
+### File 2: core/tool_engine.py
+
+The existing `delegate_to_agent` tool calls `POST /api/agents/chat/{agent_name}`. For CLI agents like ganesha that cannot be reached via HTTP, add a context_store fallback: if the HTTP call fails, write to context_store as a pickup item.
+
+Find the `delegate_to_agent` executor function (wherever it makes the HTTP request). After the HTTP call fails with a connection error, add:
+
+```python
+        # CLI agent fallback: write to context_store for pickup at next session
+        try:
+            import importlib.util as _ilu
+            _cs_path = Path.home() / ".claude" / "context_store.py"
+            _cs_spec = _ilu.spec_from_file_location("context_store", str(_cs_path))
+            _cs = _ilu.module_from_spec(_cs_spec)
+            _cs_spec.loader.exec_module(_cs)
+            import uuid as _uuid
+            _task_id = _uuid.uuid4().hex[:8]
+            _cs.put(
+                key=f"agent:{target_agent}:tasks:pending:{_task_id}",
+                query=f"delegated task for {target_agent}",
+                result=task_description,
+                category="governance",
+                ttl_hours=48
+            )
+            return {"success": True, "method": "context_store_pickup", "task_id": _task_id,
+                    "message": f"Task queued for {target_agent} via context_store. Will be picked up at next session."}
+        except Exception as _e:
+            return {"success": False, "error": f"Delegation failed: {str(_e)}"}
+```
+
+## Rationale
+- Governance notification loop (already live) proves context_store pickup works for CLI agents
+- kart_tasks registration gives Kart visibility into Ganesha's active sessions — Kart becomes coordinator
+- delegate_to_agent fallback handles the CLI-agent gap without requiring an HTTP server for Ganesha
+- B enables A: once Kart sees Ganesha as a task, the delegation pathway is natural
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — remove the two new blocks from session-sync.py, remove fallback from tool_engine
+- **Dependencies:** kart_tasks (direct import from core/), context_store (already imported in session-sync)
+- **Testing:** Start Claude Code session → check kart :tasks — should show "Ganesha CLI session" in_progress. Then have Kart delegate a task → check SESSION SYNC next turn for [KART → GANESHA]
+
+## ΔE Impact
+Expected ΔE: +0.030 (Ganesha moves from peer agent to Kart subagent — major coordination improvement)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

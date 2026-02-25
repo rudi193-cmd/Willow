@@ -246,7 +246,7 @@ Rules:
 4. Explain your reasoning at each step
 5. If a tool fails, try an alternative approach
 6. If stuck after 3 attempts, ask for human guidance
-7. For conversational messages or questions (greetings, explanations, status), use {"action": "complete", "response": "your answer"} without calling any tools
+7. For conversational messages or questions (greetings, explanations, status), use {{"action": "complete", "response": "your answer"}} without calling any tools
 
 Current user: {self.username}
 Your trust level: ENGINEER
@@ -310,7 +310,8 @@ ASSISTANT (respond with JSON):"""
             brace_count = 0
             start_index = json_str.find("{")
             if start_index == -1:
-                return {"type": "error", "message": f"No JSON object found in LLM response: {content[:300]}"}
+                # LLM returned prose without JSON wrapper — treat as conversational completion
+                return {"type": "complete", "response": content}
 
             last_valid = -1
             for i in range(start_index, len(json_str)):
@@ -410,7 +411,10 @@ ASSISTANT (respond with JSON):"""
         }
 
         # Save using seed_packet module
-        seed_path = save_packet(self.username, current_state)
+        seed_dir = Path(__file__).parent.parent / "artifacts" / self.username / "kart" / "sessions"
+        seed_dir.mkdir(parents=True, exist_ok=True)
+        seed_path = seed_dir / f"{self.session_id}.json"
+        save_packet(current_state, str(seed_path))
 
         # Track delta if we have previous state
         if self.previous_state:

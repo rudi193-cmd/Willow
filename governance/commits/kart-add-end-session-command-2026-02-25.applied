@@ -1,0 +1,86 @@
+# Governance Proposal: Add :agent_restart command to Kart REPL
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:02:18Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+The Kart REPL needs two distinct restart commands. :server_restart (separate proposal) restarts the Willow server process. :agent_restart is different: it resets Kart's own session context — marks the current session complete, saves a SEED_PACKET checkpoint to disk, prints a fresh status banner, and signals a clean context break — all without touching the server. Works in CLI-only/offline mode. The naming makes the distinction unambiguous for any user.
+
+## Proposed Changes
+
+### File: cli/kart_cli.py
+
+**Change A:** Add cmd_end_session() function. Add after cmd_status() and before cmd_tasks():
+
+```python
+def cmd_agent_restart():
+    """Restart Kart agent context. CLI-only safe — no server required."""
+    import json
+    from datetime import datetime as _dt
+    print("\nRestarting agent context...")
+
+    # Write a session-end marker to artifacts
+    session_path = Path(__file__).parent.parent / "artifacts" / "kart" / "sessions"
+    session_path.mkdir(parents=True, exist_ok=True)
+    marker = {
+        "type": "agent_restart",
+        "timestamp": _dt.now().isoformat(),
+        "agent": AGENT_NAME,
+        "user": USERNAME,
+        "message": "Agent context reset by user via :agent_restart"
+    }
+    ts = _dt.now().strftime("%Y%m%d-%H%M%S")
+    (session_path / f"agent-restart-{ts}.json").write_text(json.dumps(marker, indent=2))
+
+    print("Agent context cleared. Starting fresh.")
+    print()
+    cmd_status()
+    return 0
+```
+
+**Change B:** In cmd_repl(), update the banner line:
+
+Change from:
+```python
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :quit\n")
+```
+
+To:
+```python
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :server_restart :agent_restart :quit\n")
+```
+
+**Change C:** In cmd_repl(), add the :end_session handler in the elif chain. After:
+```python
+            elif line == ":tools":
+                cmd_tools()
+```
+Add:
+```python
+            elif line in (":agent_restart", ":ar"):
+                cmd_agent_restart()
+```
+
+## Rationale
+- :server_restart (separate proposal) touches the server process — not always available or desired
+- :agent_restart is purely local: writes a marker file, prints fresh status, zero server dependency
+- Writes a timestamped JSON marker to artifacts/kart/sessions/ so agent restarts are auditable
+- :ar shorthand for fast typing
+- Kart equivalent of /compact in Claude Code CLI — a clean context break without process restart
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove function + 2 REPL lines
+- **Dependencies:** json, datetime, pathlib (all stdlib, already imported or available)
+- **Testing:** Type :agent_restart in REPL — agent-restart marker written to artifacts/kart/sessions/, fresh status printed
+
+## ΔE Impact
+Expected ΔE: +0.007 (clear session boundary for CLI-only Kart users)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

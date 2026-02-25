@@ -1,0 +1,54 @@
+# Governance Proposal: Fix save_packet() call in kart_orchestrator._save_seed_packet()
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T20:03:44Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+`_save_seed_packet()` calls `save_packet(self.username, current_state)` but `seed_packet.save_packet()`
+has signature `save_packet(packet_data, path=None)`. This passes username as the data and the state
+dict as the path, causing `ERROR:seed_packet:Failed to save packet: expected str, bytes or os.PathLike
+object, not dict` on every step. Also `save_packet` returns True not a path, so `seed_path` is
+unusable. Fix: build the path explicitly and call with correct argument order.
+
+## Proposed Changes
+
+### File: core/kart_orchestrator.py
+**Location:** `_save_seed_packet()` method, after building `current_state`
+
+Change from:
+```python
+        # Save using seed_packet module
+        seed_path = save_packet(self.username, current_state)
+```
+
+To:
+```python
+        # Save using seed_packet module
+        seed_dir = Path(__file__).parent.parent / "artifacts" / self.username / "kart" / "sessions"
+        seed_dir.mkdir(parents=True, exist_ok=True)
+        seed_path = seed_dir / f"{self.session_id}.json"
+        save_packet(current_state, str(seed_path))
+```
+
+## Rationale
+- `save_packet(packet_data, path)` — data first, path second
+- Path derived from username + session_id so each session has its own file
+- `save_packet` returns True/False not a path, so path is constructed before calling
+- Eliminates the ERROR log on every tool step execution
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — revert the 3 changed lines
+- **Dependencies:** artifacts/{username}/kart/sessions/ directory (auto-created)
+- **Testing:** Run any multi-step Kart task — no ERROR:seed_packet lines in output
+
+## ΔE Impact
+Expected ΔE: +0.003 (removes persistent error noise from every Kart execution)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

@@ -711,6 +711,32 @@ def _tool_delegate_to_agent(target_agent: str, task: str, agent: str, username: 
             "success": False,
             "error": f"Delegation to {target_agent} timed out after 120 seconds"
         }
+    except requests.exceptions.ConnectionError:
+        # CLI agent fallback: HTTP unreachable — write to context_store for pickup at next session
+        try:
+            import importlib.util as _ilu
+            import uuid as _uuid
+            _cs_path = Path.home() / ".claude" / "context_store.py"
+            _cs_spec = _ilu.spec_from_file_location("context_store", str(_cs_path))
+            _cs = _ilu.module_from_spec(_cs_spec)
+            _cs_spec.loader.exec_module(_cs)
+            _task_id = _uuid.uuid4().hex[:8]
+            _cs.put(
+                key=f"agent:{target_agent}:tasks:pending:{_task_id}",
+                query=f"delegated task for {target_agent}",
+                result=task,
+                category="governance",
+                ttl_hours=48
+            )
+            return {
+                "success": True,
+                "method": "context_store_pickup",
+                "task_id": _task_id,
+                "message": f"Task queued for {target_agent} via context_store. Will surface at next session."
+            }
+        except Exception as _e2:
+            return {"success": False, "error": f"Delegation failed (HTTP + context_store): {str(_e2)}"}
+
     except Exception as e:
         return {
             "success": False,

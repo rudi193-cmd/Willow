@@ -1,0 +1,46 @@
+# Governance Proposal: Fix f-string brace escaping in kart_orchestrator._build_system_prompt()
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T19:36:32Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Rule #7 in `_build_system_prompt()` contains a JSON example `{"action": "complete", ...}` inside an
+f-string. Python treats bare `{}` as format specifiers, raising `ValueError: Invalid format specifier`
+on every invocation. The app crashes immediately after any REPL input.
+
+## Proposed Changes
+
+### File: core/kart_orchestrator.py
+**Location:** `_build_system_prompt()`, line 249
+
+Change from:
+```python
+7. For conversational messages or questions (greetings, explanations, status), use {"action": "complete", "response": "your answer"} without calling any tools
+```
+
+To:
+```python
+7. For conversational messages or questions (greetings, explanations, status), use {{"action": "complete", "response": "your answer"}} without calling any tools
+```
+
+## Rationale
+- All other JSON examples in the same f-string already use `{{}}` (lines 228-239)
+- Rule 7 was added in the previous batch and missed the escaping
+- One character class change, zero behavior change
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — revert the two extra braces
+- **Dependencies:** None
+- **Testing:** Run `kart_cli.py` and type any message — should no longer crash
+
+## ΔE Impact
+Expected ΔE: +0.001 (crash fix, restores existing functionality)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

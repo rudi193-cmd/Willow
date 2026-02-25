@@ -144,8 +144,8 @@ def cmd_status():
 
     # Server connectivity
     server_up = _server_online()
-    print(f"
-Server: {'ONLINE (port 8420)' if server_up else 'OFFLINE — local mode active'}")
+    server_label = 'ONLINE (port 8420)' if server_up else 'OFFLINE — local mode active'
+    print(f"\nServer: {server_label}")
 
     # Get tools
     tools = tool_engine.list_tools(AGENT_NAME, USERNAME)
@@ -193,16 +193,14 @@ def cmd_server_restart():
             return
         except Exception:
             pass
-    print("
-Timed out — server may still be starting.")
+    print("\nTimed out — server may still be starting.")
 
 
 def cmd_agent_restart():
     """Restart Kart agent context. CLI-only safe — no server required."""
     import json
     from datetime import datetime as _dt
-    print("
-Restarting agent context...")
+    print("\nRestarting agent context...")
 
     session_path = Path(__file__).parent.parent / "artifacts" / "kart" / "sessions"
     session_path.mkdir(parents=True, exist_ok=True)

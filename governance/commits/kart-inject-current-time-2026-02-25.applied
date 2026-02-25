@@ -1,0 +1,55 @@
+# Governance Proposal: Inject current time into Kart system prompt
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T18:56:20Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Free-tier LLMs called by kart_orchestrator._build_system_prompt() have no knowledge of the current date or time. Any timestamps they generate (governance proposals, session records, etc.) default to 00:00 or are entirely fabricated. Fix: inject datetime.now().isoformat() into the system prompt so every LLM call has accurate time context. datetime is already imported in kart_orchestrator.py.
+
+## Proposed Changes
+
+### File: core/kart_orchestrator.py
+
+**Change:** In _build_system_prompt(), add current time to the agent context block at the end of the prompt.
+
+Change from:
+```python
+Current user: {self.username}
+Your trust level: ENGINEER
+Session: {self.session_id}
+
+Be direct and practical. Focus on execution, not explanation."""
+```
+
+To:
+```python
+Current user: {self.username}
+Your trust level: ENGINEER
+Session: {self.session_id}
+Current time: {datetime.now().isoformat()}
+
+Be direct and practical. Focus on execution, not explanation."""
+```
+
+## Rationale
+- datetime is already imported at the top of kart_orchestrator.py — zero new dependencies
+- Every LLM prompt now contains the actual wall-clock time at invocation
+- Governance proposals, session logs, and any timestamps the LLM generates will be accurate
+- One line, one string interpolation
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove one line
+- **Dependencies:** datetime (already imported)
+- **Testing:** Ask Kart to write a proposal — check the timestamp matches real time
+
+## ΔE Impact
+Expected ΔE: +0.005 (eliminates timestamp fabrication from all Kart-generated content)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
