@@ -278,6 +278,12 @@
   </div>
 </div>
 
+<div id="promotionBanner" style="display:none;background:#2a1f0a;border-bottom:1px solid var(--gold);padding:0.5rem 1.5rem;font-size:0.78rem;color:var(--gold-light);display:flex;align-items:center;gap:1rem;">
+  <span id="promotionText"></span>
+  <button onclick="openPromotionModal()" style="background:var(--gold);color:#1a1510;border:none;padding:0.2rem 0.7rem;border-radius:3px;cursor:pointer;font-family:inherit;font-size:0.75rem;">File It</button>
+  <button onclick="dismissPromotion()" style="background:none;border:1px solid var(--dust);color:var(--dust);padding:0.2rem 0.7rem;border-radius:3px;cursor:pointer;font-family:inherit;font-size:0.75rem;">Not Now</button>
+</div>
+
 <div class="scope-bar">
   <span class="scope-label">Scope:</span>
   <span class="scope-pill active">Local</span>
@@ -369,6 +375,10 @@
         <div class="shimmer" style="height:14px;margin-bottom:6px;"></div>
         <div class="shimmer" style="height:14px;"></div>
       </div>
+      <div class="sidebar-section-title" style="margin-top:1rem;">The Ledger</div>
+      <div id="ledgerList" style="min-height:40px;">
+        <div style="font-size:0.72rem;color:var(--dust);font-style:italic;padding:0.25rem 0;">Loading...</div>
+      </div>
     </div>
     <div class="right-section">
       <div class="right-heading">The Taxonomy</div>
@@ -395,6 +405,7 @@
       <strong>The Binder&rsquo;s Filing Note</strong>
       <span id="modalNote">&mdash;</span>
     </div>
+    <div id="modalConnections" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--divider);"></div>
   </div>
 </div>
 
@@ -562,7 +573,7 @@ const BINDER_NOTES = [
   "The alpha-bits from this one are in seventeen other entries. You wouldn't know unless you looked.",
 ];
 
-function openModal(entry, filing) {
+async function openModal(entry, filing) {
   document.getElementById('modalTitle').textContent = entry.title || '(untitled)';
   document.getElementById('modalMeta').innerHTML =
     '<span>'+filing+'</span><span>'+(entry.category||'&mdash;')+'</span>' +
@@ -572,6 +583,30 @@ function openModal(entry, filing) {
     entry.content_snippet || entry.summary || 'The Binder has not yet fully catalogued this entry.';
   document.getElementById('modalNote').textContent =
     BINDER_NOTES[Math.floor(Math.random() * BINDER_NOTES.length)];
+
+  // Load Kart connections
+  const connEl = document.getElementById('modalConnections');
+  if (connEl) {
+    connEl.innerHTML = '<em style="color:var(--dust);font-size:0.75rem;">Checking the threads...</em>';
+    try {
+      if (entry.id) {
+        const r = await fetch(API + '/api/binder/connections/' + entry.id + '?min_weight=0.2');
+        const d = await r.json();
+        if (d.connections && d.connections.length) {
+          connEl.innerHTML = '<div style="font-size:0.72rem;color:var(--dust);margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.08em;">Connected to</div>' +
+            d.connections.map(c =>
+              '<span style="display:inline-block;background:var(--sidebar-bg);color:var(--gold-light);padding:0.15rem 0.5rem;border-radius:3px;margin:0.15rem;font-size:0.72rem;cursor:pointer;" onclick="loadCards(\''+c.name+'\')">' +
+              c.name + ' <span style="color:var(--dust);font-size:0.65rem;">' + c.connection_type + '</span></span>'
+            ).join('');
+        } else {
+          connEl.innerHTML = '<em style="color:var(--dust);font-size:0.75rem;">No threads found yet. The Binder is still filing.</em>';
+        }
+      } else {
+        connEl.innerHTML = '';
+      }
+    } catch { connEl.innerHTML = ''; }
+  }
+
   document.getElementById('modal').classList.add('open');
 }
 
@@ -821,10 +856,89 @@ async function askJeles() {
 document.getElementById('jelesSend').addEventListener('click', askJeles);
 document.getElementById('jelesInput').addEventListener('keydown', e => { if(e.key==='Enter') askJeles(); });
 
+// --- The Ledger: entity tracking ---
+let eligibleEntity = null;
+
+async function loadLedger() {
+  const list = document.getElementById('ledgerList');
+  try {
+    const [entR, eligR] = await Promise.all([
+      fetch(API + '/api/binder/entities?layer=3').then(r => r.json()),
+      fetch(API + '/api/binder/eligible').then(r => r.json()),
+    ]);
+    const named = entR.entities || [];
+    const eligible = eligR.eligible || [];
+
+    // Promotion banner
+    if (eligible.length > 0) {
+      eligibleEntity = eligible[0];
+      document.getElementById('promotionText').textContent =
+        '"' + eligibleEntity.reference_string + '" has appeared ' + eligibleEntity.mention_count + ' times. Ready to file?';
+      document.getElementById('promotionBanner').style.display = 'flex';
+    } else {
+      document.getElementById('promotionBanner').style.display = 'none';
+    }
+
+    // Ledger list
+    list.innerHTML = '';
+    if (!named.length) {
+      list.innerHTML = '<div style="font-size:0.72rem;color:var(--dust);font-style:italic;">No named entries yet. The Ledger is learning.</div>';
+      return;
+    }
+    named.slice(0, 8).forEach(e => {
+      const el = document.createElement('div');
+      el.className = 'filing-entry';
+      el.style.cssText = 'cursor:pointer;';
+      el.innerHTML =
+        '<span class="filing-type" style="background:var(--gold);color:#1a1510;">' + (e.entity_type || 'entity').slice(0,3).toUpperCase() + '</span>' +
+        '<span class="filing-title">' + (e.name || e.reference_string) + '</span>' +
+        '<span style="margin-left:auto;font-size:0.65rem;color:var(--dust);">' + (e.mention_count || 0) + '×</span>';
+      el.addEventListener('click', () => loadCards(e.name || e.reference_string));
+      list.appendChild(el);
+    });
+  } catch {
+    list.innerHTML = '<div style="font-size:0.72rem;color:var(--dust);font-style:italic;">Ledger unavailable.</div>';
+  }
+}
+
+function openPromotionModal() {
+  if (!eligibleEntity) return;
+  const name = prompt('File "' + eligibleEntity.reference_string + '" as:', eligibleEntity.reference_string);
+  if (!name) return;
+  fetch(API + '/api/binder/promote', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      reference_id: eligibleEntity.id,
+      confirmed_name: name,
+      entity_type: 'person'
+    })
+  }).then(() => {
+    document.getElementById('promotionBanner').style.display = 'none';
+    loadLedger();
+    const msgs = document.getElementById('jelesMessages');
+    const reply = document.createElement('div');
+    reply.className = 'msg jeles';
+    reply.textContent = '"' + name + '" is now in the Ledger. Filed properly. The cross-references will follow.';
+    msgs.appendChild(reply);
+    msgs.scrollTop = msgs.scrollHeight;
+  });
+}
+
+function dismissPromotion() {
+  if (!eligibleEntity) return;
+  fetch(API + '/api/binder/dismiss', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reference_id: eligibleEntity.id, never: false})
+  });
+  document.getElementById('promotionBanner').style.display = 'none';
+}
+
 (async () => {
   await loadHealth();
-  await loadCards();
-  await loadRecent();
+  await Promise.all([loadCards(), loadRecent(), loadLedger()]);
+  setInterval(loadLedger, 60000);
 })();
 </script>
 </body>

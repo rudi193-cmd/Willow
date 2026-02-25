@@ -2267,6 +2267,79 @@ def serve_pocket():
 
 # --- The Binder ---
 
+# --- Binder / Relationship Tracker API ---
+
+@app.get("/api/binder/entities")
+def binder_entities(username: str = "Sweet-Pea-Rudi19", layer: int = None, entity_type: str = None):
+    """List tracked entities (L1=anonymous, L2=recognized, L3=named)."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        return {"entities": rt.list_entities(username=username, layer=layer, entity_type=entity_type)}
+    except Exception as e:
+        return {"entities": [], "error": str(e)}
+
+@app.get("/api/binder/connections/{entity_id}")
+def binder_connections(entity_id: int, username: str = "Sweet-Pea-Rudi19", min_weight: float = 0.3):
+    """Get connections for an entity."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        return {"connections": rt.get_connections(entity_id, min_weight=min_weight)}
+    except Exception as e:
+        return {"connections": [], "error": str(e)}
+
+@app.post("/api/binder/connections/suggest")
+def binder_suggest_connections(body: dict):
+    """Suggest connections from knowledge atom IDs."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        username = body.get("username", "Sweet-Pea-Rudi19")
+        knowledge_ids = body.get("knowledge_ids", [])
+        rt = RelationshipTracker(username)
+        return {"suggestions": rt.suggest_connections(knowledge_ids)}
+    except Exception as e:
+        return {"suggestions": [], "error": str(e)}
+
+@app.get("/api/binder/eligible")
+def binder_eligible(username: str = "Sweet-Pea-Rudi19", min_mentions: int = 5):
+    """Get L2 entities eligible for promotion to L3."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        return {"eligible": rt.get_eligible_for_promotion(username=username, min_mentions=min_mentions)}
+    except Exception as e:
+        return {"eligible": [], "error": str(e)}
+
+@app.post("/api/binder/promote")
+def binder_promote(body: dict):
+    """Promote an L2 entity to L3 (named/confirmed)."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        username = body.get("username", "Sweet-Pea-Rudi19")
+        rt = RelationshipTracker(username)
+        result = rt.promote_to_named(
+            reference_id=body["reference_id"],
+            confirmed_name=body["confirmed_name"],
+            entity_type=body.get("entity_type", "person"),
+            relationship_type=body.get("relationship_type")
+        )
+        return {"entity": result, "success": bool(result)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/binder/dismiss")
+def binder_dismiss(body: dict):
+    """Dismiss a promotion prompt (optionally permanently)."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        username = body.get("username", "Sweet-Pea-Rudi19")
+        rt = RelationshipTracker(username)
+        ok = rt.dismiss_promotion(body["reference_id"], never=body.get("never", False))
+        return {"success": ok}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 BINDER_HTML = Path(__file__).parent / "binder.html"
 
 @app.get("/binder")
