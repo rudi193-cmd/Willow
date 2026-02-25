@@ -29,6 +29,35 @@ from typing import Optional
 DB_PATH = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "willow_knowledge.db"
 TOKEN_FILE = Path.home() / ".willow" / "agent_tokens.json"
 TOKEN_TTL_HOURS = 24
+CONTEXT_STORE_DB = Path.home() / ".claude" / "context_store.db"
+
+
+def _fetch_pending() -> list:
+    """Fetch unexpired governance items from context_store for this agent."""
+    if not CONTEXT_STORE_DB.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(CONTEXT_STORE_DB))
+        rows = conn.execute(
+            """
+            SELECT key, result FROM context_items
+            WHERE key LIKE 'governance:pending_apply:%'
+              AND datetime(created_at, '+' || CAST(ttl_hours AS TEXT) || ' hours') > datetime('now')
+            ORDER BY created_at DESC LIMIT 10
+            """
+        ).fetchall()
+        conn.close()
+        return [
+            {
+                "type": "governance_approval",
+                "key": r[0],
+                "commit_id": r[0].split(":")[-1],
+                "result": r[1],
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
 
 
 def _now() -> str:
@@ -73,7 +102,8 @@ def checkin(agent_name: str) -> dict:
     existing[agent_name] = {"token": token, "expires_at": expires_at}
     TOKEN_FILE.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
-    return {"token": token, "trust_level": trust_level, "expires_at": expires_at, "agent_name": name}
+    pending = _fetch_pending()
+    return {"token": token, "trust_level": trust_level, "expires_at": expires_at, "agent_name": name, "pending": pending}
 
 
 def validate_token(token: str) -> Optional[dict]:

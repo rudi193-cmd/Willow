@@ -320,6 +320,7 @@ class CheckinResponse(BaseModel):
     trust_level: str
     expires_at: str
     agent_name: str
+    pending: list = []
 
 
 @router.post("/checkin", response_model=CheckinResponse)

@@ -1,0 +1,99 @@
+# Governance Proposal: Extend agent check-in to return pending notifications
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T18:15:00Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+POST /api/agents/checkin currently returns only {token, trust_level, expires_at, agent_name}.
+Extend it to also return pending[] — governance approvals and other queued notifications
+from context_store. Wired into session-sync hook for visible session-start surfacing.
+
+## Proposed Changes
+
+### File 1: core/agent_auth.py
+Add _fetch_pending() and extend checkin() return dict.
+
+### File 2: api/agent_routes.py
+Add pending field to CheckinResponse model.
+
+## Implementation
+
+### core/agent_auth.py — add after TOKEN_TTL_HOURS line:
+```python
+CONTEXT_STORE_DB = Path.home() / ".claude" / "context_store.db"
+
+
+def _fetch_pending() -> list:
+    """Fetch unexpired governance items from context_store for this agent."""
+    if not CONTEXT_STORE_DB.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(CONTEXT_STORE_DB))
+        rows = conn.execute(
+            """
+            SELECT key, result, category FROM context_items
+            WHERE key LIKE 'governance:pending_apply:%'
+              AND datetime(created_at, '+' || CAST(ttl_hours AS TEXT) || ' hours') > datetime('now')
+            ORDER BY created_at DESC LIMIT 10
+            """
+        ).fetchall()
+        conn.close()
+        return [
+            {
+                "type": "governance_approval",
+                "key": r[0],
+                "commit_id": r[0].split(":")[-1],
+                "result": r[1],
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
+```
+
+### core/agent_auth.py — change checkin() return line from:
+```python
+    return {"token": token, "trust_level": trust_level, "expires_at": expires_at, "agent_name": name}
+```
+To:
+```python
+    pending = _fetch_pending()
+    return {"token": token, "trust_level": trust_level, "expires_at": expires_at, "agent_name": name, "pending": pending}
+```
+
+### api/agent_routes.py — change CheckinResponse from:
+```python
+class CheckinResponse(BaseModel):
+    """Agent check-in response."""
+    token: str
+    trust_level: str
+    expires_at: str
+    agent_name: str
+```
+To:
+```python
+class CheckinResponse(BaseModel):
+    """Agent check-in response."""
+    token: str
+    trust_level: str
+    expires_at: str
+    agent_name: str
+    pending: list = []
+```
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES
+- **Dependencies:** context_store.db at ~/.claude/ (already exists)
+- **Testing:** POST /api/agents/checkin {"agent_name": "ganesha"} — pending[] appears if governance items exist
+
+## ΔE Impact
+Expected ΔE: +0.012 (closes agent notification loop)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
