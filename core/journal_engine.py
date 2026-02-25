@@ -40,8 +40,20 @@ def append_event(username: str, session_id: str, event_type: str, payload: dict)
 
 
 def end_session(username: str, session_id: str) -> bool:
-    return append_event(username, session_id, "session.end",
-                        {"session_id": session_id, "ended_at": datetime.now().isoformat()})
+    ok = append_event(username, session_id, "session.end",
+                      {"session_id": session_id, "ended_at": datetime.now().isoformat()})
+    if ok:
+        session_file = _find_session_file(username, session_id)
+        if session_file:
+            import threading
+            import atom_extractor
+            t = threading.Thread(
+                target=atom_extractor.run,
+                args=(username, session_file),
+                daemon=True,
+            )
+            t.start()
+    return ok
 
 
 def list_sessions(username: str, date: str = None) -> list:

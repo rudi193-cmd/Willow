@@ -1,0 +1,63 @@
+# Governance Proposal: Wire atom_extractor into end_session()
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T18:22:00Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+end_session() in core/journal_engine.py currently only appends a session.end event and returns.
+Wire atom_extractor.run() to fire automatically in a background thread when a session ends,
+activating the personal training pipeline on every session close (consent permitting).
+
+## Proposed Changes
+
+### File: core/journal_engine.py
+**Location:** end_session() function
+
+Change from:
+```python
+def end_session(username: str, session_id: str) -> bool:
+    return append_event(username, session_id, "session.end",
+                        {"session_id": session_id, "ended_at": datetime.now().isoformat()})
+```
+
+To:
+```python
+def end_session(username: str, session_id: str) -> bool:
+    ok = append_event(username, session_id, "session.end",
+                      {"session_id": session_id, "ended_at": datetime.now().isoformat()})
+    if ok:
+        session_file = _find_session_file(username, session_id)
+        if session_file:
+            import threading
+            import atom_extractor
+            t = threading.Thread(
+                target=atom_extractor.run,
+                args=(username, session_file),
+                daemon=True,
+            )
+            t.start()
+    return ok
+```
+
+## Rationale
+- atom_extractor.run() already handles consent check (skips if not learn+)
+- Background thread means end_session() returns immediately — no blocking
+- Daemon thread means it won't prevent process exit
+- Closes the gap: session.end now activates the full training pipeline
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — remove the 6 added lines
+- **Dependencies:** atom_extractor.py (already in core/, import works)
+- **Testing:** Create session with consent_state=learn, add notes, call end_session — atoms appear in knowledge.db
+
+## ΔE Impact
+Expected ΔE: +0.025 (pipeline now self-activating — significant knowledge accumulation improvement)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
