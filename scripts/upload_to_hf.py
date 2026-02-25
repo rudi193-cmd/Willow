@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 upload_to_hf.py - Upload Sean model to HuggingFace Hub.
 
 Usage:
@@ -29,10 +29,10 @@ language:
 library_name: gguf
 ---
 
-# Sean Campbell — Personal Voice Model
+# Sean Campbell - Personal Voice Model
 
 A fine-tuned voice model trained on Sean Campbell's authentic words,
-conversations, and way of thinking. Speaks as Sean — not about him.
+conversations, and way of thinking. Speaks as Sean - not about him.
 
 ## Model Details
 
@@ -95,16 +95,16 @@ PARAMETER stop "<|im_end|>"
 ## Training Details
 
 - **Dataset**: Personal conversation exports (ChatGPT + Claude logs)
-- **Domains**: 23 domains — identity, trials, beliefs, love, vision, people, grief, projects, decisions, origin, philosophy, continuity, fears, privacy, lessons, community, technology, creative, failures, voice, humor, time, future
+- **Domains**: 23 domains - identity, trials, beliefs, love, vision, people, grief, projects, decisions, origin, philosophy, continuity, fears, privacy, lessons, community, technology, creative, failures, voice, humor, time, future
 - **Memory injection**: 30% of examples include domain memory tags
 - **Notebook**: [Kaggle Training Notebook](https://www.kaggle.com/code/rudi193/notebook69413c5587)
 
 ## License
 
-**CC BY-NC 4.0** — Sean Campbell (2026)
+**CC BY-NC 4.0** - Sean Campbell (2026)
 
 Free to use and share with attribution. No commercial use.
-Part of the [Die-Namic System](https://github.com/grokphilium-stack/die-namic-system) — dual-licensed MIT (code) + CC BY-NC (content).
+Part of the [Die-Namic System](https://github.com/grokphilium-stack/die-namic-system) - dual-licensed MIT (code) + CC BY-NC (content).
 
 > "Keep the Architect's name on the blueprint."
 

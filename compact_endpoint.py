@@ -1,4 +1,3 @@
-```python
 from flask import Flask, request, jsonify
 from marshmallow import Schema, fields
 
@@ -68,23 +67,3 @@ def compact_request():
 
 if __name__ == "__main__":
     app.run(debug=True)
-```
-
-This code will create a Flask application that listens for POST requests at `/api/agents/compact`. It will parse the request body and attempt to match the action with the corresponding agent. If the agent is found and the parameters are valid, it will return a response message with the agent name and a success message. If the agent or parameters are invalid, it will return a response message with an error message.
-
-**Note:** The agents and actions are hardcoded for simplicity, in a real-world application you would want to store these in a database to allow for easy configuration and updates.
-
-To test this endpoint you can use a tool like Postman or the curl command from the terminal.
-
-```bash
-curl -X POST -H "Content-Type: application/json" -d '{"task_id": "1", "action": "action1", "params": ["param1", "param2"]}' http://localhost:5000/api/agents/compact
-```
-
-This will return a response like this:
-
-```json
-{
-  "agent": "agent1",
-  "result": "Success"
-}
-```

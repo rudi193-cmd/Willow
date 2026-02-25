@@ -2555,3 +2555,66 @@ def agent_deliver():
     except Exception as e:
         logging.error(f"WILLOW_ROUTING_ERROR | {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# FLEET API — External repo integration endpoint
+# Other repos (nasa-archive, safe-app-utety-chat, aios-minimal) call this
+# instead of sys.path-hacking into core/llm_router.py directly.
+# ---------------------------------------------------------------------------
+
+@app.post("/api/fleet/ask")
+async def fleet_ask(request: Request):
+    """
+    External fleet passthrough. Accepts prompt, returns LLM response.
+    Replaces sys.path hacking in nasa-archive, safe-app-utety-chat, etc.
+
+    Request body:
+        prompt      (str, required)  — the prompt text
+        tier        (str, optional)  — "free" (default), "cheap", "paid"
+        source      (str, optional)  — caller identifier for logging
+        username    (str, optional)  — user context (default: Sweet-Pea-Rudi19)
+
+    Response:
+        {"response": str, "provider": str, "tier": str, "source": str}
+    """
+    body = await request.json()
+    prompt = body.get("prompt", "").strip()
+    tier = body.get("tier", "free")
+    source = body.get("source", "external")
+
+    if not prompt:
+        return {"error": "No prompt provided"}, 400
+
+    try:
+        from core import llm_router
+        result = llm_router.ask(prompt, preferred_tier=tier)
+        if not result:
+            return {"error": "All providers failed", "source": source}
+        return {
+            "response": result.content,
+            "provider": result.provider,
+            "tier": result.tier,
+            "source": source,
+        }
+    except Exception as e:
+        return {"error": str(e), "source": source}
+
+
+@app.get("/api/fleet/providers")
+async def fleet_providers():
+    """List all active fleet providers and their key status."""
+    import os
+    from core import llm_router
+    providers = []
+    for p in llm_router.PROVIDERS:
+        has_key = (p.env_key == "PATH") or bool(os.environ.get(p.env_key))
+        providers.append({
+            "name": p.name,
+            "model": p.model,
+            "tier": p.tier,
+            "active": has_key,
+        })
+    active = sum(1 for p in providers if p["active"])
+    return {"providers": providers, "active": active, "total": len(providers)}
+

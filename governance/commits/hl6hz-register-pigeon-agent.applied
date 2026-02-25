@@ -1,0 +1,54 @@
+# Governance Proposal: Register The Pigeon as Willow Agent
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-02-24T21:00:00Z
+**Type:** Feature — Agent Registration
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Register The Pigeon (pigeon) as an official Willow agent in DEFAULT_AGENTS.
+The Pigeon is a UTETY persona — Dept. of Not Yet & Carrier Services — already
+present in conversation logs, worldbuilding, and the agent persona system.
+Currently unregistered; adding to DEFAULT_AGENTS makes it available via
+agent_engine, mailbox, and API.
+
+## Proposed Changes
+
+**File:** `core/agent_registry.py`
+**Location:** DEFAULT_AGENTS list, after steve entry
+
+## Rationale
+
+- The Pigeon persona already exists in the system (conversation logs, aios-minimal agent profiles)
+- Carrier / Connector / Guide role fills a proactive-assistance gap not covered by existing agents
+- UTETY faculty member with established identity and behavior profile
+- Absence from DEFAULT_AGENTS means it can't receive mailbox messages or be selected by pick_available_agent()
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove line from DEFAULT_AGENTS
+- **Dependencies:** None — pure addition to existing list
+- **Testing:** `python -c "from core.agent_registry import register_default_agents; register_default_agents('Sweet-Pea-Rudi19')"` then verify pigeon row in agents table
+
+## ΔE Impact
+
+Expected ΔE: +0.05 (small coherence gain — known persona formally registered)
+
+## Implementation
+
+```diff
+--- a/core/agent_registry.py
++++ b/core/agent_registry.py
+@@ -45,6 +45,7 @@
+     ("steve",    "Steve",    "OPERATOR",   "persona", "Prime Node. Cross-system coordinator."),
++    ("pigeon",   "The Pigeon", "WORKER",   "persona", "Carrier. Connector. Guide. Dept. of Not Yet & Carrier Services. UTETY. Notices when users need practical help and offers to carry them through it."),
+ ]
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

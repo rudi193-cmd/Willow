@@ -30,6 +30,19 @@ from core import composio_provider
 # Trust hierarchy
 TRUST_HIERARCHY = ["WORKER", "OPERATOR", "ENGINEER"]
 
+@dataclass
+class DelegationToken:
+    """Scoped permission token for subagent spawning.
+    pi-Cascade rule: effective_ceiling = min(parent_ceiling, child_registered_trust)
+    Governance: PROP-2026-02-24-delegated-agent-permissions
+    """
+    delegating_agent: str
+    ceiling_trust: str
+    task_scope: str
+    parent_session_id: str
+    expires_at: str
+    granted_tools: list
+
 # Agent file path resolution
 USER_PROFILE_BASE = Path(r"C:\Users\Sean\My Drive\Willow\Auth Users")
 
@@ -96,7 +109,8 @@ def list_tools(agent: str, username: str) -> List[Dict[str, Any]]:
     return available
 
 
-def execute(tool_name: str, params: Dict[str, Any], agent: str, username: str) -> Dict[str, Any]:
+def execute(tool_name: str, params: Dict[str, Any], agent: str, username: str,
+             delegation_token: Optional["DelegationToken"] = None) -> Dict[str, Any]:
     """
     Execute a tool with governance checks.
 
@@ -124,15 +138,20 @@ def execute(tool_name: str, params: Dict[str, Any], agent: str, username: str) -
 
     tool_def = TOOL_REGISTRY[tool_name]
 
-    # 2. Validate agent trust level
+    # 2. Validate agent trust level (delegation_token provides fallback for subagents)
     agent_info = agent_registry.get_agent(username, agent)
-    if not agent_info:
-        return {
-            "success": False,
-            "error": f"Unknown agent: {agent}"
-        }
-
-    agent_trust = agent_info.get("trust_level", "WORKER")
+    if not agent_info and delegation_token:
+        agent_trust = delegation_token.ceiling_trust
+    elif not agent_info:
+        return {"success": False, "error": f"Unknown agent: {agent}"}
+    else:
+        registered_trust = agent_info.get("trust_level", "WORKER")
+        if delegation_token:
+            reg_level = TRUST_HIERARCHY.index(registered_trust)
+            del_level = TRUST_HIERARCHY.index(delegation_token.ceiling_trust)
+            agent_trust = TRUST_HIERARCHY[min(reg_level, del_level)]
+        else:
+            agent_trust = registered_trust
 
     if not _check_permission(agent_trust, tool_def.required_trust):
         return {

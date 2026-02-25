@@ -43,6 +43,7 @@ DEFAULT_AGENTS = [
     ("jane",     "Jane",     "WORKER",     "persona", "SAFE consumer-facing interface. Public-safe responses."),
     ("gerald",   "Gerald",   "WORKER",     "persona", "Acting Dean. Philosophical and governance advisor."),
     ("steve",    "Steve",    "OPERATOR",   "persona", "Prime Node. Cross-system coordinator."),
+    ("pigeon",   "The Pigeon", "WORKER",   "persona", "Carrier. Connector. Guide. Dept. of Not Yet & Carrier Services. UTETY. Notices when users need practical help and offers to carry them through it."),
 ]
 
 

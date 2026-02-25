@@ -104,12 +104,13 @@ def load_keys_from_json():
         # Flatten simple JSON structure
         # We look for specific keys expected by the router
         target_keys = [
-            "GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GROQ_API_KEY", "GROQ_API_KEY_2", "CEREBRAS_API_KEY",
-            "SAMBANOVA_API_KEY", "HUGGINGFACE_API_KEY", "DEEPSEEK_API_KEY",
-            "MISTRAL_API_KEY", "TOGETHER_API_KEY", "OPENROUTER_API_KEY",
-            "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "FIREWORKS_API_KEY",
-            "COHERE_API_KEY", "BASETEN_API_KEY", "BASETEN_API_KEY_2",
+            "GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4",
+            "GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3",
+            "CEREBRAS_API_KEY", "CEREBRAS_API_KEY_2", "CEREBRAS_API_KEY_3",
+            "SAMBANOVA_API_KEY", "SAMBANOVA_API_KEY_2", "SAMBANOVA_API_KEY_3",
             "NOVITA_API_KEY", "NOVITA_API_KEY_2", "NOVITA_API_KEY_3",
+            "TOGETHER_API_KEY", "OPENROUTER_API_KEY",
+            "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
         ]
         
         loaded_count = 0
@@ -157,26 +158,30 @@ PROVIDERS = [
     ProviderConfig("OCI Gemini Flash Lite", "ORACLE_OCI", "https://inference.generativeai.us-phoenix-1.oci.oraclecloud.com", "ocid1.generativeaimodel.oc1.phx.amaaaaaask7dceyaou4wnsto3famucn5b4eq7qxowzsbtco5mv5uzf3j37za", "free"),
     ProviderConfig("Groq", "GROQ_API_KEY", "https://api.groq.com/openai/v1/chat/completions", "llama-3.1-8b-instant", "free"),
     ProviderConfig("Groq2", "GROQ_API_KEY_2", "https://api.groq.com/openai/v1/chat/completions", "llama-3.1-8b-instant", "free"),
+    ProviderConfig("Groq3", "GROQ_API_KEY_3", "https://api.groq.com/openai/v1/chat/completions", "llama-3.1-8b-instant", "free"),
     ProviderConfig("Cerebras", "CEREBRAS_API_KEY", "https://api.cerebras.ai/v1/chat/completions", "llama3.1-8b", "free"),
+    ProviderConfig("Cerebras2", "CEREBRAS_API_KEY_2", "https://api.cerebras.ai/v1/chat/completions", "llama3.1-8b", "free"),
+    ProviderConfig("Cerebras3", "CEREBRAS_API_KEY_3", "https://api.cerebras.ai/v1/chat/completions", "llama3.1-8b", "free"),
     ProviderConfig("Google Gemini", "GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/models/", "gemini-2.5-flash", "free"),
     ProviderConfig("Google Gemini 2", "GEMINI_API_KEY_2", "https://generativelanguage.googleapis.com/v1beta/models/", "gemini-2.5-flash", "free"),
     ProviderConfig("Google Gemini 3", "GEMINI_API_KEY_3", "https://generativelanguage.googleapis.com/v1beta/models/", "gemini-2.5-flash", "free"),
     ProviderConfig("Google Gemini 4", "GEMINI_API_KEY_4", "https://generativelanguage.googleapis.com/v1beta/models/", "gemini-2.5-flash", "free"),
     ProviderConfig("SambaNova", "SAMBANOVA_API_KEY", "https://api.sambanova.ai/v1/chat/completions", "Meta-Llama-3.1-8B-Instruct", "free"),
+    ProviderConfig("SambaNova2", "SAMBANOVA_API_KEY_2", "https://api.sambanova.ai/v1/chat/completions", "Meta-Llama-3.1-8B-Instruct", "free"),
+    ProviderConfig("SambaNova3", "SAMBANOVA_API_KEY_3", "https://api.sambanova.ai/v1/chat/completions", "Meta-Llama-3.1-8B-Instruct", "free"),
     # ProviderConfig("Fireworks", "FIREWORKS_API_KEY", "https://api.fireworks.ai/inference/v1/chat/completions", "accounts/fireworks/models/llama-v3p1-8b-instruct", "free"),  # Disabled - 404 model not found
     # ProviderConfig("Cohere", "COHERE_API_KEY", "https://api.cohere.ai/v1/chat", "command-r", "free"),  # Disabled - 401 auth error
-    ProviderConfig("HuggingFace Inference", "HUGGINGFACE_API_KEY", "https://api-inference.huggingface.co/models/", "meta-llama/Meta-Llama-3-8B-Instruct", "free"),
-    ProviderConfig("Sean Campbell Voice", "HUGGINGFACE_API_KEY", "https://api-inference.huggingface.co/models/", "Rudi193/sean-campbell", "free"),  # Fine-tuned Sean voice model
+    # ProviderConfig("HuggingFace Inference", "HUGGINGFACE_API_KEY", "https://api-inference.huggingface.co/models/", "meta-llama/Meta-Llama-3-8B-Instruct", "free"),
+    # ProviderConfig("Sean Campbell Voice", "HUGGINGFACE_API_KEY", "https://api-inference.huggingface.co/models/", "Rudi193/sean-campbell", "free"),  # Fine-tuned Sean voice model
 
-    ProviderConfig("Baseten", "BASETEN_API_KEY", "https://inference.baseten.co/v1/chat/completions", "moonshotai/Kimi-K2.5", "free"),
-    ProviderConfig("Baseten2", "BASETEN_API_KEY_2", "https://inference.baseten.co/v1/chat/completions", "moonshotai/Kimi-K2.5", "free"),
+    # ProviderConfig("Baseten", "BASETEN_API_KEY", "https://inference.baseten.co/v1/chat/completions", "moonshotai/Kimi-K2.5", "free"),
+    # ProviderConfig("Baseten2", "BASETEN_API_KEY_2", "https://inference.baseten.co/v1/chat/completions", "moonshotai/Kimi-K2.5", "free"),
     ProviderConfig("Novita", "NOVITA_API_KEY", "https://api.novita.ai/v3/openai/chat/completions", "meta-llama/llama-3.1-8b-instruct", "free"),
     ProviderConfig("Novita2", "NOVITA_API_KEY_2", "https://api.novita.ai/v3/openai/chat/completions", "meta-llama/llama-3.1-8b-instruct", "free"),
-    ProviderConfig("Novita3", "NOVITA_API_KEY_3", "https://api.novita.ai/v3/openai/chat/completions", "meta-llama/llama-3.1-8b-instruct", "free"),
 
     # --- TIER 2: CHEAP (High Performance / Low Cost) ---
     # ProviderConfig("DeepSeek", "DEEPSEEK_API_KEY", "https://api.deepseek.com/chat/completions", "deepseek-chat", "cheap"),  # Disabled - requires deposit
-    ProviderConfig("Mistral", "MISTRAL_API_KEY", "https://api.mistral.ai/v1/chat/completions", "mistral-small", "cheap"),
+    # ProviderConfig("Mistral", "MISTRAL_API_KEY", "https://api.mistral.ai/v1/chat/completions", "mistral-small", "cheap"),
     ProviderConfig("Together.ai", "TOGETHER_API_KEY", "https://api.together.xyz/v1/chat/completions", "meta-llama/Llama-3-8b-chat-hf", "cheap"),
     ProviderConfig("OpenRouter", "OPENROUTER_API_KEY", "https://openrouter.ai/api/v1/chat/completions", "microsoft/wizardlm-2-8x22b", "cheap"),
 

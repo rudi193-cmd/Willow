@@ -108,5 +108,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-This module provides an `AionicLedger` class that manages events in the form of an event stream. It includes methods to log events, retrieve events based on filters, and validate the event chain. The example usage in the `main` function demonstrates how to log an event, retrieve events, and validate the chain.

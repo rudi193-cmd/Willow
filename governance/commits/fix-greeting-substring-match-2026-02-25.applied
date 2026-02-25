@@ -1,0 +1,57 @@
+# Governance Proposal: Fix Greeting Substring False Match
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T02:30:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+**Commit ID:** fix-greeting-substring-match-2026-02-25
+
+---
+
+## Summary
+
+`agent_engine.py` uses `if greeting in text_lower` to detect greetings before routing to the LLM. This is a substring match, so "hi" matches any message containing "high", "this", "which", etc. The spy.py→Willow pipe sends findings containing "HIGH" severity labels and Willow responds "Hey." instead of analyzing the content.
+
+## Proposed Changes
+
+**File:** `core/agent_engine.py`
+**Location:** chat() method, greeting check block
+
+```diff
+--- a/core/agent_engine.py
++++ b/core/agent_engine.py
+@@ -227,7 +227,8 @@ class AgentEngine:
+-            # Check for known greetings
+-            text_lower = user_message.lower().strip()
+-            for greeting, response in canned_responses.items():
+-                if greeting in text_lower:
++            # Check for known greetings (word-boundary match, not substring)
++            import re as _re
++            text_lower = user_message.lower().strip()
++            for greeting, response in canned_responses.items():
++                if _re.search(r'\b' + _re.escape(greeting) + r'\b', text_lower):
+```
+
+## Rationale
+
+- Substring match causes false positives on any message containing "hi", "hey", "thanks" as substrings
+- Word-boundary regex (`\b`) ensures only standalone greeting words trigger the canned response
+- Unblocks spy.py→Willow analysis pipe
+- One-line logic change, no API surface change
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — single line change, trivially reverted
+- **Dependencies:** core/agent_engine.py only
+- **Testing:** Send "HIGH severity findings" to Willow — should route to LLM, not return "Hey."
+
+## ΔE Impact
+
+Expected ΔE: +0.012 (eliminates routing failure for analytical messages)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

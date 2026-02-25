@@ -178,8 +178,8 @@ def extract_chunks(repo_path):
                 continue
 
             try:
-            rel_path = os.path.relpath(file_path, repo_dir)
-                except (ValueError, OSError):
+                rel_path = os.path.relpath(file_path, repo_dir)
+            except (ValueError, OSError):
                     continue
 
             if file.endswith('.py'):

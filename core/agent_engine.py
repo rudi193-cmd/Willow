@@ -85,6 +85,27 @@ class AgentEngine:
                 pass  # Never crash on startup
 
 
+
+    def issue_delegation_token(self, task_scope: str, ceiling: str = None, granted_tools: list = None):
+        """Issue a scoped token for a subagent. Cannot exceed own trust. pi-Cascade rule.
+        Governance: PROP-2026-02-24-delegated-agent-permissions"""
+        from datetime import datetime, timezone, timedelta
+        import uuid
+        hier = tool_engine.TRUST_HIERARCHY
+        own_level = hier.index(self.trust_level)
+        if ceiling and ceiling in hier:
+            effective = hier[min(own_level, hier.index(ceiling))]
+        else:
+            effective = self.trust_level
+        return tool_engine.DelegationToken(
+            delegating_agent=self.agent_name,
+            ceiling_trust=effective,
+            task_scope=task_scope,
+            parent_session_id=str(uuid.uuid4()),
+            expires_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+            granted_tools=granted_tools or [],
+        )
+
     def send_n2n_packet(self, target_agent: str, packet_type: PacketType, payload: dict) -> str:
         """
         Send N2N packet to another agent.
@@ -203,10 +224,11 @@ class AgentEngine:
                 "thank you": "You're welcome.",
             }
             
-            # Check for known greetings
+            # Check for known greetings (word-boundary match, not substring)
+            import re as _re
             text_lower = user_message.lower().strip()
             for greeting, response in canned_responses.items():
-                if greeting in text_lower:
+                if _re.search(r'\b' + _re.escape(greeting) + r'\b', text_lower):
                     return {
                         "response": response,
                         "tool_calls": [],

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import io as _io, sys as _sys
+_sys.stdout = _io.TextIOWrapper(_sys.stdout.buffer, encoding='utf-8', errors='replace')
+_sys.stderr = _io.TextIOWrapper(_sys.stderr.buffer, encoding='utf-8', errors='replace')
 """
 Governance Commit Applicator
 Processes approved .commit files and applies them to the repository.
@@ -19,37 +22,31 @@ GOVERNANCE_DIR = Path(__file__).parent
 COMMITS_DIR = GOVERNANCE_DIR / "commits"
 REPO_ROOT = GOVERNANCE_DIR.parent
 
-def extract_diff(commit_file: Path) -> str:
+def extract_diff(commit_file):
     """Extract and normalize diff content from a commit proposal.
 
     Handles:
     - Multiple diff blocks in one proposal (multi-file changes)
     - Formatting corruption where --- and +++ land on the same line
     """
+    import re
     content = commit_file.read_text(encoding="utf-8")
 
     # Collect ALL diff blocks (multi-file proposals have one per file)
-    diffs = re.findall(r'```diff
-(.*?)
-```', content, re.DOTALL)
+    diffs = re.findall(r'```diff\n(.*?)\n```', content, re.DOTALL)
     if not diffs:
         return None
 
-    combined = '
-'.join(diffs)
+    combined = '\n'.join(diffs)
 
     # Fix common agent formatting corruption:
     # "--- a/foo.py+++ b/foo.py" on one line -> split to two lines
-    combined = re.sub(r'(--- a/\S+)\s*(\+\+\+ b/)', r'
-', combined)
+    combined = re.sub(r'(--- a/\S+)\s*(\+\+\+ b/)', r'\1\n\2', combined)
 
-    if not combined.endswith('
-'):
-        combined += '
-'
+    if not combined.endswith('\n'):
+        combined += '\n'
 
     return combined
-
 def extract_metadata(commit_file: Path) -> dict:
     """Extract metadata from commit proposal."""
     content = commit_file.read_text(encoding="utf-8")

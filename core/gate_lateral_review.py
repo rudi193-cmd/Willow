@@ -1,5 +1,3 @@
-**governance/gate_lateral_review.py**
-```python
 import uuid
 
 class ReviewNode:
@@ -73,7 +71,7 @@ class ReviewGraph:
                 if review_id in node.reviews:
                     review = node.reviews[review_id]
                     if review.action == review_node.action:
-                        if review decision:
+                        if review.decision:
                             num_approvals += 1
                         else:
                             num_rejections += 1
@@ -106,20 +104,3 @@ class ReviewGraph:
             for review in self.nodes[list(self.nodes.values())[0].node_id].reviews.values():
                 if review.action == review_node.action:
                     review.decision = not decision
-```
-**Example Usage:**
-```python
-review_graph = ReviewGraph()
-
-# Create nodes
-review_graph.add_node('node1')
-review_graph.add_node('node2')
-review_graph.add_node('node3')
-
-# Request a review
-review_id = review_graph.request_review('node1', 'proposal')
-
-# Answer the review
-review_graph.answer_review(review_id, True)
-```
-This implementation meets the requirements of lateral peer review, quorum support, and review graph propagation. The example usage demonstrates how to create nodes, request reviews, and answer reviews. Note that this implementation assumes a simple graph structure and does not handle more complex scenarios, such as review dependencies or conditional approvals.
