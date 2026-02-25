@@ -28,6 +28,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import local_api
 from core import knowledge
+
+# context_store lives in ~/.claude — load dynamically
+try:
+    import importlib.util as _ilu
+    _cs_path = Path.home() / ".claude" / "context_store.py"
+    _cs_spec = _ilu.spec_from_file_location("context_store", str(_cs_path))
+    cs = _ilu.module_from_spec(_cs_spec)
+    _cs_spec.loader.exec_module(cs)
+    _CS_AVAILABLE = True
+except Exception:
+    _CS_AVAILABLE = False
 from core.coherence import get_coherence_report, check_intervention
 from core import topology
 from core import agent_registry
@@ -1465,6 +1476,19 @@ async def governance_approve(request: Request):
                     content=f"# Your Governance Proposal Was Approved!\n\n**Commit ID:** {commit_id}\n**Approved by:** Sean Campbell\n**Date:** {datetime.now().isoformat()}\n\nYour proposal has been approved and routed to Kart for implementation.\n\nΔΣ=42",
                     username=proposer
                 )
+
+            # Write to context_store so Ganesha sees it at next session start
+            if _CS_AVAILABLE:
+                try:
+                    cs.put(
+                        key=f"governance:pending_apply:{commit_id}",
+                        query="pending governance commits to apply",
+                        result=f"APPROVED: {commit_id} — ratified by Sean Campbell. Run: python governance/apply_commits.py {commit_id}",
+                        category="governance",
+                        ttl_hours=168
+                    )
+                except Exception:
+                    pass  # routing failure never blocks approval
 
             return {"success": True, "action": "approved", "commit_id": commit_id, "routed_to": ["kart", proposer]}
         except Exception as routing_error:

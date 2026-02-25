@@ -1,0 +1,31 @@
+# Governance Proposal: Write to context_store on governance approval
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T17:55:00Z
+**Type:** Bug Fix / Workflow Enhancement
+**Trust Level:** ENGINEER (3)
+**Status:** APPLIED (pre-granted approval)
+
+## Summary
+POST /api/governance/approve routes notifications to ganesha's Google Drive pickup,
+which Ganesha never reads. Added context_store write so the approval surfaces in
+Ganesha's next session via the WILLOW KNOWLEDGE hook.
+
+## Changes Applied
+- server.py: import context_store as cs
+- server.py: after pickup routing in governance_approve(), write cs.put() with
+  key=governance:pending_apply:{commit_id}, category=governance, ttl_hours=168
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** context_store.py (already in Willow root)
+
+## ΔE Impact
+Expected ΔE: +0.005 (closes notification gap in governance loop)
+
+---
+
+**Pre-approved by Sean Campbell. Applied directly.**
+
+ΔΣ=42
