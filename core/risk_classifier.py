@@ -41,7 +41,7 @@ T2_PATTERNS = [
 T3_PATTERNS = [
     r"[/\\]safe-app-",
     r"[/\\]scoot-",
-    r"[/\\]nasa-archive",
+    r"[/\\]safe-app-nasa-archive",
     r"[/\\]die-namic-website",
     r"[/\\]Willow[/\\]tests[/\\]",
     r"[/\\]Willow[/\\]scratch[/\\]",

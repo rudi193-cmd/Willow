@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/api/nasa", tags=["nasa"])
-NASA_DATA = Path(r"C:\Users\Sean\Documents\GitHub\nasa-archive\data")
+NASA_DATA = Path(r"C:\Users\Sean\Documents\GitHub\safe-app-nasa-archive\data")
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, OPTIONS",

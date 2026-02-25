@@ -34,7 +34,7 @@ REPO_ROOTS = {
     "die-namic-system": r"C:\Users\Sean\Documents\GitHub\die-namic-system",
     "Willow": r"C:\Users\Sean\Documents\GitHub\Willow",
     "safe-app-utety-chat": r"C:\Users\Sean\Documents\GitHub\safe-app-utety-chat",
-    "nasa-archive": r"C:\Users\Sean\Documents\GitHub\nasa-archive",
+    "nasa-archive": r"C:\Users\Sean\Documents\GitHub\safe-app-nasa-archive",
     "SAFE": r"C:\Users\Sean\Documents\GitHub\SAFE",
 }
 

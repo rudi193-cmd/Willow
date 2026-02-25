@@ -1,0 +1,54 @@
+# Governance Proposal: Update nasa-archive path in risk_classifier.py
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-02-25T00:00:00Z
+**Type:** Configuration Change
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Repo `nasa-archive` was renamed to `safe-app-nasa-archive` on GitHub as part of the SAFE app rebranding (all SAFE apps now use `safe-app-*` prefix). The T3 pattern in risk_classifier.py must reflect the new folder name so the risk tier continues to apply correctly.
+
+## Proposed Changes
+**File:** core/risk_classifier.py
+**Location:** T3_PATTERNS list, line 44
+
+### File: core/risk_classifier.py
+
+Change from:
+    r"[/\\]nasa-archive",
+
+Change to:
+    r"[/\\]safe-app-nasa-archive",
+
+## Rationale
+- Local folder renamed from `nasa-archive` to `safe-app-nasa-archive` to match GitHub rename
+- Without this update, writes to the nasa-archive repo would fall through to T3 via the generic GitHub catch-all, but explicit pattern is correct practice
+- No behavioral change — same T3 tier, same effect
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — revert the string
+- **Dependencies:** Local folder `nasa-archive` must have been renamed to `safe-app-nasa-archive` first (done)
+- **Testing:** `python Willow/core/risk_classifier.py "C:\Users\Sean\Documents\GitHub\safe-app-nasa-archive\data\test.json"` should return T3
+
+## ΔE Impact
+Expected ΔE: +0.001 (path string update only)
+
+## Implementation
+```diff
+--- a/core/risk_classifier.py
++++ b/core/risk_classifier.py
+@@ -41,7 +41,7 @@
+ T3_PATTERNS = [
+     r"[/\\]safe-app-",
+     r"[/\\]scoot-",
+-    r"[/\\]nasa-archive",
++    r"[/\\]safe-app-nasa-archive",
+     r"[/\\]die-namic-website",
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
