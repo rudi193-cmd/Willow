@@ -31,6 +31,16 @@ USERNAME = "Sweet-Pea-Rudi19"
 AGENT_NAME = "kart"
 
 
+def _server_online() -> bool:
+    """Quick connectivity check — returns True if Willow server is reachable."""
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://localhost:8420/api/agents/health", timeout=1)
+        return True
+    except Exception:
+        return False
+
+
 def display_result(result: Dict[str, Any]):
     """Display orchestration result in a user-friendly format."""
     print("\n" + "=" * 60)
@@ -132,6 +142,11 @@ def cmd_status():
     else:
         print(f"Agent: {AGENT_NAME} (NOT REGISTERED)")
 
+    # Server connectivity
+    server_up = _server_online()
+    print(f"
+Server: {'ONLINE (port 8420)' if server_up else 'OFFLINE — local mode active'}")
+
     # Get tools
     tools = tool_engine.list_tools(AGENT_NAME, USERNAME)
     print(f"\nAvailable Tools: {len(tools)}")
@@ -150,6 +165,60 @@ def cmd_status():
     print("=" * 60)
     print()
 
+    return 0
+
+
+def cmd_server_restart():
+    """Restart the Willow server. REPL context stays; new server code is loaded."""
+    import urllib.request
+    import time
+    print("Sending restart signal to Willow server...")
+    try:
+        req = urllib.request.Request(
+            "http://localhost:8420/api/admin/restart",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=3)
+    except Exception:
+        pass  # Connection drops mid-restart — expected
+    print("Waiting for server", end="", flush=True)
+    for _ in range(20):
+        time.sleep(1)
+        print(".", end="", flush=True)
+        try:
+            urllib.request.urlopen("http://localhost:8420/api/agents/health", timeout=1)
+            print(" back up!")
+            return
+        except Exception:
+            pass
+    print("
+Timed out — server may still be starting.")
+
+
+def cmd_agent_restart():
+    """Restart Kart agent context. CLI-only safe — no server required."""
+    import json
+    from datetime import datetime as _dt
+    print("
+Restarting agent context...")
+
+    session_path = Path(__file__).parent.parent / "artifacts" / "kart" / "sessions"
+    session_path.mkdir(parents=True, exist_ok=True)
+    marker = {
+        "type": "agent_restart",
+        "timestamp": _dt.now().isoformat(),
+        "agent": AGENT_NAME,
+        "user": USERNAME,
+        "message": "Agent context reset by user via :agent_restart"
+    }
+    ts = _dt.now().strftime("%Y%m%d-%H%M%S")
+    (session_path / f"agent-restart-{ts}.json").write_text(json.dumps(marker, indent=2))
+
+    print("Agent context cleared. Starting fresh.")
+    print()
+    cmd_status()
     return 0
 
 
@@ -209,7 +278,12 @@ def cmd_tools():
 
 def cmd_repl():
     cmd_status()
-    print("\nKart REPL  |  type a task, or :status :tasks :tools :quit\n")
+    if not _server_online():
+        print("\n[OFFLINE] Willow server not detected \u2014 running in local mode")
+        print("  Fleet LLM and local tools available.")
+        print("  Server-dependent tools (delegate_to_agent) will skip gracefully.")
+        print("  Run :status after starting the server to confirm reconnection.\n")
+    print("\nKart REPL  |  type a task, or :status :tasks :tools :server_restart :agent_restart :quit\n")
     while True:
         try:
             line = input("kart> ").strip()
@@ -227,6 +301,10 @@ def cmd_repl():
             cmd_tasks(None)
         elif line == ":tools":
             cmd_tools()
+        elif line in (":server_restart", ":sr"):
+            cmd_server_restart()
+        elif line in (":agent_restart", ":ar"):
+            cmd_agent_restart()
         elif line.startswith(":"):
             print(f"Unknown command: {line}")
         else:

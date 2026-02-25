@@ -2496,6 +2496,22 @@ if UI_DIST.exists():
     app.mount("/", StaticFiles(directory=str(UI_DIST)), name="static")
 
 
+
+@app.post("/api/admin/restart")
+async def admin_restart():
+    """Hot-restart the Willow server. Called by Kart REPL :server_restart command."""
+    import threading
+    def _do_restart():
+        import time, os, sys, subprocess
+        time.sleep(0.5)
+        subprocess.Popen(
+            [sys.executable, __file__],
+            cwd=str(Path(__file__).parent),
+        )
+        os._exit(0)
+    threading.Thread(target=_do_restart, daemon=True).start()
+    return {"status": "restarting", "message": "Server restarting in 0.5s — reconnect in ~5s"}
+
 if __name__ == "__main__":
     import uvicorn
     from core.boot import boot_check

@@ -147,10 +147,10 @@ if %errorlevel% neq 0 (
     echo    Server output: WILLOW - SERVER window
     echo    Daemon logs:   logs\
     echo.
-    echo    Close this window to shutdown all.
+    echo    Press Any Key To Exit
     echo   ========================================
     echo.
-    pause
+    pause >nul
     goto :shutdown
 )
 
@@ -190,4 +190,7 @@ for %%p in (
     "WILLOW-InboxWatcher"
 ) do taskkill /FI "WINDOWTITLE eq %%~p" >nul 2>&1
 echo   Done. (Ollama left running)
-pause
+echo.
+echo   Press Any Key To Exit
+pause >nul
+cmd /k

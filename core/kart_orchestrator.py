@@ -161,6 +161,9 @@ class KartOrchestrator:
                     "content": f"Tool: {action['tool']}\nResult: {json.dumps(tool_result, indent=2)}"
                 })
 
+                # Persist context after every step — survives server outages
+                self._save_seed_packet(user_request, steps_executed, "IN_PROGRESS")
+
                 # Check for repetition (infinite loop detection)
                 if self._detect_repetition(steps_executed):
                     seed_path = self._save_seed_packet(user_request, steps_executed, "HALTED")
@@ -248,6 +251,7 @@ Rules:
 Current user: {self.username}
 Your trust level: ENGINEER
 Session: {self.session_id}
+Current time: {datetime.now().isoformat()}
 
 Be direct and practical. Focus on execution, not explanation."""
 
