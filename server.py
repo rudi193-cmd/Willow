@@ -2552,6 +2552,188 @@ def serve_binder():
     return FileResponse(BINDER_HTML, media_type="text/html; charset=utf-8")
 
 
+# --- Jane GM Game Routes ---
+
+GAME_HTML = Path(__file__).parent / "game.html"
+
+@app.get("/game")
+def serve_game():
+    if not GAME_HTML.exists():
+        return {"error": "game.html not found"}
+    return FileResponse(GAME_HTML, media_type="text/html; charset=utf-8")
+
+@app.post("/api/game/session/start")
+async def game_session_start(request: Request):
+    try:
+        import game_engine as ge
+        body = await request.json()
+        result = ge.create_session(
+            player_name=body.get("player_name", "Adventurer"),
+            game_type=body.get("game_type", "pbta"),
+            mode=body.get("mode", "full_gm"),
+            world=body.get("world"),
+            persist=body.get("persist", False),
+        )
+        ge.add_history(result["session_id"], "system", "Session started.")
+        return {"success": True, **result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/game/session/{session_id}")
+def game_session_get(session_id: str):
+    try:
+        import game_engine as ge
+        session = ge.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        character = ge.get_character(session_id)
+        return {"success": True, "session": session, "character": character}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.delete("/api/game/session/{session_id}")
+def game_session_delete(session_id: str):
+    try:
+        import game_engine as ge
+        ge.delete_session(session_id)
+        return {"success": True, "deleted": session_id}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/game/playbooks")
+def game_playbooks():
+    import game_engine as ge
+    return {"playbooks": ge.get_playbooks()}
+
+@app.post("/api/game/character/create")
+async def game_character_create(request: Request):
+    try:
+        import game_engine as ge
+        body = await request.json()
+        result = ge.create_character(
+            session_id=body["session_id"],
+            name=body["name"],
+            playbook=body["playbook"],
+            custom_stats=body.get("custom_stats"),
+        )
+        ge.add_history(body["session_id"], "system", f"{result['name']} the {result['playbook']} enters the story.")
+        return {"success": True, **result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/game/roll")
+async def game_roll(request: Request):
+    try:
+        import game_engine as ge
+        body = await request.json()
+        result = ge.roll_dice(
+            session_id=body["session_id"],
+            dice=body.get("dice", "2d6"),
+            modifier=body.get("modifier", 0),
+            modifier_label=body.get("modifier_label", ""),
+            context=body.get("context", ""),
+        )
+        if result.get("success"):
+            label = body.get("modifier_label", "")
+            roll_text = f"Rolled {body.get('dice','2d6')}: {result['rolls']} + {result['modifier']} ({label}) = **{result['total']}**"
+            if result.get("outcome"):
+                roll_text += f" → {result['outcome'].replace('_',' ').title()}"
+            ge.add_history(body["session_id"], "roll", roll_text, {"hash": result["hash"]})
+        return result
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/game/rolls/{session_id}")
+def game_roll_history(session_id: str, limit: int = 20):
+    try:
+        import game_engine as ge
+        return {"rolls": ge.get_roll_history(session_id, limit)}
+    except Exception as e:
+        return {"rolls": [], "error": str(e)}
+
+@app.post("/api/game/narrate")
+async def game_narrate(request: Request):
+    """Jane narrates — builds GM prompt and calls the fleet."""
+    try:
+        import game_engine as ge
+        body = await request.json()
+        session_id = body["session_id"]
+        player_action = body.get("action", "")
+
+        if player_action:
+            ge.add_history(session_id, "player", player_action)
+
+        prompt = ge.build_gm_prompt(session_id, player_action)
+
+        response = llm_router.ask(prompt, preferred_tier="free")
+        if not response:
+            return {"success": False, "error": "Fleet unavailable — all providers failed"}
+
+        narration = response.content.strip()
+        ge.add_history(session_id, "jane", narration)
+
+        return {
+            "success": True,
+            "narration": narration,
+            "provider": response.provider,
+            "history": ge.get_history(session_id, limit=30),
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/game/pbta/convert")
+async def game_pbta_convert(request: Request):
+    """Convert any IP/franchise into a PBtA game on demand."""
+    try:
+        body = await request.json()
+        ip = body.get("ip", "")
+        if not ip:
+            return {"success": False, "error": "ip required"}
+
+        prompt = f"""You are a PBtA game designer. Convert the world of "{ip}" into a complete PBtA game.
+
+Return valid JSON only, no other text:
+{{
+  "title": "Name of game",
+  "tagline": "One-line description",
+  "world_intro": "2-3 sentences setting the scene, age-appropriate",
+  "stats": {{"Stat1": "description", "Stat2": "description", "Stat3": "description", "Stat4": "description", "Stat5": "description"}},
+  "basic_moves": [
+    {{"name": "Move Name", "trigger": "When you...", "mechanic": "Roll+Stat. On 10+... On 7-9... On 6-..."}}
+  ],
+  "playbooks": [
+    {{"name": "Playbook Name", "description": "One line", "stats": {{}}, "moves": [], "gear": [], "hp": 6}}
+  ],
+  "gm_principles": ["Principle 1", "Principle 2", "Principle 3"]
+}}
+
+Keep it fun, age-appropriate (9-14), and true to the source material."""
+
+        response = llm_router.ask(prompt, preferred_tier="free")
+        if not response:
+            return {"success": False, "error": "Fleet unavailable"}
+
+        import re, json as _json
+        content = response.content.strip()
+        m = re.search(r'\{[\s\S]+\}', content)
+        if m:
+            game_data = _json.loads(m.group(0))
+            return {"success": True, "ip": ip, "game": game_data}
+        return {"success": False, "error": "Could not parse game JSON", "raw": content[:500]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/game/history/{session_id}")
+def game_history(session_id: str, limit: int = 30):
+    try:
+        import game_engine as ge
+        return {"history": ge.get_history(session_id, limit)}
+    except Exception as e:
+        return {"history": [], "error": str(e)}
+
+
 # --- Governance Dashboard ---
 
 GOVERNANCE_DASHBOARD = Path(__file__).parent / "governance" / "dashboard.html"
