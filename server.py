@@ -2732,25 +2732,23 @@ def agent_deliver():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route("/api/pickup")
-def api_pickup_list():
+@app.get("/api/pickup")
+async def api_pickup_list(username: str = "Sweet-Pea-Rudi19"):
     """List files in the user's Pickup box."""
     try:
-        username = request.args.get("username", "Sweet-Pea-Rudi19")
-        # Try Google Drive path first, fall back to local artifacts
         gdrive = Path(r"G:\My Drive\Willow\Auth Users") / username / "Pickup"
         local = Path(__file__).parent / "artifacts" / "willow" / "Auth Users" / username / "Pickup"
         pickup_dir = gdrive if gdrive.exists() else local
 
         if not pickup_dir.exists():
-            return jsonify({"items": [], "path": str(pickup_dir), "exists": False})
+            return {"items": [], "path": str(pickup_dir), "exists": False}
 
         items = []
         for f in sorted(pickup_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
             if f.is_file() and not f.name.startswith('.') and f.suffix not in ('.pyc', '.db'):
                 try:
-                    content = f.read_text(encoding="utf-8", errors="replace")
-                    preview = content[:200].strip()
+                    file_content = f.read_text(encoding="utf-8", errors="replace")
+                    preview = file_content[:200].strip()
                 except Exception:
                     preview = "[binary]"
                 items.append({
@@ -2759,28 +2757,28 @@ def api_pickup_list():
                     "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
                     "preview": preview,
                 })
-        return jsonify({"items": items, "path": str(pickup_dir), "exists": True})
+        return {"items": items, "path": str(pickup_dir), "exists": True}
     except Exception as e:
-        return jsonify({"error": str(e), "items": []}), 500
+        return {"error": str(e), "items": []}
 
 
-@app.route("/api/pickup/<filename>", methods=["DELETE"])
-def api_pickup_dismiss(filename):
+@app.delete("/api/pickup/{filename}")
+async def api_pickup_dismiss(filename: str, username: str = "Sweet-Pea-Rudi19"):
     """Delete (dismiss) a file from the user's Pickup box."""
     try:
-        username = request.args.get("username", "Sweet-Pea-Rudi19")
         gdrive = Path(r"G:\My Drive\Willow\Auth Users") / username / "Pickup"
         local = Path(__file__).parent / "artifacts" / "willow" / "Auth Users" / username / "Pickup"
         pickup_dir = gdrive if gdrive.exists() else local
 
         target = pickup_dir / filename
-        # Safety: only delete files inside the pickup dir
         if pickup_dir in target.parents and target.exists():
             target.unlink()
-            return jsonify({"status": "ok", "deleted": filename})
-        return jsonify({"error": "File not found"}), 404
+            return {"status": "ok", "deleted": filename}
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="File not found")
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
