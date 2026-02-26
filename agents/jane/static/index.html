@@ -302,6 +302,37 @@
       font-style: italic;
     }
 
+    /* Pickup box */
+    .pickup-item {
+      background: rgba(255,255,255,0.04);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+    .pickup-item .pickup-name {
+      font-weight: 600;
+      color: #e2e8f0;
+      word-break: break-all;
+    }
+    .pickup-item .pickup-preview {
+      color: #94a3b8;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+    .pickup-item .pickup-dismiss {
+      float: right;
+      cursor: pointer;
+      color: #64748b;
+      font-size: 0.7rem;
+      margin-left: 6px;
+    }
+    .pickup-item .pickup-dismiss:hover { color: #ef4444; }
+
     /* ── Input bar ───────────────────────────────────────── */
     #input-bar {
       grid-column: 1 / 2;
@@ -423,6 +454,11 @@
       <a class="sidebar-link" href="http://localhost:8420/governance" target="_blank">Governance</a>
     </div>
 
+    <div class="sidebar-section" id="pickup-section">
+      <h3>Pickup <span class="badge zero" id="pickup-badge">0</span></h3>
+      <div id="pickup-list"><span class="sessions-empty">Empty</span></div>
+    </div>
+
     <div class="sidebar-section">
       <h3>Recent Sessions</h3>
       <div id="sessions-list"><span class="sessions-empty">Loading...</span></div>
@@ -457,7 +493,9 @@
   document.addEventListener("DOMContentLoaded", () => {
     loadStatus();
     loadSessions();
+    loadPickup();
     setInterval(loadStatus, 30_000);
+    setInterval(loadPickup, 30_000);
   });
 
   // ── Status ─────────────────────────────────────────────────
@@ -512,6 +550,53 @@
     } catch {
       container.innerHTML = '<span class="sessions-empty">Could not load sessions.</span>';
     }
+  }
+
+  // ── Pickup box ─────────────────────────────────────────────
+  async function loadPickup() {
+    try {
+      const res = await fetch(`/api/pickup?username=${state.username}`);
+      const data = await res.json();
+      const list = document.getElementById('pickup-list');
+      const badge = document.getElementById('pickup-badge');
+      const items = data.items || [];
+      badge.textContent = items.length;
+      badge.className = items.length > 0 ? 'badge' : 'badge zero';
+      if (items.length === 0) {
+        list.innerHTML = '<span class="sessions-empty">Empty</span>';
+        return;
+      }
+      list.innerHTML = items.map(item => `
+        <div class="pickup-item" onclick="openPickupItem('${encodeURIComponent(item.filename)}', this)">
+          <span class="pickup-dismiss" onclick="event.stopPropagation();dismissPickup('${encodeURIComponent(item.filename)}', this)">&#x2715;</span>
+          <div class="pickup-name">${item.filename}</div>
+          <div class="pickup-preview">${item.preview || '(no preview)'}</div>
+        </div>
+      `).join('');
+    } catch(e) {
+      document.getElementById('pickup-list').innerHTML = '<span class="sessions-empty">—</span>';
+    }
+  }
+
+  async function openPickupItem(encodedName, el) {
+    const filename = decodeURIComponent(encodedName);
+    try {
+      const res = await fetch(`/api/pickup?username=${state.username}`);
+      const data = await res.json();
+      const item = (data.items || []).find(i => i.filename === filename);
+      if (item) {
+        appendMessage('assistant', `**[Pickup: ${item.filename}]**\n\n${item.preview}`);
+      }
+    } catch(e) {}
+  }
+
+  async function dismissPickup(encodedName, el) {
+    const filename = decodeURIComponent(encodedName);
+    try {
+      await fetch(`/api/pickup/${filename}?username=${state.username}`, {method: 'DELETE'});
+      el.closest('.pickup-item').remove();
+      loadPickup(); // refresh count
+    } catch(e) {}
   }
 
   function formatDate(raw) {

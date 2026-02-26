@@ -2732,6 +2732,57 @@ def agent_deliver():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route("/api/pickup")
+def api_pickup_list():
+    """List files in the user's Pickup box."""
+    try:
+        username = request.args.get("username", "Sweet-Pea-Rudi19")
+        # Try Google Drive path first, fall back to local artifacts
+        gdrive = Path(r"G:\My Drive\Willow\Auth Users") / username / "Pickup"
+        local = Path(__file__).parent / "artifacts" / "willow" / "Auth Users" / username / "Pickup"
+        pickup_dir = gdrive if gdrive.exists() else local
+
+        if not pickup_dir.exists():
+            return jsonify({"items": [], "path": str(pickup_dir), "exists": False})
+
+        items = []
+        for f in sorted(pickup_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+            if f.is_file() and not f.name.startswith('.') and f.suffix not in ('.pyc', '.db'):
+                try:
+                    content = f.read_text(encoding="utf-8", errors="replace")
+                    preview = content[:200].strip()
+                except Exception:
+                    preview = "[binary]"
+                items.append({
+                    "filename": f.name,
+                    "size": f.stat().st_size,
+                    "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                    "preview": preview,
+                })
+        return jsonify({"items": items, "path": str(pickup_dir), "exists": True})
+    except Exception as e:
+        return jsonify({"error": str(e), "items": []}), 500
+
+
+@app.route("/api/pickup/<filename>", methods=["DELETE"])
+def api_pickup_dismiss(filename):
+    """Delete (dismiss) a file from the user's Pickup box."""
+    try:
+        username = request.args.get("username", "Sweet-Pea-Rudi19")
+        gdrive = Path(r"G:\My Drive\Willow\Auth Users") / username / "Pickup"
+        local = Path(__file__).parent / "artifacts" / "willow" / "Auth Users" / username / "Pickup"
+        pickup_dir = gdrive if gdrive.exists() else local
+
+        target = pickup_dir / filename
+        # Safety: only delete files inside the pickup dir
+        if pickup_dir in target.parents and target.exists():
+            target.unlink()
+            return jsonify({"status": "ok", "deleted": filename})
+        return jsonify({"error": "File not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ---------------------------------------------------------------------------
 # FLEET API — External repo integration endpoint
 # Other repos (nasa-archive, safe-app-utety-chat, aios-minimal) call this
