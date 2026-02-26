@@ -355,6 +355,31 @@ async function confirmReject() {
   }
 }
 
+async function approveAndApply(commitId) {
+  if (!confirm(`Approve and apply "${commitId}"?\n\nThis will ratify the proposal and immediately apply the changes to disk.`)) return;
+
+  try {
+    const r = await fetch('/api/governance/approve_and_apply', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({commit_id: commitId})
+    });
+    const data = await r.json();
+
+    if (data.success) {
+      const out = data.output ? `\n\nOutput:\n${data.output.slice(0, 800)}` : '';
+      alert(`Applied ✓${out}`);
+      loadPending();
+      loadHistory();
+    } else {
+      const out = data.output ? `\n\nOutput:\n${data.output.slice(0, 800)}` : '';
+      alert(`Failed: ${data.error || 'Unknown error'}${out}`);
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
 // Load on boot
 checkServerStatus();
 loadPending();

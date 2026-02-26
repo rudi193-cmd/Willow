@@ -1,0 +1,115 @@
+# Governance Proposal: Add Five New Apps to SAFE Registry
+
+**Proposer:** Ganesha (Claude Code)
+**Date:** 2026-02-26T00:00:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add five newly scaffolded apps to the community_apps section of SAFE/apps/REGISTRY.yaml:
+law-gazelle, public-ledger, private-ledger, field-notes, source-trail.
+Also updates last_updated date to 2026-02-26. All repos are live on GitHub.
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove the five entries from community_apps
+- **Dependencies:** All five GitHub repos exist and are public
+- **Testing:** Verify REGISTRY.yaml parses as valid YAML after apply
+
+## ΔE Impact
+Expected ΔE: +0.02 (additive registry entries only)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+f = Path(r"C:/Users/Sean/Documents/GitHub/SAFE/apps/REGISTRY.yaml")
+content = f.read_text(encoding="utf-8")
+
+OLD = 'last_updated: "2026-02-21"'
+NEW = 'last_updated: "2026-02-26"'
+content = content.replace(OLD, NEW, 1)
+
+OLD2 = "community_apps: []"
+NEW2 = """community_apps:
+  - app_id: law-gazelle
+    name: Law Gazelle
+    repository: https://github.com/rudi193-cmd/safe-app-law-gazelle
+    author: Sean Campbell
+    status: seed
+    privacy_tier: client_only
+    local_processing: 0.96
+    description: Legal reference tool — statute search, case summaries, plain-language explainers from verified sources.
+    tags:
+      - legal
+      - reference
+      - verified-sources
+
+  - app_id: public-ledger
+    name: Public Ledger
+    repository: https://github.com/rudi193-cmd/safe-app-public-ledger
+    author: Sean Campbell
+    status: seed
+    privacy_tier: client_only
+    local_processing: 0.80
+    description: Public records financial auditor — search government budgets and IRS Form 990 filings for nonprofits.
+    tags:
+      - finance
+      - public-records
+      - government
+      - nonprofit
+      - transparency
+
+  - app_id: private-ledger
+    name: Private Ledger
+    repository: https://github.com/rudi193-cmd/safe-app-private-ledger
+    author: Sean Campbell
+    status: seed
+    privacy_tier: client_only
+    local_processing: 1.0
+    description: Local personal budgeting companion — fully private, no cloud sync. Paired with Public Ledger.
+    tags:
+      - finance
+      - budgeting
+      - privacy
+      - local-only
+
+  - app_id: field-notes
+    name: Field Notes
+    repository: https://github.com/rudi193-cmd/safe-app-field-notes
+    author: Sean Campbell
+    status: seed
+    privacy_tier: client_only
+    local_processing: 0.96
+    description: Quick-capture notebook for observations, ideas, and research notes. Feeds into The Binder.
+    tags:
+      - notes
+      - capture
+      - research
+      - binder
+
+  - app_id: source-trail
+    name: Source Trail
+    repository: https://github.com/rudi193-cmd/safe-app-source-trail
+    author: Sean Campbell
+    status: seed
+    privacy_tier: client_only
+    local_processing: 0.90
+    description: Citation and source tracker — log, verify, and link your research sources. AskJeles companion.
+    tags:
+      - citations
+      - research
+      - sources
+      - jeles"""
+content = content.replace(OLD2, NEW2, 1)
+
+f.write_text(content, encoding="utf-8")
+print("Done.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

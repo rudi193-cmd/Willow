@@ -1,0 +1,178 @@
+# Governance Proposal: Wire Pickup Box into Public Jane Sidebar
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-25T00:00:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Adds a "Pickup" sidebar section to `SAFE/web/jane.html` that polls Willow's
+`/api/pickup?username=Sweet-Pea-Rudi19` endpoint every 30 seconds, shows
+waiting items with a live badge count, lets the user click an item to inject
+its preview into the chat, and dismiss individual items via DELETE. Polling
+starts immediately on page load (not gated on consent) so the badge is visible
+before the user starts a session.
+
+## Proposed Changes
+
+**File:** `C:/Users/Sean/Documents/GitHub/SAFE/web/jane.html`
+
+### Change 1 — CSS (after `.sidebar-permission:last-of-type` rule, ~line 329)
+
+```diff
+--- a/web/jane.html
++++ b/web/jane.html
+@@ -329,6 +329,46 @@
+     .sidebar-permission:last-of-type { margin-bottom: 0; }
++
++    .pickup-item {
++      padding: 7px 0;
++      border-bottom: 1px solid rgba(255,255,255,0.06);
++      font-size: 12px;
++    }
++    .pickup-item:last-of-type { border-bottom: none; }
++    .pickup-item-name {
++      font-weight: 600;
++      color: var(--fg);
++      word-break: break-all;
++      margin-bottom: 2px;
++    }
++    .pickup-item-preview {
++      color: rgba(255,255,255,0.45);
++      white-space: nowrap;
++      overflow: hidden;
++      text-overflow: ellipsis;
++      max-width: 180px;
++    }
++    .pickup-item-dismiss {
++      float: right;
++      cursor: pointer;
++      color: rgba(255,255,255,0.25);
++      font-size: 11px;
++      margin-left: 4px;
++      line-height: 1.6;
++    }
++    .pickup-item-dismiss:hover { color: #ef4444; }
++    .pickup-empty { color: rgba(255,255,255,0.3); font-size: 12px; font-style: italic; }
++    .pickup-badge {
++      display: inline-block;
++      background: var(--accent);
++      color: #fff;
++      border-radius: 8px;
++      font-size: 10px;
++      padding: 1px 6px;
++      margin-left: 6px;
++      vertical-align: middle;
++    }
++    .pickup-badge.zero { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.4); }
+```
+
+### Change 2 — HTML sidebar section (before `<a href="index.html" class="sidebar-back-link">`, ~line 566)
+
+```diff
+--- a/web/jane.html
++++ b/web/jane.html
+@@ -565,6 +565,14 @@
++        <div class="sidebar-section" id="pickup-section">
++          <div class="sidebar-section-title">
++            Pickup <span class="pickup-badge zero" id="pickup-badge">0</span>
++          </div>
++          <div id="pickup-list"><span class="pickup-empty">Empty</span></div>
++        </div>
++
+         <a href="index.html" class="sidebar-back-link">← Back to SAFE</a>
+```
+
+### Change 3 — JavaScript (before closing `</script>` tag, ~line 803)
+
+```diff
+--- a/web/jane.html
++++ b/web/jane.html
+@@ -802,6 +802,64 @@
++    // ── Pickup Box ────────────────────────────────────────────
++    const WILLOW_API = 'http://localhost:8420';
++
++    async function loadPickup() {
++      try {
++        const res = await fetch(`${WILLOW_API}/api/pickup?username=Sweet-Pea-Rudi19`);
++        if (!res.ok) return;
++        const data = await res.json();
++        const items = data.items || [];
++        const list  = document.getElementById('pickup-list');
++        const badge = document.getElementById('pickup-badge');
++
++        badge.textContent = items.length;
++        badge.className = items.length > 0 ? 'pickup-badge' : 'pickup-badge zero';
++
++        if (items.length === 0) {
++          list.innerHTML = '<span class="pickup-empty">Empty</span>';
++          return;
++        }
++        list.innerHTML = items.map(item => `
++          <div class="pickup-item">
++            <span class="pickup-item-dismiss" onclick="dismissPickup('${encodeURIComponent(item.filename)}', this)">✕</span>
++            <div class="pickup-item-name" onclick="openPickupItem('${encodeURIComponent(item.filename)}')" style="cursor:pointer">${item.filename}</div>
++            <div class="pickup-item-preview">${item.preview || ''}</div>
++          </div>
++        `).join('');
++      } catch (e) {
++        // Willow offline — pickup silently unavailable
++      }
++    }
++
++    async function openPickupItem(encodedName) {
++      const filename = decodeURIComponent(encodedName);
++      try {
++        const res = await fetch(`${WILLOW_API}/api/pickup?username=Sweet-Pea-Rudi19`);
++        const data = await res.json();
++        const item = (data.items || []).find(i => i.filename === filename);
++        if (item && item.preview) {
++          appendMessage('jane', `[${item.filename}]\n\n${item.preview}`);
++        }
++      } catch (e) {}
++    }
++
++    async function dismissPickup(encodedName, el) {
++      const filename = decodeURIComponent(encodedName);
++      try {
++        await fetch(`${WILLOW_API}/api/pickup/${filename}?username=Sweet-Pea-Rudi19`, { method: 'DELETE' });
++        el.closest('.pickup-item').remove();
++        loadPickup();
++      } catch (e) {
++        el.closest('.pickup-item').remove();
++      }
++    }
++
++    // Poll pickup every 30s
++    setInterval(loadPickup, 30000);
++    loadPickup();
+
+     showScreen('consent');
+   </script>
+```
+
+## Rationale
+
+- Closes the loop between Willow's Pickup system and the Jane public interface
+- Badge visible pre-consent so the user knows items are waiting before authorizing
+- Silent fallback if Willow is offline — no errors surfaced to the user
+- Matches existing `.sidebar-section` / `.sidebar-section-title` design language exactly
+- Polls every 30s (lightweight); DELETE cleans up server-side and re-syncs the list
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — removing the three hunks fully reverts the feature
+- **Dependencies:** Willow server running at `http://localhost:8420` with `/api/pickup` endpoint
+- **Testing:** Load jane.html, open DevTools Network tab, verify 30s polling requests; drop a file in Pickup and confirm badge increments
+
+## ΔE Impact
+
+Expected ΔE: +0.012 (small, additive UI feature; no changes to consent flow or data model)
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

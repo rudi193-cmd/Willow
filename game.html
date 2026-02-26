@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jane GM - Your Personal Game Master</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Text:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --accent-color: #c9a84c;
+            --text-color: #e8d5a3;
+            --panel-bg: #1a202c;
+            --border-color: #2d3748;
+            --strong-hit-color: #4CAF50;
+            --weak-hit-color: #c9a84c;
+            --miss-color: #F44336;
+            --font-cinzel: 'Cinzel', serif;
+            --font-crimson: 'Crimson Text', serif;
+        }
+
+        body {
+            font-family: var(--font-crimson);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden; /* Prevent body scroll on desktop */
+            font-size: 16px;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-cinzel);
+            color: var(--accent-color);
+            margin-top: 0;
+            margin-bottom: 0.5em;
+        }
+
+        .container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Welcome Screen --- */
+        #welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+            background-color: var(--bg-color);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+        }
+
+        .welcome-card {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .welcome-card h1 {
+            font-size: 3em;
+            margin-bottom: 0.2em;
+        }
+
+        .welcome-card h2 {
+            font-size: 1.5em;
+            color: var(--text-color);
+            margin-bottom: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: var(--text-color);
+        }
+
+        input[type="text"],
+        input[type="number"],
+        textarea {
+            width: calc(100% - 20px);
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-crimson);
+            font-size: 1em;
+            box-sizing: border-box;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(201, 168, 76, 0.5);
+        }
+
+        .radio-group, .playbook-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+            justify-content: center;
+        }
+
+        .radio-card {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 18px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            font-weight: bold;
+            color: var(--text-color);
+            flex: 1 1 auto; /* Allow items to grow and shrink */
+            min-width: 120px; /* Minimum width for cards */
+            text-align: center;
+        }
+
+        .radio-card:hover {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 8px rgba(201, 168, 76, 0.3);
+        }
+
+        .radio-card.selected {
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 12px rgba(201, 168, 76, 0.7);
+        }
+
+        .consent-checkbox {
+            display: flex;
+            align-items: center;
+            margin-top: 25px;
+            justify-content: center;
+        }
+
+        .consent-checkbox input[type="checkbox"] {
+            margin-right: 10px;
+            width: 20px;
+            height: 20px;
+            accent-color: var(--accent-color);
+        }
+
+        .btn {
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-family: var(--font-cinzel);
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            margin-top: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn:hover:not(:disabled) {
+            background-color: #dcb95f;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        /* --- Game Table Screen --- */
+        #game-table-screen {
+            display: none; /* Hidden by default */
+            flex-grow: 1;
+            width: 100%;
+            height: 100vh; /* Ensure it takes full viewport height */
+            gap: 15px;
+            padding: 15px;
+            box-sizing: border-box;
+            background-color: var(--bg-color);
+        }
+
+        .game-panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .left-sidebar, .right-panel {
+            width: 280px;
+            flex-shrink: 0;
+            overflow-y: auto;
+        }
+
+        .center-panel {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* For its internal scrollable content */
+        }
+
+        /* Left Sidebar */
+        .character-card h3 {
+            font-size: 1.5em;
+            margin-bottom: 5px;
+        }
+        .character-card p {
+            font-size: 0.9em;
+            color: var(--text-color);
+            margin-bottom: 15px;
+        }
+
+        .playbook-badge {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .hp-bar-container {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        .hp-bar-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .hp-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #444;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        .hp-fill {
+            height: 100%;
+            background: linear-gradient(to right, #F44336, #FFEB3B, #4CAF50); /* Red to Yellow to Green */
+            background-size: 200% 100%; /* Allows gradient to span across values */
+            transition: width 0.5s ease-in-out, background-position 0.5s ease-in-out;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .hp-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        .hp-buttons button {
+            background-color: var(--border-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            width: 30px;
+            height: 30px;
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .hp-buttons button:hover {
+            background-color: #444;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 12px;
+        }
+        .stat-item span {
+            font-weight: bold;
+        }
+        .stat-adjust-buttons {
+            display: flex;
+            gap: 3px;
+        }
+        .stat-adjust-buttons button {
+            background-color: var(--border-color);
+            color: var(--text-color);
+            border: none;
+            border-radius: 4px;
+            width: 24px;
+            height: 24px;
+            font-size: 0.9em;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .stat-adjust-buttons button:hover {
+            background-color: #444;
+        }
+
+        .collapsible-section {
+            margin-bottom: 15px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 15px;
+        }
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+            color: var(--accent-color);
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+        .collapsible-header::after {
+            content: '▼';
+            transition: transform 0.2s;
+        }
+        .collapsible-header.expanded::after {
+            content: '▲';
+        }
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            padding-left: 10px;
+            font-size: 0.95em;
+        }
+        .collapsible-content.expanded {
+            max-height: 500px; /* Adjust as needed */
+            transition: max-height 0.5s ease-in;
+        }
+        .collapsible-content ul {
+            list-style: disc;
+            margin-left: 20px;
+            padding: 0;
+        }
+        .collapsible-content li {
+            margin-bottom: 5px;
+        }
+
+        /* Center Panel */
+        .jane-narration {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            flex-grow: 1;
+            overflow-y: auto;
+            font-size: 1.2em;
+            color: var(--accent-color);
+            font-style: italic;
+            line-height: 1.6;
+            scroll-behavior: smooth;
+        }
+        .jane-narration p {
+            margin-bottom: 1em;
+        }
+        .jane-narration .loading-dots {
+            display: inline-block;
+            overflow: hidden;
+            vertical-align: bottom;
+            width: 1.5em; /* Adjust width as needed */
+        }
+        .jane-narration .loading-dots::after {
+            content: '...';
+            animation: dots 1s steps(3, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .dice-zone {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 150px;
+            gap: 15px;
+        }
+        .dice-display {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        .die {
+            width: 80px;
+            height: 80px;
+            background-color: #222;
+            border: 3px solid var(--accent-color);
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3em;
+            font-weight: bold;
+            color: var(--text-color);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            animation-fill-mode: forwards;
+        }
+
+        .die.rolling {
+            animation: diceRoll 0.8s ease-out forwards;
+        }
+
+        @keyframes diceRoll {
+            0% { transform: scale(1) rotate(0deg); opacity: 1; }
+            25% { transform: scale(1.1) rotate(90deg); opacity: 0.8; }
+            50% { transform: scale(0.9) rotate(180deg); opacity: 1; }
+            75% { transform: scale(1.1) rotate(270deg); opacity: 0.8; }
+            100% { transform: scale(1) rotate(360deg); opacity: 1; }
+        }
+
+        .roll-result {
+            text-align: center;
+            font-size: 1.8em;
+            font-weight: bold;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            opacity: 0;
+            transition: opacity 0.3s ease-in;
+        }
+        .roll-result.show {
+            opacity: 1;
+        }
+
+        .outcome-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: var(--bg-color);
+            opacity: 0;
+            animation: pulse 0.5s ease-out forwards;
+            animation-delay: 0.2s;
+        }
+        .outcome-badge.strong_hit { background-color: var(--strong-hit-color); }
+        .outcome-badge.weak_hit { background-color: var(--weak-hit-color); }
+        .outcome-badge.miss { background-color: var(--miss-color); }
+
+        @keyframes pulse {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .dice-button-row, .stat-button-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        .roll-btn {
+            background-color: transparent;
+            color: var(--accent-color);
+            border: 2px solid var(--accent-color);
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-family: var(--font-cinzel);
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        .roll-btn:hover {
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transform: translateY(-1px);
+        }
+
+        /* Right Panel */
+        .roll-history {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .roll-history h4 {
+            margin-bottom: 10px;
+        }
+        .roll-history ul {
+            list-style: none;
+            padding: 0;
+        }
+        .roll-history li {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .history-outcome {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+        .history-outcome.strong_hit { background-color: var(--strong-hit-color); color: var(--bg-color); }
+        .history-outcome.weak_hit { background-color: var(--weak-hit-color); color: var(--bg-color); }
+        .history-outcome.miss { background-color: var(--miss-color); color: var(--bg-color); }
+
+
+        .player-action-area {
+            margin-top: auto; /* Push to bottom */
+        }
+        .player-action-area textarea {
+            min-height: 80px;
+            resize: vertical;
+            margin-bottom: 10px;
+        }
+        .player-action-area button {
+            width: 100%;
+            margin-top: 5px;
+        }
+
+        .control-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .control-buttons .btn {
+            width: 100%;
+            padding: 10px 15px;
+            font-size: 1em;
+            margin-top: 0;
+        }
+        .btn-red {
+            background-color: var(--miss-color);
+            color: var(--bg-color);
+            border: none;
+        }
+        .btn-red:hover {
+            background-color: #e53935;
+        }
+
+        /* --- Session End Screen --- */
+        #session-end-screen {
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+            background-color: var(--bg-color);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+        }
+        #session-end-screen .welcome-card {
+            text-align: center;
+        }
+        #session-end-screen h1 {
+            font-size: 2.5em;
+            margin-bottom: 1em;
+        }
+        .session-stats p {
+            font-size: 1.1em;
+            margin-bottom: 8px;
+        }
+        .session-end-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .session-end-buttons .btn {
+            width: 250px;
+            margin: 0;
+        }
+
+        /* Mobile Layout */
+        @media (max-width: 768px) {
+            body {
+                min-height: auto;
+                overflow-y: auto;
+            }
+            .container {
+                flex-direction: column;
+                height: auto;
+            }
+            #game-table-screen {
+                flex-direction: column;
+                padding: 10px;
+                gap: 10px;
+            }
+            .left-sidebar, .right-panel {
+                width: 100%;
+                max-height: none; /* Allow content to dictate height */
+                order: 1; /* Left sidebar first */
+            }
+            .center-panel {
+                order: 2; /* Center panel second, important for dice visibility */
+                min-height: 500px; /* Ensure enough space for dice */
+            }
+            .dice-zone {
+                min-height: 200px;
+            }
+            .jane-narration {
+                min-height: 200px;
+            }
+            .roll-history {
+                max-height: 200px; /* Limit height on mobile */
+                margin-bottom: 10px;
+            }
+            .welcome-card {
+                padding: 25px;
+                width: 100%;
+                max-width: none;
+                border-radius: 0;
+                min-height: 100vh;
+                justify-content: center;
+            }
+            #welcome-screen {
+                overflow-y: auto;
+                align-items: stretch;
+            }
+            .radio-group, .playbook-group {
+                flex-direction: column;
+            }
+            .radio-card {
+                width: 100%;
+                min-width: unset;
+            }
+            .btn {
+                width: 100%;
+            }
+            .session-end-buttons .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="welcome-screen">
+        <div class="welcome-card">
+            <h1>🎲 Jane GM</h1>
+            <h2>Your Personal Game Master</h2>
+
+            <div class="form-group">
+                <label for="playerName">Your Name, Adventurer:</label>
+                <input type="text" id="playerName" required>
+            </div>
+
+            <div class="form-group">
+                <label>Choose Your World:</label>
+                <div class="radio-group" id="worldSelection">
+                    <div class="radio-card" data-value="classic_fantasy">Classic Fantasy</div>
+                    <div class="radio-card" data-value="space_adventure">Space Adventure</div>
+                    <div class="radio-card" data-value="mystery_magic">Mystery & Magic</div>
+                    <div class="radio-card" data-value="custom_world">Custom World</div>
+                </div>
+                <input type="text" id="customWorldName" placeholder="Enter custom world name" style="display: none; margin-top: 10px;">
+            </div>
+
+            <div class="form-group">
+                <label>Choose Your Playbook:</label>
+                <div class="playbook-group" id="playbookSelection">
+                    <div class="radio-card" data-value="brave">The Brave</div>
+                    <div class="radio-card" data-value="clever">The Clever</div>
+                    <div class="radio-card" data-value="weird">The Weird</div>
+                    <div class="radio-card" data-value="charming">The Charming</div>
+                    <div class="radio-card" data-value="wild">The Wild</div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="characterName">Your Character's Name:</label>
+                <input type="text" id="characterName" required>
+            </div>
+
+            <div class="consent-checkbox">
+                <input type="checkbox" id="consentCheckbox" checked>
+                <label for="consentCheckbox">Store my session data locally on this device</label>
+            </div>
+
+            <button id="beginAdventureBtn" class="btn" disabled>Begin Adventure</button>
+        </div>
+    </div>
+
+    <div id="game-table-screen">
+        <div class="left-sidebar game-panel">
+            <div class="character-card">
+                <span class="playbook-badge" id="charPlaybookBadge"></span>
+                <h3 id="charNameDisplay"></h3>
+                <p>Player: <span id="playerNameDisplay"></span></p>
+            </div>
+
+            <div class="hp-bar-container">
+                <div class="hp-bar-label">
+                    <span>HP</span>
+                    <span><span id="currentHP"></span>/<span id="maxHP"></span></span>
+                </div>
+                <div class="hp-bar">
+                    <div class="hp-fill" style="width: 100%; background-position: 0%;"></div>
+                </div>
+                <div class="hp-buttons">
+                    <button id="hpMinusBtn">-</button>
+                    <button id="hpPlusBtn">+</button>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span>Cool: <span id="statCool"></span></span>
+                    <div class="stat-adjust-buttons">
+                        <button data-stat="Cool" data-action="minus">-</button>
+                        <button data-stat="Cool" data-action="plus">+</button>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <span>Hard: <span id="statHard"></span></span>
+                    <div class="stat-adjust-buttons">
+                        <button data-stat="Hard" data-action="minus">-</button>
+                        <button data-stat="Hard" data-action="plus">+</button>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <span>Hot: <span id="statHot"></span></span>
+                    <div class="stat-adjust-buttons">
+                        <button data-stat="Hot" data-action="minus">-</button>
+                        <button data-stat="Hot" data-action="plus">+</button>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <span>Sharp: <span id="statSharp"></span></span>
+                    <div class="stat-adjust-buttons">
+                        <button data-stat="Sharp" data-action="minus">-</button>
+                        <button data-stat="Sharp" data-action="plus">+</button>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <span>Weird: <span id="statWeird"></span></span>
+                    <div class="stat-adjust-buttons">
+                        <button data-stat="Weird" data-action="minus">-</button>
+                        <button data-stat="Weird" data-action="plus">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="collapsible-section">
+                <div class="collapsible-header" data-target="moves">Moves</div>
+                <div class="collapsible-content" id="movesContent">
+                    <ul id="playbookMovesList">
+                        <!-- Moves will be dynamically loaded here -->
+                    </ul>
+                </div>
+            </div>
+
+            <div class="collapsible-section">
+                <div class="collapsible-header" data-target="gear">Gear</div>
+                <div class="collapsible-content" id="gearContent">
+                    <ul id="playbookGearList">
+                        <!-- Gear will be dynamically loaded here -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="center-panel game-panel">
+            <div class="jane-narration" id="janeNarration">
+                <p><span class="loading-dots"></span></p>
+            </div>
+
+            <div class="dice-zone">
+                <div class="dice-display">
+                    <div class="die" id="die1">?</div>
+                    <div class="die" id="die2">?</div>
+                    <div class="die" id="singleDie">?</div>
+                </div>
+                <div class="roll-result" id="rollResult">
+                    <span id="rollSum"></span>
+                    <span id="rollModifierLabel"></span>
+                    <span class="outcome-badge" id="outcomeBadge"></span>
+                </div>
+                <div class="dice-button-row">
+                    <button class="roll-btn" data-dice="2d6">2d6</button>
+                    <button class="roll-btn" data-dice="d20">d20</button>
+                    <button class="roll-btn" data-dice="d12">d12</button>
+                    <button class="roll-btn" data-dice="d10">d10</button>
+                    <button class="roll-btn" data-dice="d8">d8</button>
+                    <button class="roll-btn" data-dice="d6">d6</button>
+                    <button class="roll-btn" data-dice="d4">d4</button>
+                </div>
+                <div class="stat-button-row">
+                    <button class="roll-btn" data-stat-roll="Cool">+Cool</button>
+                    <button class="roll-btn" data-stat-roll="Hard">+Hard</button>
+                    <button class="roll-btn" data-stat-roll="Hot">+Hot</button>
+                    <button class="roll-btn" data-stat-roll="Sharp">+Sharp</button>
+                    <button class="roll-btn" data-stat-roll="Weird">+Weird</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel game-panel">
+            <div class="roll-history">
+                <h4>Roll History</h4>
+                <ul id="rollHistoryList">
+                    <!-- Roll history items here -->
+                </ul>
+            </div>
+
+            <div class="player-action-area">
+                <textarea id="playerActionInput" placeholder="What do you do?"></textarea>
+                <button id="takeActionButton" class="btn">Take Action</button>
+            </div>
+
+            <div class="control-buttons">
+                <button id="askRulesBtn" class="btn">Ask a Rules Question</button>
+                <button id="voiceToggleButton" class="btn">🔊 Jane Speaks</button>
+                <button id="endSessionBtn" class="btn btn-red">End Session</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="session-end-screen">
+        <div class="welcome-card">
+            <h1>Adventure Complete!</h1>
+            <div class="session-stats">
+                <p>Total Rolls: <span id="totalRolls">0</span></p>
+                <p>Strong Hits: <span id="strongHits">0</span></p>
+                <p>Weak Hits: <span id="weakHits">0</span></p>
+                <p>Misses: <span id="misses">0</span></p>
+            </div>
+            <div class="session-end-buttons">
+                <button id="saveCharacterBtn" class="btn">Save Character</button>
+                <button id="deleteAllDataBtn" class="btn btn-red">Delete All Data</button>
+                <button id="newAdventureBtn" class="btn">New Adventure</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8420';
+
+        const currentGame = {
+            sessionId: null,
+            character: null,
+            voiceEnabled: false,
+            stats: { Cool: 0, Hard: 0, Hot: 0, Sharp: 0, Weird: 0 },
+            hp: { current: 6, max: 6 },
+            rollHistory: [],
+            player_name: '',
+            world: '',
+            playbook: '',
+            character_name: '',
+            persist: true,
+            rollStats: { total: 0, strong_hits: 0, weak_hits: 0, misses: 0 }
+        };
+
+        const PLAYBOOK_DATA = {
+            brave: {
+                moves: ["Iron Will: Ignore 1 harm from physical attacks once per scene.", "Protector's Stance: When you defend a weaker ally, roll +Hard."],
+                gear: ["Heavy Armor", "Shield", "Sword", "Healing Potion (1)"]
+            },
+            clever: {
+                moves: ["Quick Wit: When you gather information, roll +Sharp.", "Escape Artist: When you need to get away from a dangerous situation, roll +Hot."],
+                gear: ["Lockpicks", "Map", "Dagger", "Disguise Kit"]
+            },
+            weird: {
+                moves: ["Mystic Sight: When you look into the unseen, roll +Weird.", "Strange Connection: You can communicate with animals or spirits."],
+                gear: ["Arcane Tome", "Crystal Orb", "Staff", "Strange Amulet"]
+            },
+            charming: {
+                moves: ["Silver Tongue: When you try to influence someone, roll +Hot.", "Inspiring Presence: When you rally your allies, they get +1 forward to their next roll."],
+                gear: ["Fine Clothes", "Lute", "Charm", "Pouch of Gold"]
+            },
+            wild: {
+                moves: ["Hunter's Instinct: When you track prey or navigate the wilderness, roll +Sharp.", "Beast Form: You can transform into a small animal once per day."],
+                gear: ["Bow & Arrows", "Hunting Trap", "Animal Pelt Cloak", "Survival Kit"]
+            }
+        };
+
+        const MOCK_NARRATIONS = {
+            classic_fantasy: [
+                "The air here is thick with ancient magic and the scent of pine. What do you do, brave adventurer?",
+                "A winding path stretches before you, flanked by gnarled trees. A faint glow emanates from deeper within the forest. What's your next move?",
+                "You find yourself in a bustling tavern, the sound of laughter and clinking mugs filling the air. A grizzled warrior at the bar catches your eye. How do you proceed?",
+                "A fearsome dragon circles overhead, casting a long shadow across the valley. Its roar echoes through the mountains. What do you do?",
+                "You've stumbled upon a forgotten shrine, overgrown with ivy. A sense of peace, and something else, hangs in the air. What do you investigate?"
+            ],
+            space_adventure: [
+                "The hum of your starship's engines is a comforting sound as you drift through the void. Ahead, a faint distress signal flickers. What's your response?",
+                "You've landed on a desolate alien planet, twin suns blazing overhead. Strange, crystalline flora sprouts from the crimson soil. What's your first action?",
+                "The space station's corridors are eerily silent, save for the drip of condensation. Your comms are dead. What do you do now?",
+                "A hostile alien patrol ship is on your tail, lasers streaking across the blackness. Do you attempt evasive maneuvers or return fire?",
+                "You've discovered a forgotten artifact, pulsing with an unknown energy. Its origins are a complete mystery. How do you handle it?"
+            ],
+            mystery_magic: [
+                "The cobblestone streets of the city are slick with rain, and a chilling fog rolls in from the river. A strange symbol has appeared overnight on the old clock tower. What do you observe?",
+                "In the dusty archives, you find a cryptic note tucked inside an ancient grimoire. It speaks of a hidden truth, and a coming storm. What's your next lead?",
+                "A series of strange disappearances has plagued the town. The townsfolk whisper of shadows and whispers in the night. Who do you question first?",
+                "You've uncovered a secret society operating beneath the city, dabbling in forbidden arts. Their rituals are about to begin. What do you do?",
+                "The air crackles with untamed magic as you enter the forgotten library. Books float in mid-air, and spectral figures drift between shelves. What do you seek?"
+            ],
+            custom_world: [
+                "The world around you is full of wonders and challenges. What catches your eye first, adventurer?",
+                "A new day dawns in this unique land. What will you seek out today?",
+                "Your path is your own to forge. What action do you take?",
+                "The environment shifts, revealing a new mystery. How do you react?",
+                "Tell me, what do you do next?"
+            ]
+        };
+        let mockNarrationIndex = 0;
+
+        // --- DOM Elements ---
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const gameTableScreen = document.getElementById('game-table-screen');
+        const sessionEndScreen = document.getElementById('session-end-screen');
+
+        // Welcome Screen Elements
+        const playerNameInput = document.getElementById('playerName');
+        const worldSelection = document.getElementById('worldSelection');
+        const customWorldNameInput = document.getElementById('customWorldName');
+        const playbookSelection = document.getElementById('playbookSelection');
+        const characterNameInput = document.getElementById('characterName');
+        const consentCheckbox = document.getElementById('consentCheckbox');
+        const beginAdventureBtn = document.getElementById('beginAdventureBtn');
+
+        // Game Table Elements
+        const charPlaybookBadge = document.getElementById('charPlaybookBadge');
+        const charNameDisplay = document.getElementById('charNameDisplay');
+        const playerNameDisplay = document.getElementById('playerNameDisplay');
+        const currentHP = document.getElementById('currentHP');
+        const maxHP = document.getElementById('maxHP');
+        const hpFill = document.querySelector('.hp-fill');
+        const hpMinusBtn = document.getElementById('hpMinusBtn');
+        const hpPlusBtn = document.getElementById('hpPlusBtn');
+        const statCool = document.getElementById('statCool');
+        const statHard = document.getElementById('statHard');
+        const statHot = document.getElementById('statHot');
+        const statSharp = document.getElementById('statSharp');
+        const statWeird = document.getElementById('statWeird');
+        const playbookMovesList = document.getElementById('playbookMovesList');
+        const playbookGearList = document.getElementById('playbookGearList');
+
+        const janeNarration = document.getElementById('janeNarration');
+        const die1 = document.getElementById('die1');
+        const die2 = document.getElementById('die2');
+        const singleDie = document.getElementById('singleDie');
+        const rollResult = document.getElementById('rollResult');
+        const rollSum = document.getElementById('rollSum');
+        const rollModifierLabel = document.getElementById('rollModifierLabel');
+        const outcomeBadge = document.getElementById('outcomeBadge');
+        const diceButtonRow = document.querySelector('.dice-button-row');
+        const statButtonRow = document.querySelector('.stat-button-row');
+
+        const rollHistoryList = document.getElementById('rollHistoryList');
+        const playerActionInput = document.getElementById('playerActionInput');
+        const takeActionButton = document.getElementById('takeActionButton');
+        const askRulesBtn = document.getElementById('askRulesBtn');
+        const voiceToggleButton = document.getElementById('voiceToggleButton');
+        const endSessionBtn = document.getElementById('endSessionBtn');
+
+        // Session End Elements
+        const totalRolls = document.getElementById('totalRolls');
+        const strongHits = document.getElementById('strongHits');
+        const weakHits = document.getElementById('weakHits');
+        const misses = document.getElementById('misses');
+        const saveCharacterBtn = document.getElementById('saveCharacterBtn');
+        const deleteAllDataBtn = document.getElementById('deleteAllDataBtn');
+        const newAdventureBtn = document.getElementById('newAdventureBtn');
+
+        // --- Utility Functions ---
+        function updateBeginButtonState() {
+            const playerName = playerNameInput.value.trim();
+            const selectedWorld = document.querySelector('#worldSelection .radio-card.selected');
+            const customWorldName = customWorldNameInput.value.trim();
+            const selectedPlaybook = document.querySelector('#playbookSelection .radio-card.selected');
+            const characterName = characterNameInput.value.trim();
+
+            const isWorldSelected = selectedWorld && (selectedWorld.dataset.value !== 'custom_world' || customWorldName !== '');
+            
+            beginAdventureBtn.disabled = !(playerName && isWorldSelected && selectedPlaybook && characterName);
+        }
+
+        function selectRadioCard(containerId, value) {
+            const container = document.getElementById(containerId);
+            const cards = container.querySelectorAll('.radio-card');
+            cards.forEach(card => {
+                if (card.dataset.value === value) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
+                }
+            });
+        }
+
+        function toggleCollapsible(header) {
+            header.classList.toggle('expanded');
+            const content = header.nextElementSibling;
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                content.style.maxHeight = null;
+            } else {
+                content.classList.add('expanded');
+                content.style.maxHeight = content.scrollHeight + "px";
+            }
+        }
+
+        function setHP(newHP) {
+            currentGame.hp.current = Math.max(0, Math.min(newHP, currentGame.hp.max));
+            currentHP.textContent = currentGame.hp.current;
+            const percentage = (currentGame.hp.current / currentGame.hp.max) * 100;
+            hpFill.style.width = `${percentage}%`;
+            // Calculate background-position for gradient based on HP
+            // 0% HP -> 100% background-position (red)
+            // 100% HP -> 0% background-position (green)
+            const bgPosition = 100 - percentage;
+            hpFill.style.backgroundPosition = `${bgPosition}% 0%`;
+            saveGameData();
+        }
+
+        function updateStatDisplay() {
+            statCool.textContent = formatModifier(currentGame.stats.Cool);
+            statHard.textContent = formatModifier(currentGame.stats.Hard);
+            statHot.textContent = formatModifier(currentGame.stats.Hot);
+            statSharp.textContent = formatModifier(currentGame.stats.Sharp);
+            statWeird.textContent = formatModifier(currentGame.stats.Weird);
+            saveGameData();
+        }
+
+        function formatModifier(value) {
+            return value >= 0 ? `+${value}` : `${value}`;
+        }
+
+        function speakText(text) {
+            if (!currentGame.voiceEnabled || !window.speechSynthesis) return;
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            const voices = window.speechSynthesis.getVoices();
+            let janeVoice = voices.find(voice => voice.name.toLowerCase().includes('female') || voice.name.toLowerCase().includes('woman') || voice.lang === 'en-US');
+            if (!janeVoice) janeVoice = voices.find(voice => voice.lang === 'en-US');
+            if (janeVoice) {
+                utterance.voice = janeVoice;
+            }
+            utterance.rate = 0.9;
+            utterance.pitch = 1.1;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function smoothScrollToBottom(element) {
+            element.scrollTo({
+                top: element.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+
+        // --- API & Mock Functions ---
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const url = `${API_BASE}${endpoint}`;
+            const options = {
+                method: method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.statusText}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.warn(`API call to ${url} failed:`, error);
+                return null; // Indicate failure to use mock
+            }
+        }
+
+        async function startSession(playerName, world, persist) {
+            const response = await apiFetch('/api/game/session/start', 'POST', {
+                player_name: playerName,
+                world: world,
+                persist: persist,
+                game_type: 'pbta',
+                mode: 'full_gm'
+            });
+            if (response && response.session_id) {
+                return response.session_id;
+            } else {
+                console.log("Using mock session ID.");
+                return 'local-' + Date.now();
+            }
+        }
+
+        async function createCharacter(sessionId, name, playbook) {
+            const response = await apiFetch('/api/game/character/create', 'POST', {
+                session_id: sessionId,
+                name: name,
+                playbook: playbook
+            });
+            if (response && response.character_id) {
+                return { id: response.character_id, name: name, playbook: playbook }; // Mock character data for now
+            } else {
+                console.log("Using mock character data.");
+                return { id: 'char-' + Date.now(), name: name, playbook: playbook };
+            }
+        }
+
+        async function rollDiceAPI(sessionId, dice, modifier, modifier_label) {
+            const response = await apiFetch('/api/game/roll', 'POST', {
+                session_id: sessionId,
+                dice: dice,
+                modifier: modifier,
+                modifier_label: modifier_label
+            });
+            if (response && response.rolls) {
+                return response;
+            } else {
+                console.log("Using mock dice roll.");
+                const rolls = [];
+                let total = 0;
+                let numDice = 1;
+                if (dice === '2d6') numDice = 2;
+                else if (dice.startsWith('d')) numDice = 1;
+
+                for (let i = 0; i < numDice; i++) {
+                    rolls.push(Math.floor(Math.random() * parseInt(dice.split('d')[1])) + 1);
+                }
+                total = rolls.reduce((a, b) => a + b, 0) + modifier;
+
+                let outcome;
+                if (dice === '2d6') {
+                    if (total >= 10) outcome = 'strong_hit';
+                    else if (total >= 7) outcome = 'weak_hit';
+                    else outcome = 'miss';
+                } else {
+                    // For other dice, just use a generic success/fail based on a threshold
+                    if (total >= 15) outcome = 'strong_hit'; // d20 example
+                    else if (total >= 8) outcome = 'weak_hit';
+                    else outcome = 'miss';
+                }
+
+                return {
+                    rolls: rolls,
+                    total: total,
+                    outcome: outcome,
+                    hash: 'mock-' + Date.now(),
+                    modifier: modifier,
+                    modifier_label: modifier_label,
+                    dice: dice
+                };
+            }
+        }
+
+        async function narrateActionAPI(sessionId, actionText, rollContext = '') {
+            const response = await apiFetch('/api/game/narrate', 'POST', {
+                session_id: sessionId,
+                action: actionText,
+                roll_context: rollContext
+            });
+            if (response && response.narration) {
+                return response.narration;
+            } else {
+                console.log("Using mock narration.");
+                const worldKey = currentGame.world === 'custom_world' ? 'custom_world' : currentGame.world;
+                const narrations = MOCK_NARRATIONS[worldKey] || MOCK_NARRATIONS['classic_fantasy'];
+                const narration = narrations[mockNarrationIndex % narrations.length];
+                mockNarrationIndex++;
+                return narration;
+            }
+        }
+
+        async function endSessionAPI(sessionId) {
+            await apiFetch(`/api/game/session/${sessionId}`, 'DELETE');
+            // No return value needed, just try to delete
+        }
+
+        // --- Game Logic ---
+        async function beginAdventure() {
+            currentGame.player_name = playerNameInput.value.trim();
+            currentGame.world = document.querySelector('#worldSelection .radio-card.selected').dataset.value;
+            if (currentGame.world === 'custom_world') {
+                currentGame.world = customWorldNameInput.value.trim(); // Store the actual custom name
+            }
+            currentGame.playbook = document.querySelector('#playbookSelection .radio-card.selected').dataset.value;
+            currentGame.character_name = characterNameInput.value.trim();
+            currentGame.persist = consentCheckbox.checked;
+
+            welcomeScreen.style.display = 'none';
+            gameTableScreen.style.display = 'flex';
+
+            // Set initial character data in UI
+            charPlaybookBadge.textContent = currentGame.playbook.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            charNameDisplay.textContent = currentGame.character_name;
+            playerNameDisplay.textContent = currentGame.player_name;
+            maxHP.textContent = currentGame.hp.max;
+            setHP(currentGame.hp.max); // Initialize HP bar
+
+            // Set initial stats based on PBtA rules (example defaults, could be more complex)
+            currentGame.stats = { Cool: 0, Hard: 0, Hot: 0, Sharp: 0, Weird: 0 };
+            switch (currentGame.playbook) {
+                case 'brave': currentGame.stats.Hard = 1; currentGame.stats.Cool = 1; break;
+                case 'clever': currentGame.stats.Sharp = 1; currentGame.stats.Cool = 1; break;
+                case 'weird': currentGame.stats.Weird = 1; currentGame.stats.Hot = 1; break;
+                case 'charming': currentGame.stats.Hot = 1; currentGame.stats.Sharp = 1; break;
+                case 'wild': currentGame.stats.Hard = 1; currentGame.stats.Sharp = 1; break;
+            }
+            updateStatDisplay();
+
+            // Load playbook specific moves and gear
+            const playbookData = PLAYBOOK_DATA[currentGame.playbook];
+            playbookMovesList.innerHTML = playbookData.moves.map(move => `<li>${move}</li>`).join('');
+            playbookGearList.innerHTML = playbookData.gear.map(gear => `<li>${gear}</li>`).join('');
+
+            // Start session and create character
+            currentGame.sessionId = await startSession(currentGame.player_name, currentGame.world, currentGame.persist);
+            currentGame.character = await createCharacter(currentGame.sessionId, currentGame.character_name, currentGame.playbook);
+
+            saveGameData(); // Save initial game state
+            narrateAction(''); // Initial narration
+        }
+
+        async function rollDice(diceType, modifier = 0, modLabel = '') {
+            die1.style.display = 'none';
+            die2.style.display = 'none';
+            singleDie.style.display = 'none';
+            rollResult.classList.remove('show');
+
+            if (diceType === '2d6') {
+                die1.style.display = 'flex';
+                die2.style.display = 'flex';
+                die1.textContent = '?';
+                die2.textContent = '?';
+                die1.classList.add('rolling');
+                die2.classList.add('rolling');
+            } else {
+                singleDie.style.display = 'flex';
+                singleDie.textContent = '?';
+                singleDie.classList.add('rolling');
+            }
+
+            const rollData = await rollDiceAPI(currentGame.sessionId, diceType, modifier, modLabel);
+
+            setTimeout(() => {
+                if (diceType === '2d6') {
+                    die1.classList.remove('rolling');
+                    die2.classList.remove('rolling');
+                    die1.textContent = rollData.rolls[0];
+                    die2.textContent = rollData.rolls[1];
+                } else {
+                    singleDie.classList.remove('rolling');
+                    singleDie.textContent = rollData.rolls[0];
+                }
+
+                rollSum.textContent = `Total: ${rollData.total}`;
+                rollModifierLabel.textContent = modLabel ? ` (${modLabel} ${formatModifier(modifier)})` : '';
+                outcomeBadge.textContent = rollData.outcome.replace('_', ' ').toUpperCase();
+                outcomeBadge.className = `outcome-badge ${rollData.outcome}`;
+                rollResult.classList.add('show');
+
+                currentGame.rollHistory.unshift({
+                    dice: diceType,
+                    modifier: modifier,
+                    modifier_label: modLabel,
+                    rolls: rollData.rolls,
+                    total: rollData.total,
+                    outcome: rollData.outcome,
+                    hash: rollData.hash,
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                updateRollHistory();
+                updateRollStats(rollData.outcome);
+                saveGameData();
+
+                const rollContext = `Rolled ${diceType}${modLabel ? '+' + modLabel : ''}: ${rollData.total} (${rollData.outcome.replace('_', ' ').toUpperCase()})`;
+                narrateAction(rollContext);
+            }, 800);
+        }
+
+        function updateRollHistory() {
+            rollHistoryList.innerHTML = currentGame.rollHistory.map(roll => `
+                <li title="${roll.hash}">
+                    <span>${roll.timestamp}: ${roll.dice}${roll.modifier_label ? '('+roll.modifier_label+')' : ''} ${roll.rolls.join('+')} ${roll.modifier ? formatModifier(roll.modifier) : ''} = <strong>${roll.total}</strong></span>
+                    <span class="history-outcome ${roll.outcome}">${roll.outcome.replace('_', ' ').toUpperCase()}</span>
+                </li>
+            `).join('');
+        }
+
+        function updateRollStats(outcome) {
+            currentGame.rollStats.total++;
+            if (outcome === 'strong_hit') currentGame.rollStats.strong_hits++;
+            else if (outcome === 'weak_hit') currentGame.rollStats.weak_hits++;
+            else if (outcome === 'miss') currentGame.rollStats.misses++;
+        }
+
+        async function narrateAction(playerAction) {
+            janeNarration.innerHTML = `<p><span class="loading-dots"></span></p>`; // Show loading dots
+            speakText("Hmm, let me think..."); // Speak loading message
+            
+            const narrationText = await narrateActionAPI(currentGame.sessionId, playerAction);
+            
+            janeNarration.innerHTML = ''; // Clear loading dots
+            const p = document.createElement('p');
+            janeNarration.appendChild(p);
+
+            let i = 0;
+            const typeWriterEffect = () => {
+                if (i < narrationText.length) {
+                    p.textContent += narrationText.charAt(i);
+                    i++;
+                    setTimeout(typeWriterEffect, 20); // Adjust typing speed here
+                } else {
+                    speakText(narrationText); // Speak full narration after typing
+                    smoothScrollToBottom(janeNarration);
+                }
+            };
+            typeWriterEffect();
+        }
+
+        function toggleVoice() {
+            currentGame.voiceEnabled = !currentGame.voiceEnabled;
+            voiceToggleButton.textContent = currentGame.voiceEnabled ? '🔊 Jane Speaks' : '🔇 Silent Mode';
+            saveGameData();
+            if (currentGame.voiceEnabled) {
+                speakText("Hello adventurer! I'm ready to guide you.");
+            }
+        }
+
+        function showEndScreen() {
+            gameTableScreen.style.display = 'none';
+            sessionEndScreen.style.display = 'flex';
+            totalRolls.textContent = currentGame.rollStats.total;
+            strongHits.textContent = currentGame.rollStats.strong_hits;
+            weakHits.textContent = currentGame.rollStats.weak_hits;
+            misses.textContent = currentGame.rollStats.misses;
+        }
+
+        function resetGame() {
+            localStorage.removeItem('janeGMGame'); // Clear all local storage
+            Object.assign(currentGame, {
+                sessionId: null, character: null, voiceEnabled: false, stats: {Cool:0, Hard:0, Hot:0, Sharp:0, Weird:0}, hp: {current:6, max:6}, rollHistory: [],
+                player_name: '', world: '', playbook: '', character_name: '', persist: true, rollStats: { total: 0, strong_hits: 0, weak_hits: 0, misses: 0 }
+            });
+            mockNarrationIndex = 0; // Reset mock narration index
+            sessionEndScreen.style.display = 'none';
+            welcomeScreen.style.display = 'flex';
+            // Clear welcome screen inputs
+            playerNameInput.value = '';
+            customWorldNameInput.value = '';
+            customWorldNameInput.style.display = 'none';
+            playbookSelection.querySelectorAll('.radio-card').forEach(card => card.classList.remove('selected'));
+            worldSelection.querySelectorAll('.radio-card').forEach(card => card.classList.remove('selected'));
+            characterNameInput.value = '';
+            consentCheckbox.checked = true;
+            updateBeginButtonState();
+        }
+
+        // --- Local Storage ---
+        function saveGameData() {
+            if (currentGame.persist) {
+                localStorage.setItem('janeGMGame', JSON.stringify(currentGame));
+            }
+        }
+
+        function loadGameData() {
+            const savedData = localStorage.getItem('janeGMGame');
+            if (savedData) {
+                Object.assign(currentGame, JSON.parse(savedData));
+                return true;
+            }
+            return false;
+        }
+
+        function applyLoadedDataToUI() {
+            // Welcome screen (will be hidden, but good for consistency)
+            playerNameInput.value = currentGame.player_name;
+            selectRadioCard('worldSelection', currentGame.world);
+            if (currentGame.world.includes('custom-')) { // If it was a custom world, set the input
+                selectRadioCard('worldSelection', 'custom_world');
+                customWorldNameInput.value = currentGame.world;
+                customWorldNameInput.style.display = 'block';
+            }
+            selectRadioCard('playbookSelection', currentGame.playbook);
+            characterNameInput.value = currentGame.character_name;
+            consentCheckbox.checked = currentGame.persist;
+            updateBeginButtonState(); // Enable button if all data present
+
+            // Game Table UI
+            charPlaybookBadge.textContent = currentGame.playbook.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            charNameDisplay.textContent = currentGame.character_name;
+            playerNameDisplay.textContent = currentGame.player_name;
+            maxHP.textContent = currentGame.hp.max;
+            setHP(currentGame.hp.current); // Update HP bar with loaded value
+
+            updateStatDisplay(); // Update stats with loaded values
+
+            // Load playbook specific moves and gear
+            const playbookData = PLAYBOOK_DATA[currentGame.playbook];
+            if (playbookData) {
+                playbookMovesList.innerHTML = playbookData.moves.map(move => `<li>${move}</li>`).join('');
+                playbookGearList.innerHTML = playbookData.gear.map(gear => `<li>${gear}</li>`).join('');
+            }
+
+            updateRollHistory();
+            voiceToggleButton.textContent = currentGame.voiceEnabled ? '🔊 Jane Speaks' : '🔇 Silent Mode';
+            
+            // Set initial narration if loaded (or a placeholder)
+            if (janeNarration.children.length === 0) {
+                janeNarration.innerHTML = '<p>Welcome back, adventurer! What would you like to do?</p>';
+            }
+        }
+
+        // --- Event Listeners ---
+        playerNameInput.addEventListener('input', updateBeginButtonState);
+        characterNameInput.addEventListener('input', updateBeginButtonState);
+        customWorldNameInput.addEventListener('input', updateBeginButtonState);
+
+        worldSelection.addEventListener('click', (event) => {
+            const card = event.target.closest('.radio-card');
+            if (card) {
+                selectRadioCard('worldSelection', card.dataset.value);
+                if (card.dataset.value === 'custom_world') {
+                    customWorldNameInput.style.display = 'block';
+                    customWorldNameInput.focus();
+                } else {
+                    customWorldNameInput.style.display = 'none';
+                    customWorldNameInput.value = '';
+                }
+                updateBeginButtonState();
+            }
+        });
+
+        playbookSelection.addEventListener('click', (event) => {
+            const card = event.target.closest('.radio-card');
+            if (card) {
+                selectRadioCard('playbookSelection', card.dataset.value);
+                updateBeginButtonState();
+            }
+        });
+
+        beginAdventureBtn.addEventListener('click', beginAdventure);
+
+        hpMinusBtn.addEventListener('click', () => setHP(currentGame.hp.current - 1));
+        hpPlusBtn.addEventListener('click', () => setHP(currentGame.hp.current + 1));
+
+        document.querySelectorAll('.stat-adjust-buttons button').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const stat = event.target.dataset.stat;
+                const action = event.target.dataset.action;
+                if (action === 'plus') {
+                    currentGame.stats[stat]++;
+                } else if (action === 'minus') {
+                    currentGame.stats[stat]--;
+                }
+                updateStatDisplay();
+            });
+        });
+
+        document.querySelectorAll('.collapsible-header').forEach(header => {
+            header.addEventListener('click', () => toggleCollapsible(header));
+        });
+
+        diceButtonRow.addEventListener('click', (event) => {
+            const button = event.target.closest('.roll-btn');
+            if (button && button.dataset.dice) {
+                rollDice(button.dataset.dice, 0, '');
+            }
+        });
+
+        statButtonRow.addEventListener('click', (event) => {
+            const button = event.target.closest('.roll-btn');
+            if (button && button.dataset.statRoll) {
+                const stat = button.dataset.statRoll;
+                rollDice('2d6', currentGame.stats[stat], stat);
+            }
+        });
+
+        takeActionButton.addEventListener('click', () => {
+            const actionText = playerActionInput.value.trim();
+            if (actionText) {
+                narrateAction(actionText);
+                playerActionInput.value = '';
+            }
+        });
+
+        askRulesBtn.addEventListener('click', () => {
+            narrateAction("Jane, can you explain a PBtA move?"); // Specific action for rules question
+        });
+
+        voiceToggleButton.addEventListener('click', toggleVoice);
+
+        endSessionBtn.addEventListener('click', () => {
+            if (confirm("Are you sure you want to end this adventure? Your progress will be saved (if consented).")) {
+                endSessionAPI(currentGame.sessionId);
+                showEndScreen();
+            }
+        });
+
+        saveCharacterBtn.addEventListener('click', () => {
+            alert("Character data saved! (Functionality for export/import not implemented in this demo.)");
+            // In a real app, this would trigger a download or cloud save
+        });
+
+        deleteAllDataBtn.addEventListener('click', () => {
+            if (confirm("Are you absolutely sure you want to delete all local session data? This cannot be undone.")) {
+                localStorage.removeItem('janeGMGame');
+                alert("All local data deleted.");
+                resetGame();
+            }
+        });
+
+        newAdventureBtn.addEventListener('click', () => {
+            resetGame();
+        });
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            if (loadGameData()) {
+                welcomeScreen.style.display = 'none';
+                gameTableScreen.style.display = 'flex';
+                applyLoadedDataToUI();
+            } else {
+                welcomeScreen.style.display = 'flex';
+                gameTableScreen.style.display = 'none';
+                sessionEndScreen.style.display = 'none';
+                updateBeginButtonState(); // Ensure button is disabled initially
+            }
+        });
+
+        // Ensure voices are loaded for speech synthesis
+        if (window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = () => {
+                // Voices might not be available immediately, this ensures they are
+                console.log("Speech synthesis voices loaded.");
+            };
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+# Governance Proposal: Add Willow Connections Card to Jane Dashboard
+
+**Proposer:** Ganesha (Claude Code)
+**Date:** 2026-02-26T00:00:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add a "Willow Noticed" sidebar section to SAFE/web/jane.html showing pending connections Willow
+has proposed (confirmed=0 in entity_connections). Each card shows the two entities and relationship
+type, with Approve / Edit / Deny actions. Edits auto-approve after saving. Auto-refreshes every 60s.
+Reads from the new /api/willow/connections/pending endpoint.
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — remove CSS block, HTML section, and JS functions
+- **Dependencies:** /api/willow/connections/pending + /approve + /deny + /edit (added to server.py directly)
+- **Testing:** Load jane.html with server running; propose a connection via binder or direct DB insert with confirmed=0
+
+## ΔE Impact
+Expected ΔE: +0.05 (additive sidebar section, no existing functionality changed)
+
+## Implementation
+
+Apply via Python string replacement:
+
+```python
+from pathlib import Path
+
+f = Path(r"C:/Users/Sean/Documents/GitHub/SAFE/web/jane.html")
+content = f.read_text(encoding="utf-8")
+
+# 1. CSS — insert after .pickup-badge.zero rule
+CSS_ANCHOR = "    .pickup-badge.zero { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.4); }"
+CSS_ADD = """
+    .wconn-item {
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 12px;
+    }
+    .wconn-item:last-of-type { border-bottom: none; }
+    .wconn-entities {
+      font-weight: 600;
+      color: var(--fg);
+      margin-bottom: 3px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .wconn-type {
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .wconn-actions {
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+    }
+    .wconn-btn {
+      flex: 1;
+      padding: 3px 0;
+      border-radius: 3px;
+      border: none;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .wconn-approve { background: rgba(74,222,128,0.18); color: #4ade80; }
+    .wconn-approve:hover { background: rgba(74,222,128,0.3); }
+    .wconn-edit    { background: rgba(122,180,255,0.15); color: #7ab4ff; }
+    .wconn-edit:hover    { background: rgba(122,180,255,0.28); }
+    .wconn-deny    { background: rgba(248,113,113,0.15); color: #f87171; }
+    .wconn-deny:hover    { background: rgba(248,113,113,0.28); }
+    .wconn-empty   { color: rgba(255,255,255,0.3); font-size: 12px; font-style: italic; }
+    .wconn-badge {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 8px;
+      font-size: 10px;
+      padding: 1px 6px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .wconn-badge.zero { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.4); }"""
+content = content.replace(CSS_ANCHOR, CSS_ANCHOR + CSS_ADD, 1)
+
+# 2. HTML — insert Willow connections section after pickup section, before back link
+HTML_ANCHOR = '        <a href="index.html" class="sidebar-back-link">← Back to SAFE</a>'
+HTML_ADD = """        <div class="sidebar-section" id="wconn-section">
+          <div class="sidebar-section-title">
+            Willow Noticed <span class="wconn-badge zero" id="wconn-badge">0</span>
+          </div>
+          <div id="wconn-list"><span class="wconn-empty">Loading...</span></div>
+        </div>
+
+"""
+content = content.replace(HTML_ANCHOR, HTML_ADD + HTML_ANCHOR, 1)
+
+# 3. JS — insert after loadPickup() + setInterval, before </script>
+JS_ANCHOR = "    setInterval(loadPickup, 30000);\n    loadPickup();\n  </script>"
+JS_ADD = """
+    // ── Willow Connections ──────────────────────────────────────────
+    async function loadWillowConnections() {
+      try {
+        const res = await fetch(`${WILLOW_API}/api/willow/connections/pending?username=Sweet-Pea-Rudi19`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const items = data.connections || [];
+        const list  = document.getElementById('wconn-list');
+        const badge = document.getElementById('wconn-badge');
+        badge.textContent = items.length;
+        badge.className = items.length > 0 ? 'wconn-badge' : 'wconn-badge zero';
+        if (items.length === 0) {
+          list.innerHTML = '<span class="wconn-empty">Nothing pending.</span>';
+          return;
+        }
+        list.innerHTML = items.map(c => `
+          <div class="wconn-item" id="wconn-${c.id}">
+            <div class="wconn-entities">${escH(c.name_a)} → ${escH(c.name_b)}</div>
+            <div class="wconn-type">${escH(c.connection_type)}</div>
+            <div class="wconn-actions">
+              <button class="wconn-btn wconn-approve" onclick="wconnApprove(${c.id})">✓ Approve</button>
+              <button class="wconn-btn wconn-edit"    onclick="wconnEdit(${c.id}, '${escH(c.connection_type)}')">✎ Edit</button>
+              <button class="wconn-btn wconn-deny"    onclick="wconnDeny(${c.id})">✗ Deny</button>
+            </div>
+          </div>`).join('');
+      } catch (e) {}
+    }
+
+    function escH(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function wconnApprove(id) {
+      try {
+        await fetch(`${WILLOW_API}/api/willow/connections/${id}/approve?username=Sweet-Pea-Rudi19`, {method:'POST'});
+        document.getElementById(`wconn-${id}`)?.remove();
+        loadWillowConnections();
+      } catch (e) {}
+    }
+
+    async function wconnDeny(id) {
+      try {
+        await fetch(`${WILLOW_API}/api/willow/connections/${id}/deny?username=Sweet-Pea-Rudi19`, {method:'POST'});
+        document.getElementById(`wconn-${id}`)?.remove();
+        loadWillowConnections();
+      } catch (e) {}
+    }
+
+    async function wconnEdit(id, currentType) {
+      const newType = prompt('Edit connection type:', currentType);
+      if (newType === null) return;
+      try {
+        await fetch(`${WILLOW_API}/api/willow/connections/${id}/edit?username=Sweet-Pea-Rudi19`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({connection_type: newType.trim()})
+        });
+        loadWillowConnections();
+      } catch (e) {}
+    }
+
+    setInterval(loadWillowConnections, 60000);
+    loadWillowConnections();"""
+content = content.replace(JS_ANCHOR, "    setInterval(loadPickup, 30000);\n    loadPickup();\n" + JS_ADD + "\n  </script>", 1)
+
+f.write_text(content, encoding="utf-8")
+print("Done.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
