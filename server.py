@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import local_api
 from core import knowledge
+from core import ocr_consumer
 
 # context_store lives in ~/.claude — load dynamically
 try:
@@ -3302,6 +3303,29 @@ async def binder_ingest_pickup(username: str = USERNAME):
         return {"status": "ok", **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/binder/process-queue")
+async def binder_process_queue(batch: int = 20, username: str = USERNAME):
+    """Drain the OCR queue — process up to batch items from Pickup."""
+    try:
+        result = ocr_consumer.process_queue(username=username, max_batch=batch)
+        return {"status": "ok", **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _ocr_queue_background_loop():
+    """Background thread: drain OCR queue every 5 minutes."""
+    import time
+    while True:
+        try:
+            result = ocr_consumer.process_queue(max_batch=10)
+            if result.get("processed", 0) > 0:
+                logging.info(f"OCR_BACKGROUND: processed={result['processed']} remaining={result['queue_remaining']}")
+        except Exception as e:
+            logging.warning(f"OCR_BACKGROUND error: {e}")
+        time.sleep(300)  # 5 minutes
 
 
 @app.post("/api/gazelle/session/start")
