@@ -22,8 +22,8 @@ class DeltaTracker:
 
     def __init__(self, username: str):
         self.username = username
-        self.db_path = Path(f"artifacts/{username}/deltas.db")
-        self.delta_dir = Path(f"artifacts/{username}/deltas")
+        self.db_path = Path("artifacts/kart/deltas.db")
+        self.delta_dir = Path("artifacts/kart/deltas")
         self.delta_dir.mkdir(parents=True, exist_ok=True)
         self._init_db()
 

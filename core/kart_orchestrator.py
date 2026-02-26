@@ -411,7 +411,7 @@ ASSISTANT (respond with JSON):"""
         }
 
         # Save using seed_packet module
-        seed_dir = Path(__file__).parent.parent / "artifacts" / self.username / "kart" / "sessions"
+        seed_dir = Path(__file__).parent.parent / "artifacts" / self.agent_name / "sessions"
         seed_dir.mkdir(parents=True, exist_ok=True)
         seed_path = seed_dir / f"{self.session_id}.json"
         save_packet(current_state, str(seed_path))

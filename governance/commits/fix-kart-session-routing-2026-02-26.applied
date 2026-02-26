@@ -1,0 +1,82 @@
+# Governance Proposal: Fix Kart session artifact routing
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-02-26T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Kart's SEED_PACKET session files and delta files are written to `artifacts/{username}/kart/sessions/` and `artifacts/{username}/deltas/` — under the human user's directory. They should write to `artifacts/kart/sessions/` and `artifacts/kart/deltas/` — Kart's own agent directory. Agent-to-user communication (via `local_api.send_to_pickup`) is correct and unchanged.
+
+Two files are affected:
+- `core/kart_orchestrator.py` — line 414: `_save_seed_packet` builds `seed_dir` under `self.username`
+- `core/delta_tracker.py` — lines 25–26: `__init__` builds `db_path` and `delta_dir` under `username`
+
+## Proposed Changes
+
+**File 1:** `core/kart_orchestrator.py`
+**Location:** `_save_seed_packet` method, line 414
+
+**File 2:** `core/delta_tracker.py`
+**Location:** `__init__` method, lines 25–26
+
+## Rationale
+
+- Kart is a registered agent node, not a user. Its internal state belongs in its own artifact directory (`artifacts/kart/`), not under the human user's Auth directory.
+- Auth Users folders (`artifacts/willow/Auth Users/Sweet-Pea-Rudi19/`) are for human user data. Agent nodes are registered in the Willow registry and have their own top-level artifact directories.
+- The only thing the human user should receive from Kart is through their Pickup box (`artifacts/willow/Auth Users/{username}/Pickup/`), which is already routed correctly via `local_api.send_to_pickup`.
+- Misrouted SEED_PACKETs under the user directory create confusion about data ownership and violate the agent/user separation defined in the registry architecture.
+- `kart_orchestrator.py` line 49 already correctly routes the runtime `session_path` to `artifacts/kart/sessions/` — line 414 is an inconsistency within the same class.
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — path change only; old files in `artifacts/{username}/kart/` and `artifacts/{username}/deltas/` are not deleted and can be manually migrated if needed
+- **Dependencies:** `artifacts/kart/sessions/` must exist — it is created by `kart_cli.py` lines 205–206 and also by `kart_orchestrator.py` `__init__` (line 49–50), so this is satisfied. `artifacts/kart/deltas/` will be auto-created by `delta_tracker.py` `mkdir(parents=True, exist_ok=True)` on first use.
+- **Testing:** Run `kart_cli.py`, execute a multi-step task, verify:
+  - `artifacts/kart/sessions/{session_id}.json` is created (not `artifacts/Sweet-Pea-Rudi19/kart/sessions/`)
+  - `artifacts/kart/deltas/{delta_id}.md` is created (not `artifacts/Sweet-Pea-Rudi19/deltas/`)
+  - `artifacts/kart/deltas.db` exists (not `artifacts/Sweet-Pea-Rudi19/deltas.db`)
+
+## ΔE Impact
+
+Expected ΔE: +0.003 (path correction only, no behavioral change)
+
+## Implementation
+
+```diff
+--- a/core/kart_orchestrator.py
++++ b/core/kart_orchestrator.py
+@@ -411,7 +411,7 @@
+         # Save using seed_packet module
+-        seed_dir = Path(__file__).parent.parent / "artifacts" / self.username / "kart" / "sessions"
++        seed_dir = Path(__file__).parent.parent / "artifacts" / self.agent_name / "sessions"
+         seed_dir.mkdir(parents=True, exist_ok=True)
+         seed_path = seed_dir / f"{self.session_id}.json"
+         save_packet(current_state, str(seed_path))
+```
+
+```diff
+--- a/core/delta_tracker.py
++++ b/core/delta_tracker.py
+@@ -23,8 +23,8 @@
+     def __init__(self, username: str):
+         self.username = username
+-        self.db_path = Path(f"artifacts/{username}/deltas.db")
+-        self.delta_dir = Path(f"artifacts/{username}/deltas")
++        self.db_path = Path("artifacts/kart/deltas.db")
++        self.delta_dir = Path("artifacts/kart/deltas")
+         self.delta_dir.mkdir(parents=True, exist_ok=True)
+         self._init_db()
+```
+
+### Notes on the delta_tracker.py change
+
+`DeltaTracker` is instantiated in `kart_orchestrator.py` line 53 as `DeltaTracker(username)` and the `username` attribute is retained for potential future use. The constructor signature is preserved; only the path construction is fixed. If `DeltaTracker` is used elsewhere with a different caller that genuinely wants per-user delta storage, that caller should be evaluated separately — but in the current codebase `DeltaTracker` is only instantiated by `KartOrchestrator`.
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

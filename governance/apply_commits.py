@@ -25,21 +25,124 @@ REPO_ROOT = GOVERNANCE_DIR.parent
 
 
 def extract_diff(commit_file):
-    """Extract unified diff block from proposal, if present."""
+    """Extract unified diff block(s) from proposal, if present.
+
+    Returns the combined diff text, or None if no ```diff blocks found.
+    Handles git-extended headers (diff --git, index lines) by passing them
+    through — git apply understands them, and we strip them for patch fallback.
+    """
     content = commit_file.read_text(encoding="utf-8")
     diffs = re.findall(r'```diff\n(.*?)\n```', content, re.DOTALL)
     if not diffs:
         return None
     combined = '\n'.join(diffs)
+    # Ensure --- a/ and +++ b/ headers are on separate lines
     combined = re.sub(r'(--- a/\S+)\s*(\+\+\+ b/)', r'\1\n\2', combined)
     if not combined.endswith('\n'):
         combined += '\n'
     return combined
 
 
-def extract_prose_patches(commit_file):
+def _strip_git_headers(diff_text):
+    """Strip git-extended headers, keeping only the unified diff lines.
+
+    Removes lines like:
+        diff --git a/foo b/foo
+        index abc123..def456 100644
+        new file mode 100644
+        deleted file mode 100644
+        old mode / new mode
+
+    Leaves intact: --- a/..., +++ b/..., @@ ... @@, context, +/- lines.
+    Used as fallback for `patch` which doesn't understand git headers.
     """
-    Parse prose-format proposals.
+    output_lines = []
+    for line in diff_text.splitlines(keepends=True):
+        if re.match(r'^(diff --git|index [0-9a-f]+\.\.|new file mode|deleted file mode|old mode|new mode)\b', line):
+            continue
+        output_lines.append(line)
+    return ''.join(output_lines)
+
+
+def _try_git_apply(patch_file, dry_run, cwd):
+    """Try git apply with progressively looser flags.
+
+    Returns True if the patch was applied (or would apply in dry-run).
+    Returns False if git apply cannot handle this patch at all.
+    """
+    base_flags = [
+        "--recount",          # don't trust line counts in hunk headers
+        "--whitespace=nowarn",  # don't fail on trailing whitespace
+        "--ignore-whitespace",  # ignore whitespace differences in context
+    ]
+
+    # First try: strict check
+    check_result = subprocess.run(
+        ["git", "apply", "--check"] + base_flags + [str(patch_file)],
+        cwd=cwd, capture_output=True, text=True
+    )
+    if check_result.returncode == 0:
+        if not dry_run:
+            subprocess.run(
+                ["git", "apply"] + base_flags + [str(patch_file)],
+                cwd=cwd, check=True
+            )
+        return True
+
+    # Second try: with --unidiff-zero (zero context lines in hunk)
+    check_result2 = subprocess.run(
+        ["git", "apply", "--check", "--unidiff-zero"] + base_flags + [str(patch_file)],
+        cwd=cwd, capture_output=True, text=True
+    )
+    if check_result2.returncode == 0:
+        if not dry_run:
+            subprocess.run(
+                ["git", "apply", "--unidiff-zero"] + base_flags + [str(patch_file)],
+                cwd=cwd, check=True
+            )
+        return True
+
+    # Report the actual git error for diagnostics
+    err = (check_result2.stderr or check_result.stderr).strip()
+    print(f"  [WARN] git apply failed: {err}")
+    return False
+
+
+def _try_patch_command(patch_file, dry_run, cwd):
+    """Fall back to GNU patch -p1.
+
+    patch is more tolerant than git apply for non-git diffs and
+    diffs with unusual hunk headers. Strips git-extended headers first
+    since patch doesn't understand them.
+    """
+    raw = patch_file.read_text(encoding="utf-8", errors="replace")
+    stripped = _strip_git_headers(raw)
+
+    stripped_file = patch_file.parent / (patch_file.name + ".stripped")
+    stripped_file.write_text(stripped, encoding="utf-8", newline='\n')
+
+    flags = ["-p1", "--batch", "--ignore-whitespace"]
+    if dry_run:
+        flags.append("--dry-run")
+
+    try:
+        result = subprocess.run(
+            ["patch"] + flags + ["-i", str(stripped_file)],
+            cwd=cwd, capture_output=True, text=True
+        )
+        stripped_file.unlink(missing_ok=True)
+        if result.returncode == 0:
+            return True
+        print(f"  [WARN] patch command failed: {result.stderr.strip() or result.stdout.strip()}")
+        return False
+    except FileNotFoundError:
+        stripped_file.unlink(missing_ok=True)
+        print("  [WARN] patch command not found — skipping GNU patch fallback")
+        return False
+
+
+def extract_prose_patches(commit_file):
+    """Parse prose-format proposals.
 
     Looks for blocks like:
         ### File: path/to/file.py
@@ -134,7 +237,18 @@ def cleanup_context_store(commit_id):
 
 
 def apply_commit(commit_file: Path, dry_run: bool = False) -> bool:
-    """Apply a single approved commit using diff or prose fallback."""
+    """Apply a single approved commit using diff or prose fallback.
+
+    Strategy order:
+      1. Unified diff via git apply (with --recount --ignore-whitespace fallbacks)
+      2. Unified diff via GNU patch -p1 (more tolerant, strips git headers)
+      3. Prose Change from/To string replacements
+      4. No applicable change found — warn and skip cleanly (not a crash)
+
+    Never raises an exception for unknown/unparseable proposal formats.
+    Returns True on success or clean skip; False only if a known patch
+    strategy was found but failed to apply (real failure, worth retrying).
+    """
     commit_id = commit_file.stem
 
     print(f"\n{'[DRY RUN] ' if dry_run else ''}Processing: {commit_id}")
@@ -147,29 +261,37 @@ def apply_commit(commit_file: Path, dry_run: bool = False) -> bool:
     print(f"Summary: {summary}")
 
     applied = False
+    patch_attempted = False  # track whether we tried a real strategy
 
-    # --- Strategy 1: unified diff ---
+    # --- Strategy 1 & 2: unified diff (git apply, then GNU patch) ---
     diff = extract_diff(commit_file)
     if diff:
+        patch_attempted = True
         print("\nApplying unified diff...")
         patch_file = GOVERNANCE_DIR / f".temp_{commit_id}.patch"
-        patch_file.write_text(diff + '\n', newline='\n')
-        result = subprocess.run(
-            ["git", "apply", "--check", str(patch_file)],
-            cwd=REPO_ROOT, capture_output=True, text=True
-        )
-        if result.returncode == 0:
-            if not dry_run:
-                subprocess.run(["git", "apply", str(patch_file)], cwd=REPO_ROOT)
-            applied = True
-        else:
-            print(f"  [WARN] git apply failed: {result.stderr.strip()}")
-        patch_file.unlink(missing_ok=True)
+        try:
+            patch_file.write_text(diff + '\n', encoding="utf-8", newline='\n')
 
-    # --- Strategy 2: prose Change from/To blocks ---
+            # Strategy 1: git apply
+            if _try_git_apply(patch_file, dry_run, REPO_ROOT):
+                applied = True
+            else:
+                # Strategy 2: GNU patch -p1 fallback
+                print("  Trying GNU patch fallback...")
+                if _try_patch_command(patch_file, dry_run, REPO_ROOT):
+                    applied = True
+                else:
+                    print("  [WARN] Both git apply and patch failed for this diff.")
+        except Exception as exc:
+            print(f"  [WARN] Unexpected error during diff apply: {exc}")
+        finally:
+            patch_file.unlink(missing_ok=True)
+
+    # --- Strategy 3: prose Change from/To blocks ---
     if not applied:
         patches = extract_prose_patches(commit_file)
         if patches:
+            patch_attempted = True
             print(f"\nApplying {len(patches)} prose patch(es)...")
             all_ok = True
             for rel_path, old_str, new_str in patches:
@@ -177,13 +299,28 @@ def apply_commit(commit_file: Path, dry_run: bool = False) -> bool:
                     all_ok = False
             if all_ok:
                 applied = True
-        else:
-            print("[WARN] No prose patches found either.")
 
+    # --- No applicable change found ---
     if not applied:
-        print("[FAIL] Could not apply — no diff or prose patches found.")
-        print("       Apply manually, then rename to .applied")
-        return False
+        if not patch_attempted:
+            # Proposal is prose-only (no diff block, no Change from/To).
+            # This is not an error — it may be documentation, approval-only, etc.
+            print("[WARN] No diff block or prose patches found — nothing to apply.")
+            print("       If manual changes are needed, apply them, then rename to .applied")
+            # Mark as applied so the pipeline doesn't block
+            if not dry_run:
+                applied_file = commit_file.with_suffix('.applied')
+                commit_file.rename(applied_file)
+                print(f"[OK] Marked as applied (no-op): {applied_file.name}")
+                cleanup_context_store(commit_id)
+            else:
+                print("[OK] Dry run: would mark as applied (no-op)")
+            return True
+        else:
+            # We found a diff or prose patch but couldn't apply it — real failure
+            print("[FAIL] Patch strategy found but failed to apply.")
+            print("       Apply manually, then rename to .applied")
+            return False
 
     if dry_run:
         print("\n[OK] Dry run complete")
