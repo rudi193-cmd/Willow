@@ -3242,13 +3242,84 @@ async def serve_gazelle():
     raise HTTPException(status_code=404, detail="gazelle.html not found")
 
 
+def _ingest_pickup_for_gazelle(username: str) -> dict:
+    """Scan Pickup box, ingest any unprocessed text files into the knowledge graph."""
+    gdrive = Path(r"G:\My Drive\Willow\Auth Users") / username / "Pickup"
+    local = Path(__file__).parent / "artifacts" / "willow" / "Auth Users" / username / "Pickup"
+    pickup_dir = gdrive if gdrive.exists() else local
+
+    ingested, skipped = [], []
+    if not pickup_dir.exists():
+        return {"ingested": ingested, "skipped": skipped}
+
+    text_ext = {".txt", ".md", ".pdf", ".doc", ".docx", ".rtf", ".csv", ".json"}
+    for f in pickup_dir.iterdir():
+        if not f.is_file() or f.name.startswith(".") or f.suffix.lower() not in text_ext:
+            skipped.append(f.name)
+            continue
+        try:
+            content = f.read_text(encoding="utf-8", errors="replace")
+            file_hash = __import__("hashlib").md5(content.encode()).hexdigest()
+            knowledge.ingest_file_knowledge(
+                username=username,
+                filename=f.name,
+                file_hash=file_hash,
+                category="personal_document",
+                content_text=content[:4000],
+                provider="gazelle_pickup",
+            )
+            ingested.append(f.name)
+        except Exception as ex:
+            logging.warning(f"GAZELLE_PICKUP: failed to ingest {f.name}: {ex}")
+            skipped.append(f.name)
+
+    return {"ingested": ingested, "skipped": skipped}
+
+
+def _get_willow_context(username: str) -> dict:
+    """Pull relevant context from the knowledge graph for Gazelle pre-population."""
+    legal_terms = "legal court bankruptcy debt financial dispute rights claim"
+    results = knowledge.search(username, legal_terms, max_results=8)
+
+    facts = []
+    source_files = []
+    for r in results:
+        if r.get("summary"):
+            facts.append(r["summary"])
+        elif r.get("content_snippet"):
+            facts.append(r["content_snippet"][:200])
+        if r.get("title") and r["title"] not in source_files:
+            source_files.append(r["title"])
+
+    return {"facts": facts, "source_files": source_files}
+
+
+@app.post("/api/binder/ingest-pickup")
+async def binder_ingest_pickup(username: str = USERNAME):
+    """Manually trigger ingestion of all Pickup box files into the knowledge graph."""
+    try:
+        result = _ingest_pickup_for_gazelle(username)
+        return {"status": "ok", **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/gazelle/session/start")
 async def gazelle_session_start(request: Request):
     try:
         body = await request.json()
         user_name = body.get("user_name", "user")
+
+        # Step 1: ingest any Pickup files not yet in knowledge graph
+        ingest_result = _ingest_pickup_for_gazelle(USERNAME)
+
+        # Step 2: pull relevant context from knowledge graph
+        ctx = _get_willow_context(USERNAME)
+
+        # Step 3: create session with context
         ge = _get_gazelle()
-        result = ge.create_session(user_name)
+        result = ge.create_session(user_name, context=ctx if ctx["facts"] else None)
+        result["pickup_ingested"] = ingest_result["ingested"]
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
