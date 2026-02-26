@@ -1620,7 +1620,9 @@ async def governance_approve_and_apply(request: Request):
         else:
             pending.rename(commit_file)
 
-        proposal_text = commit_file.read_text(encoding="utf-8", errors="replace")
+        # Read proposal before apply_commits.py might move it
+        proposal_text = commit_file.read_text(encoding="utf-8", errors="replace") if commit_file.exists() else \
+                        applied_file.read_text(encoding="utf-8", errors="replace") if applied_file.exists() else ""
 
         # Step 2a: Try apply_commits.py
         apply_script = Path(__file__).parent / "governance" / "apply_commits.py"
@@ -1630,10 +1632,14 @@ async def governance_approve_and_apply(request: Request):
             capture_output=True, text=True, timeout=30
         )
         diff_output = result.stdout + result.stderr
-        diff_ok = result.returncode == 0 and "[FAIL]" not in result.stdout
+        # "[WARN] No diff block" means apply_commits treated it as a no-op — we still need to run the Python block
+        no_diff_block = "[WARN] No diff block" in diff_output
+        diff_ok = result.returncode == 0 and "[FAIL]" not in diff_output and not no_diff_block
 
         if diff_ok:
-            commit_file.rename(applied_file)
+            # apply_commits.py succeeded with a real diff — file may already be .applied
+            if commit_file.exists():
+                commit_file.rename(applied_file)
             return {"success": True, "commit_id": commit_id, "output": diff_output, "method": "apply_commits"}
 
         # Step 2b: Extract ```python block from ## Implementation section and run it
@@ -1660,7 +1666,9 @@ async def governance_approve_and_apply(request: Request):
                     pass
 
             if py_ok:
-                commit_file.rename(applied_file)
+                # Ensure file is marked .applied (apply_commits may have already done this)
+                if commit_file.exists():
+                    commit_file.rename(applied_file)
                 return {
                     "success": True,
                     "commit_id": commit_id,
