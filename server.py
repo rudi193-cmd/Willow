@@ -3226,3 +3226,91 @@ async def fleet_providers():
     active = sum(1 for p in providers if p["active"])
     return {"providers": providers, "active": active, "total": len(providers)}
 
+
+# ---------------------------------------------------------------------------
+# LAW GAZELLE — Legal assistant routes
+# Conversational legal Q&A, statute lookup, document generation
+# Engine: safe-app-law-gazelle/src/gazelle_engine.py
+# ---------------------------------------------------------------------------
+
+_GAZELLE_ENGINE_PATH = Path(__file__).parent.parent / "safe-app-law-gazelle" / "src"
+
+def _get_gazelle():
+    import sys as _sys
+    if str(_GAZELLE_ENGINE_PATH) not in _sys.path:
+        _sys.path.insert(0, str(_GAZELLE_ENGINE_PATH))
+    import gazelle_engine
+    return gazelle_engine
+
+
+@app.get("/gazelle")
+async def serve_gazelle():
+    from fastapi.responses import FileResponse
+    p = Path(__file__).parent / "gazelle.html"
+    if p.exists():
+        return FileResponse(p)
+    raise HTTPException(status_code=404, detail="gazelle.html not found")
+
+
+@app.post("/api/gazelle/session/start")
+async def gazelle_session_start(request: Request):
+    try:
+        body = await request.json()
+        user_name = body.get("user_name", "user")
+        ge = _get_gazelle()
+        result = ge.create_session(user_name)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/gazelle/session/{session_id}")
+async def gazelle_session_get(session_id: str):
+    try:
+        ge = _get_gazelle()
+        session = ge.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return session
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/gazelle/session/{session_id}")
+async def gazelle_session_delete(session_id: str):
+    try:
+        ge = _get_gazelle()
+        ge.delete_session(session_id)
+        return {"status": "deleted", "message": "All session data deleted."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/gazelle/chat")
+async def gazelle_chat(request: Request):
+    try:
+        body = await request.json()
+        session_id = body.get("session_id", "")
+        message = body.get("message", "")
+        if not session_id or not message:
+            raise HTTPException(status_code=400, detail="session_id and message required")
+        ge = _get_gazelle()
+        result = ge.process_message(session_id, message)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/gazelle/documents/{session_id}")
+async def gazelle_documents(session_id: str):
+    try:
+        ge = _get_gazelle()
+        docs = ge.get_documents(session_id)
+        return {"documents": docs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
