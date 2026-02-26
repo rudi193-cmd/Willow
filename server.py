@@ -1421,6 +1421,65 @@ def governance_history(limit: int = 50):
         return {"error": str(e), "history": []}
 
 
+@app.get("/api/governance/decisions")
+def governance_decisions(limit: int = 10, project: str = None):
+    """Human-readable feed of recent governance decisions for user-facing views."""
+    import re
+    decisions = []
+    for pat in ("*.commit", "*.applied", "*.reject"):
+        for f in GOV_COMMITS_DIR.glob(pat):
+            try:
+                content = f.read_text(encoding="utf-8", errors="replace")
+                stat = f.stat()
+
+                # Title: from "# Governance Proposal: ..." or fall back to filename
+                title = f.stem.replace("-", " ").title()
+                m = re.search(r"^#\s*Governance Proposal:\s*(.+)$", content, re.MULTILINE)
+                if m:
+                    title = m.group(1).strip()
+
+                # Summary block
+                summary = ""
+                m = re.search(r"##\s*Summary\s*\n([\s\S]+?)(?=\n##|\Z)", content)
+                if m:
+                    summary = " ".join(m.group(1).split())[:400]
+
+                # Proposer
+                proposer = "Unknown"
+                m = re.search(r"\*\*Proposer:\*\*\s*(.+)$", content, re.MULTILINE)
+                if m:
+                    proposer = m.group(1).strip().split("(")[0].strip()
+
+                # Change type
+                change_type = "Change"
+                m = re.search(r"\*\*Type:\*\*\s*(.+)$", content, re.MULTILINE)
+                if m:
+                    change_type = m.group(1).strip()
+
+                action = {"commit": "approved", "applied": "applied", "reject": "rejected"}.get(
+                    f.suffix.lstrip("."), "unknown"
+                )
+
+                # Optional project filter
+                if project and project.lower() not in f.stem.lower() and project.lower() not in content.lower():
+                    continue
+
+                decisions.append({
+                    "id": f.stem,
+                    "title": title,
+                    "summary": summary,
+                    "proposer": proposer,
+                    "type": change_type,
+                    "action": action,
+                    "timestamp": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                })
+            except Exception:
+                continue
+
+    decisions.sort(key=lambda x: x["timestamp"], reverse=True)
+    return {"decisions": decisions[:limit]}
+
+
 @app.get("/api/governance/diff/{commit_id}")
 def governance_diff(commit_id: str):
     """Get the contents of a pending commit for review."""
@@ -1531,8 +1590,15 @@ async def governance_reject(request: Request):
 
 @app.post("/api/governance/approve_and_apply")
 async def governance_approve_and_apply(request: Request):
-    """Approve and immediately apply a pending commit in one step."""
-    import subprocess
+    """Approve and immediately apply a pending commit in one step.
+
+    Apply strategy:
+    1. Try apply_commits.py (handles standard unified diffs)
+    2. If that fails, extract and run the ```python block from ## Implementation
+       (used by Python string-replacement proposals)
+    3. On success either way, rename to .applied
+    """
+    import subprocess, re, textwrap, tempfile, os
     try:
         body = await request.json()
         commit_id = body.get("commit_id", "").strip()
@@ -1542,37 +1608,83 @@ async def governance_approve_and_apply(request: Request):
         # Step 1: Approve (move .pending -> .commit)
         pending = GOV_COMMITS_DIR / f"{commit_id}.pending"
         commit_file = GOV_COMMITS_DIR / f"{commit_id}.commit"
+        applied_file = GOV_COMMITS_DIR / f"{commit_id}.applied"
 
         if not pending.exists():
             if commit_file.exists():
-                pass  # Already approved, just apply
+                pass  # Already approved, proceed to apply
+            elif applied_file.exists():
+                return {"success": True, "commit_id": commit_id, "output": "Already applied.", "method": "noop"}
             else:
                 return {"success": False, "error": f"Commit not found: {commit_id}"}
         else:
             pending.rename(commit_file)
 
-        # Step 2: Apply via apply_commits.py
+        proposal_text = commit_file.read_text(encoding="utf-8", errors="replace")
+
+        # Step 2a: Try apply_commits.py
         apply_script = Path(__file__).parent / "governance" / "apply_commits.py"
         result = subprocess.run(
             [sys.executable, str(apply_script), commit_id],
             cwd=Path(__file__).parent,
-            capture_output=True,
-            text=True,
-            timeout=30
+            capture_output=True, text=True, timeout=30
         )
+        diff_output = result.stdout + result.stderr
+        diff_ok = result.returncode == 0 and "[FAIL]" not in result.stdout
 
-        output = result.stdout + result.stderr
-        success = result.returncode == 0 and "[FAIL]" not in result.stdout
+        if diff_ok:
+            commit_file.rename(applied_file)
+            return {"success": True, "commit_id": commit_id, "output": diff_output, "method": "apply_commits"}
 
+        # Step 2b: Extract ```python block from ## Implementation section and run it
+        py_match = re.search(r"##\s*Implementation[\s\S]*?```python\s*\n([\s\S]+?)\n```", proposal_text)
+        if py_match:
+            py_code = textwrap.dedent(py_match.group(1))
+            with tempfile.NamedTemporaryFile(
+                suffix=".py", delete=False, mode="w", encoding="utf-8"
+            ) as tmp:
+                tmp.write(py_code)
+                tmp_path = tmp.name
+            try:
+                py_result = subprocess.run(
+                    [sys.executable, tmp_path],
+                    cwd=Path(__file__).parent,
+                    capture_output=True, text=True, timeout=60
+                )
+                py_output = py_result.stdout + py_result.stderr
+                py_ok = py_result.returncode == 0
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+            if py_ok:
+                commit_file.rename(applied_file)
+                return {
+                    "success": True,
+                    "commit_id": commit_id,
+                    "output": py_output or "Applied via Python block.",
+                    "method": "python_block"
+                }
+            else:
+                return {
+                    "success": False,
+                    "commit_id": commit_id,
+                    "output": f"apply_commits.py:\n{diff_output}\n\nPython block:\n{py_output}",
+                    "error": "Both apply strategies failed — check output"
+                }
+
+        # Step 2c: No Python block — return apply_commits output with guidance
         return {
-            "success": success,
+            "success": False,
             "commit_id": commit_id,
-            "output": output,
-            "error": None if success else "Apply step failed — see output"
+            "output": diff_output,
+            "error": "apply_commits.py failed and no Python block found in proposal"
         }
 
     except subprocess.TimeoutExpired:
-        return {"success": False, "error": "Apply timed out after 30s"}
+        return {"success": False, "error": "Apply timed out after 60s"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -2339,6 +2451,88 @@ def binder_dismiss(body: dict):
         return {"success": ok}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+# --- Willow Connections (pending approval) ---
+
+@app.get("/api/willow/connections/pending")
+def willow_connections_pending(username: str = "Sweet-Pea-Rudi19", limit: int = 20):
+    """Unconfirmed connections Willow proposed — awaiting user approve/deny/edit."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        if not rt.conn:
+            return {"connections": [], "error": "DB unavailable"}
+        rows = rt.conn.execute("""
+            SELECT ec.id, ec.connection_type, ec.weight, ec.source, ec.created_at,
+                   ea.name AS name_a, ea.entity_type AS type_a,
+                   eb.name AS name_b, eb.entity_type AS type_b
+            FROM entity_connections ec
+            JOIN entities ea ON ec.entity_a_id = ea.id
+            JOIN entities eb ON ec.entity_b_id = eb.id
+            WHERE ec.confirmed = 0
+            ORDER BY ec.created_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return {"connections": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"connections": [], "error": str(e)}
+
+
+@app.post("/api/willow/connections/{connection_id}/approve")
+async def willow_connection_approve(connection_id: int, username: str = "Sweet-Pea-Rudi19"):
+    """Approve a pending connection — sets confirmed=1."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        if not rt.conn:
+            return {"success": False, "error": "DB unavailable"}
+        rt.conn.execute("UPDATE entity_connections SET confirmed=1 WHERE id=?", (connection_id,))
+        rt.conn.commit()
+        return {"success": True, "id": connection_id, "action": "approved"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/willow/connections/{connection_id}/deny")
+async def willow_connection_deny(connection_id: int, username: str = "Sweet-Pea-Rudi19"):
+    """Deny a pending connection — removes it."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        if not rt.conn:
+            return {"success": False, "error": "DB unavailable"}
+        rt.conn.execute("DELETE FROM entity_connections WHERE id=?", (connection_id,))
+        rt.conn.commit()
+        return {"success": True, "id": connection_id, "action": "denied"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/willow/connections/{connection_id}/edit")
+async def willow_connection_edit(connection_id: int, request: Request, username: str = "Sweet-Pea-Rudi19"):
+    """Edit a pending connection's type or weight, then auto-approve it."""
+    try:
+        body = await request.json()
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        if not rt.conn:
+            return {"success": False, "error": "DB unavailable"}
+        if "connection_type" in body:
+            rt.conn.execute(
+                "UPDATE entity_connections SET connection_type=? WHERE id=?",
+                (body["connection_type"], connection_id)
+            )
+        if "weight" in body:
+            rt.conn.execute(
+                "UPDATE entity_connections SET weight=? WHERE id=?",
+                (float(body["weight"]), connection_id)
+            )
+        rt.conn.execute("UPDATE entity_connections SET confirmed=1 WHERE id=?", (connection_id,))
+        rt.conn.commit()
+        return {"success": True, "id": connection_id, "action": "edited"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 
 BINDER_HTML = Path(__file__).parent / "binder.html"
 
