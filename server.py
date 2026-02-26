@@ -2993,16 +2993,6 @@ def learn_status():
     return _learn_status
 
 
-# --- Static file serving (production) — must be last to avoid shadowing API routes ---
-if UI_DIST.exists():
-    @app.get("/")
-    def serve_index():
-        return FileResponse(UI_DIST / "index.html")
-
-    app.mount("/", StaticFiles(directory=str(UI_DIST)), name="static")
-
-
-
 @app.post("/api/admin/restart")
 async def admin_restart():
     """Hot-restart the Willow server. Called by Kart REPL :server_restart command."""
@@ -3314,3 +3304,11 @@ async def gazelle_documents(session_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# --- Static file serving (production) — must be last to avoid shadowing API routes ---
+if UI_DIST.exists():
+    @app.get("/")
+    def serve_index():
+        return FileResponse(UI_DIST / "index.html")
+
+    app.mount("/", StaticFiles(directory=str(UI_DIST)), name="static")
