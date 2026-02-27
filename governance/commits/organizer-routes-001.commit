@@ -1,0 +1,132 @@
+# Governance Proposal: Add File Organizer API routes to server.py
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-27T00:00:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Add five `/api/organizer/*` routes to server.py that expose the file_organizer
+module. Routes handle: scanning Pickup, suggesting renames, applying renames,
+moving files to Filed/, finding duplicates, and batch organizing. Also adds
+the `from core import file_organizer` import alongside existing imports.
+
+## Proposed Changes
+
+**File:** `server.py` (modify existing)
+**Location:** After the `/api/binder/process-queue` route, before `_ocr_queue_background_loop`
+
+## Rationale
+
+- file_organizer.py is built but needs HTTP exposure to be usable from the UI
+- Follows the same pattern as existing binder routes
+- All routes are additive — no existing behavior modified
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — routes can be removed, no DB changes
+- **Dependencies:** core/file_organizer.py (already written)
+- **Testing:** curl GET /api/organizer/scan after server restart
+
+## ΔE Impact
+
+Expected ΔE: +0.025 (new capability, no regressions)
+
+## Implementation
+
+```python
+import pathlib, re
+
+server_path = pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+content = server_path.read_text(encoding="utf-8")
+
+# 1. Add import after "from core import ocr_consumer" line
+old_import = "from core import ocr_consumer"
+new_import = "from core import ocr_consumer\nfrom core import file_organizer"
+if "from core import file_organizer" not in content:
+    content = content.replace(old_import, new_import, 1)
+
+# 2. Insert organizer routes before _ocr_queue_background_loop
+new_routes = '''
+
+# --- File Organizer API ---
+
+@app.get("/api/organizer/scan")
+async def organizer_scan(username: str = USERNAME):
+    """List files in Pickup with pending organization status."""
+    try:
+        files = file_organizer.scan_pickup(username)
+        return {"status": "ok", "files": files, "count": len(files)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/organizer/rename")
+async def organizer_rename(request: Request):
+    """Apply a single rename: {file_path, new_stem, dry_run?}"""
+    try:
+        body = await request.json()
+        file_path = pathlib.Path(body["file_path"])
+        new_stem = body["new_stem"]
+        dry_run = body.get("dry_run", False)
+        result = file_organizer.apply_rename(file_path, new_stem, dry_run=dry_run)
+        return {"status": "ok", "new_path": str(result), "applied": not dry_run}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/organizer/move")
+async def organizer_move(request: Request):
+    """Move a file to Filed/: {file_path, category, username?, dry_run?}"""
+    try:
+        body = await request.json()
+        file_path = pathlib.Path(body["file_path"])
+        category = body.get("category", "document")
+        username = body.get("username", USERNAME)
+        dry_run = body.get("dry_run", False)
+        result = file_organizer.move_to_filed(file_path, category, username, dry_run=dry_run)
+        return {"status": "ok", "destination": str(result), "applied": not dry_run}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/organizer/batch")
+async def organizer_batch(request: Request):
+    """Run full organize pipeline: {username?, auto_apply?}"""
+    try:
+        body = await request.json()
+        username = body.get("username", USERNAME)
+        auto_apply = body.get("auto_apply", False)
+        results = file_organizer.batch_organize(username, auto_apply=auto_apply)
+        applied = sum(1 for r in results if r.get("applied"))
+        return {"status": "ok", "results": results, "total": len(results), "applied": applied}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/organizer/duplicates")
+async def organizer_duplicates(username: str = USERNAME):
+    """Find duplicate files in Pickup by content hash."""
+    try:
+        groups = file_organizer.find_duplicates(username)
+        return {"status": "ok", "groups": groups, "duplicate_sets": len(groups)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+'''
+
+insertion_marker = "def _ocr_queue_background_loop():"
+if insertion_marker in content and "/api/organizer/scan" not in content:
+    content = content.replace(insertion_marker, new_routes + insertion_marker, 1)
+
+server_path.write_text(content, encoding="utf-8")
+print("server.py updated — organizer routes added")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

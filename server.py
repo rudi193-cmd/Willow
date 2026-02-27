@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import local_api
 from core import knowledge
 from core import ocr_consumer
+from core import file_organizer
 
 # context_store lives in ~/.claude — load dynamically
 try:
@@ -3314,6 +3315,69 @@ async def binder_process_queue(batch: int = 20, username: str = USERNAME):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+
+# --- File Organizer API ---
+
+@app.get("/api/organizer/scan")
+async def organizer_scan(username: str = USERNAME):
+    try:
+        files = file_organizer.scan_pickup(username)
+        return {"status": "ok", "files": files, "count": len(files)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/organizer/rename")
+async def organizer_rename(request: Request):
+    try:
+        body = await request.json()
+        import pathlib as _pl
+        file_path = _pl.Path(body["file_path"])
+        new_stem = body["new_stem"]
+        dry_run = body.get("dry_run", False)
+        result = file_organizer.apply_rename(file_path, new_stem, dry_run=dry_run)
+        return {"status": "ok", "new_path": str(result), "applied": not dry_run}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/organizer/move")
+async def organizer_move(request: Request):
+    try:
+        body = await request.json()
+        import pathlib as _pl
+        file_path = _pl.Path(body["file_path"])
+        category = body.get("category", "document")
+        username = body.get("username", USERNAME)
+        dry_run = body.get("dry_run", False)
+        result = file_organizer.move_to_filed(file_path, category, username, dry_run=dry_run)
+        return {"status": "ok", "destination": str(result), "applied": not dry_run}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/organizer/batch")
+async def organizer_batch(request: Request):
+    try:
+        body = await request.json()
+        username = body.get("username", USERNAME)
+        auto_apply = body.get("auto_apply", False)
+        results = file_organizer.batch_organize(username, auto_apply=auto_apply)
+        applied = sum(1 for r in results if r.get("applied"))
+        return {"status": "ok", "results": results, "total": len(results), "applied": applied}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/organizer/duplicates")
+async def organizer_duplicates(username: str = USERNAME):
+    try:
+        groups = file_organizer.find_duplicates(username)
+        return {"status": "ok", "groups": groups, "duplicate_sets": len(groups)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 def _ocr_queue_background_loop():
     """Background thread: drain OCR queue every 5 minutes."""

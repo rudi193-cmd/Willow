@@ -1,0 +1,256 @@
+# Governance Proposal: Add ecosystem_writer.py to core
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-26T00:00:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Add a new stdlib-only module `core/ecosystem_writer.py` that provides four
+functions for maintaining `ECOSYSTEM.md` in the GDrive Willow folder.
+No external dependencies. All writes are atomic (tmp → rename). No in-memory
+caching — every call reads the file fresh.
+
+## Proposed Changes
+
+**File:** `core/ecosystem_writer.py` (new file)
+
+## Rationale
+
+- ECOSYSTEM.md is the living record of the Willow project's apps, decisions,
+  and repo states. Agents need a programmatic, safe way to update it without
+  hand-editing Markdown.
+- Atomic writes prevent partial writes from corrupting the file.
+- Section-based API keeps callers decoupled from the full file structure.
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — file can be deleted; ECOSYSTEM.md is not modified by
+  installation, only by explicit function calls.
+- **Dependencies:** None (stdlib only: pathlib, re, datetime, os)
+- **Testing:** `__main__` block runs a smoke test against ECOSYSTEM.md
+
+## ΔE Impact
+
+Expected ΔE: +0.020 (small positive — adds tooling without changing existing
+infrastructure)
+
+## Implementation
+
+```python
+import pathlib, os, re, datetime
+
+TARGET = pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\ecosystem_writer.py")
+
+code = r'''"""
+ecosystem_writer.py — Maintains ECOSYSTEM.md for the Willow project.
+
+Provides read/write helpers for the section-based Markdown file stored in
+Google Drive.  All functions read the file fresh on every call (no caching)
+and use atomic writes (tmp -> rename).
+"""
+
+import os
+import re
+from datetime import date
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+ECOSYSTEM_PATH = Path(
+    r"C:\Users\Sean\My Drive\Willow\Auth Users\Sweet-Pea-Rudi19\ECOSYSTEM.md"
+)
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _read() -> str:
+    """Return the full text of ECOSYSTEM.md, or empty string if missing."""
+    try:
+        return ECOSYSTEM_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ""
+
+
+def _write_atomic(text: str) -> bool:
+    """Write *text* to a .tmp file beside ECOSYSTEM.md then rename it."""
+    tmp = ECOSYSTEM_PATH.with_suffix(".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, ECOSYSTEM_PATH)
+    return True
+
+
+def _update_last_updated(text: str) -> str:
+    """Replace the value on the **Last updated:** line with today's date."""
+    today = date.today().isoformat()
+    updated = re.sub(
+        r"(\*\*Last updated:\*\*\s*).*",
+        r"\g<1>" + today,
+        text,
+    )
+    return updated
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def get_section(section_name: str) -> str:
+    """Return the body of *section_name* (text between its header and the next
+    ## header, or EOF).  Returns an empty string if not found or file missing."""
+    text = _read()
+    if not text:
+        return ""
+    pattern = r"^## " + re.escape(section_name) + r"\s*\n(.*?)(?=^## |\Z)"
+    m = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+    if not m:
+        return ""
+    return m.group(1).rstrip("\n")
+
+
+def update_section(section_name: str, content: str) -> bool:
+    """Replace the body of *section_name* with *content*.
+
+    If the section does not exist it is appended before the final ---
+    separator line (or at the end of the file if no such line exists).
+    The **Last updated:** field is refreshed. Uses an atomic write.
+    """
+    text = _read()
+    if not text:
+        text = "**Last updated:** " + date.today().isoformat() + "\n\n---\n"
+
+    body = content.rstrip("\n") + "\n"
+    header_line = "## " + section_name
+    pattern = r"(^## " + re.escape(section_name) + r"\s*\n)(.*?)(?=^## |\Z)"
+    m = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+
+    if m:
+        new_text = text[: m.start(2)] + body + text[m.end(2):]
+    else:
+        new_section = "\n" + header_line + "\n" + body
+        sep_match = re.search(r"^---\s*$", text, re.MULTILINE)
+        if sep_match:
+            insert_at = sep_match.start()
+            new_text = text[:insert_at] + new_section + "\n" + text[insert_at:]
+        else:
+            new_text = text.rstrip("\n") + "\n" + new_section
+
+    new_text = _update_last_updated(new_text)
+    return _write_atomic(new_text)
+
+
+def append_decision(decision: str) -> bool:
+    """Append a numbered entry to the ## Design Decisions section.
+
+    Format: N. **YYYY-MM-DD \u2014 {decision}**
+    Returns True on success.
+    """
+    section_body = get_section("Design Decisions")
+    existing = re.findall(r"^\s*(\d+)\.", section_body, re.MULTILINE)
+    next_n = (max(int(n) for n in existing) + 1) if existing else 1
+    today = date.today().isoformat()
+    new_entry = str(next_n) + ". **" + today + " \u2014 " + decision + "**"
+    if section_body.strip():
+        updated_body = section_body.rstrip("\n") + "\n" + new_entry + "\n"
+    else:
+        updated_body = new_entry + "\n"
+    return update_section("Design Decisions", updated_body)
+
+
+def update_app_status(app_name: str, state: str, notes: str = "") -> bool:
+    """Update the State column for the row matching *app_name* in ## Repos.
+
+    Row matched by case-insensitive partial match on the App column.
+    If *notes* provided, appends to the Why Built column.
+    Returns True if found and updated, False otherwise.
+    """
+    section_body = get_section("Repos")
+    if not section_body:
+        return False
+
+    lines = section_body.split("\n")
+
+    header_idx = None
+    for i, line in enumerate(lines):
+        if re.match(r"^\s*\|", line) and "|" in line:
+            header_idx = i
+            break
+    if header_idx is None:
+        return False
+
+    header_cells = [c.strip() for c in lines[header_idx].strip().strip("|").split("|")]
+    col_map = {name.lower(): idx for idx, name in enumerate(header_cells)}
+
+    app_col = col_map.get("app")
+    state_col = col_map.get("state")
+    why_col = col_map.get("why built")
+
+    if app_col is None or state_col is None:
+        return False
+
+    updated = False
+    for i in range(header_idx + 1, len(lines)):
+        line = lines[i]
+        if not re.match(r"^\s*\|", line):
+            continue
+        cells = line.strip().strip("|").split("|")
+        if len(cells) <= max(app_col, state_col):
+            continue
+        if app_name.lower() in cells[app_col].strip().lower():
+            cells[state_col] = " " + state + " "
+            if notes and why_col is not None and len(cells) > why_col:
+                existing_why = cells[why_col].strip()
+                cells[why_col] = (" " + existing_why + " " + notes + " "
+                                  if existing_why else " " + notes + " ")
+            lines[i] = "|" + "|".join(cells) + "|"
+            updated = True
+            break
+
+    if not updated:
+        return False
+
+    return update_section("Repos", "\n".join(lines))
+
+
+# ---------------------------------------------------------------------------
+# Smoke-test
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    print("=== ecosystem_writer smoke test ===\n")
+
+    print("[1] update_section('Test Section', ...)")
+    ok = update_section("Test Section", "This is a test.\nLine two.\n")
+    print("    result:", ok)
+
+    print("\n[2] get_section('Test Section')")
+    body = get_section("Test Section")
+    print("    body:", repr(body))
+
+    print("\n[3] append_decision('Adopted atomic writes for all file ops')")
+    ok = append_decision("Adopted atomic writes for all file ops")
+    print("    result:", ok)
+    print("    Design Decisions section now:")
+    print(get_section("Design Decisions"))
+
+    print("\n[4] update_app_status('safe-app-law-gazelle', 'active', 'seeded 2026-02-26')")
+    ok = update_app_status("safe-app-law-gazelle", "active", "seeded 2026-02-26")
+    print("    result:", ok)
+    if not ok:
+        print("    (no matching row found in ## Repos -- table may not exist yet)")
+'''
+
+TARGET.write_text(code, encoding="utf-8")
+print("Written:", TARGET)
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

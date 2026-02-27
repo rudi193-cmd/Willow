@@ -312,7 +312,14 @@
       <div class="sidebar-stat"><span>Watcher</span><span class="val" id="statWatcher">&mdash;</span></div>
     </div>
     <div class="binder-status" id="binderStatusMsg">Still filing.</div>
-  </aside>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Intake</div>
+      <div class="domain-tab" id="inboxTab" onclick="showInbox()" style="display:flex;align-items:center;gap:0.4rem;">
+        <span style="font-size:0.9rem;">&#128229;</span> Inbox
+        <span id="inboxBadge" style="margin-left:auto;background:var(--gold);color:#1a1510;border-radius:10px;padding:0 0.4rem;font-size:0.65rem;display:none;"></span>
+      </div>
+    </div>
+      </aside>
 
   <main class="center">
     <div class="jeles-desk">
@@ -346,7 +353,21 @@
         <div class="shimmer" style="height:80px;margin-bottom:8px;"></div>
         <div class="shimmer" style="height:80px;"></div>
       </div>
+
+    <!-- File Organizer (Inbox) Panel -->
+    <div id="organizerPanel" style="display:none;">
+      <div class="section-label">Inbox &mdash; Pickup Files</div>
+      <div style="display:flex;gap:0.5rem;margin-bottom:1rem;align-items:center;">
+        <button onclick="loadInbox()" style="background:var(--gold);color:#1a1510;border:none;padding:0.35rem 1rem;cursor:pointer;font-family:inherit;font-size:0.75rem;border-radius:3px;">Refresh</button>
+        <button onclick="batchOrganize(false)" style="background:none;border:1px solid var(--gold);color:var(--gold-light);padding:0.35rem 1rem;cursor:pointer;font-family:inherit;font-size:0.75rem;border-radius:3px;">Preview All</button>
+        <button onclick="batchOrganize(true)" style="background:var(--rust);color:#fff;border:none;padding:0.35rem 1rem;cursor:pointer;font-family:inherit;font-size:0.75rem;border-radius:3px;">Apply All</button>
+        <span id="inboxStatus" style="font-size:0.72rem;color:var(--dust);margin-left:auto;"></span>
+      </div>
+      <div id="inboxList" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
+      <div class="section-label" style="margin-top:1.5rem;display:none;" id="dupLabel">Duplicates</div>
+      <div id="dupList"></div>
     </div>
+
   </main>
 
   <aside class="right-panel">
