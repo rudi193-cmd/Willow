@@ -32,6 +32,15 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # ── Config ──────────────────────────────────────────────────────────────────
 USERS_PATH = Path(__file__).parent.parent / "data" / "users.json"
+
+# Load .env if WILLOW_AUTH_SECRET not already in environment (stdlib, no dotenv)
+_env_file = Path(__file__).parent.parent / ".env"
+if not os.environ.get("WILLOW_AUTH_SECRET") and _env_file.exists():
+    for _line in _env_file.read_text(encoding="utf-8").splitlines():
+        if _line.startswith("WILLOW_AUTH_SECRET="):
+            os.environ["WILLOW_AUTH_SECRET"] = _line.split("=", 1)[1].strip()
+            break
+
 SECRET = os.environ.get("WILLOW_AUTH_SECRET", "willow-local-secret-change-me")
 DEFAULT_DURATION_HOURS = 4
 MAX_DURATION_HOURS = 24

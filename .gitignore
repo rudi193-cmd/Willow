@@ -13,3 +13,4 @@ artifacts/
 .llm_keys.json
 .dev.vars
 .wrangler/
+.env
