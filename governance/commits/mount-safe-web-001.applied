@@ -1,0 +1,57 @@
+# Governance Proposal: Mount SAFE/web as Static Files
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T22:30:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+`SAFE/web/` (jane.html, login.html, dashboard.html, index.html) is never served by the Willow server. All requests to `http://localhost:8420/SAFE/web/*` return 404. Add a `StaticFiles` mount at `/SAFE/web` pointing to `../SAFE/web/`. Mount must be added **before** the catch-all `app.mount("/", ...)` at the bottom of server.py.
+
+## Proposed Changes
+**File:** Willow/server.py
+**Location:** Just before the `if UI_DIST.exists():` block at the bottom
+
+## Rationale
+- login.html, jane.html, dashboard.html all reference `http://localhost:8420/SAFE/web/*`
+- SafeConsentBanner.astro redirects to `/SAFE/web/login.html` — returns 404
+- Willow hub cards link to these URLs — all broken
+- One static mount fixes all four files
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove the three lines
+- **Dependencies:** `../SAFE/web/` must exist (it does: confirmed)
+- **Testing:** `curl http://localhost:8420/SAFE/web/login.html` → 200
+
+## ΔE Impact
+Expected ΔE: +0.025 (fixes broken auth flow)
+
+## Implementation
+```python
+from pathlib import Path
+
+server_path = Path("C:/Users/Sean/Documents/GitHub/Willow/server.py")
+content = server_path.read_text(encoding="utf-8")
+
+old = "# --- Static file serving (production) — must be last to avoid shadowing API routes ---"
+new = """# --- SAFE web static files ---
+SAFE_WEB = Path(__file__).parent.parent / "SAFE" / "web"
+if SAFE_WEB.exists():
+    app.mount("/SAFE/web", StaticFiles(directory=str(SAFE_WEB)), name="safe-web")
+
+# --- Static file serving (production) — must be last to avoid shadowing API routes ---"""
+
+if old in content:
+    content = content.replace(old, new, 1)
+    server_path.write_text(content, encoding="utf-8")
+    print("Applied: SAFE/web mount added to server.py")
+else:
+    print("ERROR: anchor comment not found")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

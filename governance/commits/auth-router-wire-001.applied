@@ -1,0 +1,56 @@
+# Governance Proposal: Wire Auth Router into Willow Server
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T00:00:00Z
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add `auth_routes` to Willow's FastAPI server so that `/api/auth/login`, `/api/auth/verify`, and `/api/auth/logout` endpoints are live. This enables the SAFE local-first login system to issue and verify HMAC tokens.
+
+## Proposed Changes
+**File:** Willow/server.py
+**Location:** Line 51 (existing api import) and line 91 (after journal_routes include_router)
+
+## Rationale
+- Enables SAFE apps to replace per-session consent gates with real user identity
+- auth_routes.py is already written (T2 direct write, complete)
+- Single-line include_router addition; minimal blast radius
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove the two lines to revert
+- **Dependencies:** Willow/api/auth_routes.py (already created)
+- **Testing:** POST /api/auth/login + /api/auth/verify after server restart
+
+## ΔE Impact
+Expected ΔE: +0.030 (new auth capability, low complexity)
+
+## Implementation
+```python
+import sys
+from pathlib import Path
+
+server_path = Path("C:/Users/Sean/Documents/GitHub/Willow/server.py")
+content = server_path.read_text(encoding="utf-8")
+
+# Add auth_routes to the import line
+old_import = "from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes"
+new_import = "from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes, auth_routes"
+content = content.replace(old_import, new_import, 1)
+
+# Add include_router after journal_routes
+old_include = "app.include_router(journal_routes.router)   # Journal sessions + events (Jane's pipeline)"
+new_include = "app.include_router(journal_routes.router)   # Journal sessions + events (Jane's pipeline)
+app.include_router(auth_routes.router)     # Local-first auth — login/verify/logout"
+content = content.replace(old_include, new_include, 1)
+
+server_path.write_text(content, encoding="utf-8")
+print("Applied: auth_routes wired into server.py")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

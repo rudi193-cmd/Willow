@@ -1,0 +1,370 @@
+# Governance Proposal: SAFE Login Page
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T00:00:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Create `SAFE/web/login.html` — a shared login page for all SAFE apps. Orange/black monospace SAFE aesthetic. Posts credentials to `/api/auth/login`, stores token in localStorage (or sessionStorage for "this tab"), redirects to `?next=` param. Includes Willow status dot.
+
+## Proposed Changes
+**File:** SAFE/web/login.html
+**Location:** New file
+
+## Rationale
+- Shared login entry point for all SAFE apps (NASA archive, UTETY chat, Jane, etc.)
+- Uses auth_routes.py `/api/auth/login` endpoint
+- Offline-graceful: shows clear error if Willow unreachable
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — delete file
+- **Dependencies:** auth_routes.py + server.py proposal (auth-router-wire-001)
+- **Testing:** Open in browser → enter credentials → token stored → redirect works
+
+## ΔE Impact
+Expected ΔE: +0.085 (new user-facing capability)
+
+## Implementation
+```python
+import sys
+from pathlib import Path
+
+login_path = Path("C:/Users/Sean/Documents/GitHub/SAFE/web/login.html")
+
+html = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SAFE — Sign In</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0d0d;
+      --orange: #f97316;
+      --orange-dim: #c2590f;
+      --fg: #f5f5f0;
+      --fg-muted: #888;
+      --border: #2a2a2a;
+      --input-bg: #1a1a1a;
+      --error: #ef4444;
+    }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Courier New', Courier, monospace;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1rem;
+    }
+
+    /* ── Status bar ───────────────────────────────────── */
+    .status-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #111;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 1rem;
+      font-size: 11px;
+      color: var(--fg-muted);
+    }
+    .status-bar .wordmark {
+      font-weight: bold;
+      letter-spacing: 0.12em;
+      color: var(--orange);
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #444;
+      margin-right: 5px;
+      transition: background 0.3s;
+    }
+    .status-dot.ok   { background: #22c55e; }
+    .status-dot.err  { background: #ef4444; }
+
+    /* ── Login card ───────────────────────────────────── */
+    .card {
+      background: #111;
+      border: 1px solid var(--border);
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 380px;
+      margin-top: 3rem;
+    }
+    .card-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .card-header .badge {
+      display: inline-block;
+      background: var(--orange);
+      color: #000;
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      margin-bottom: 0.8rem;
+    }
+    .card-header h1 {
+      font-size: 1.4rem;
+      font-weight: normal;
+      letter-spacing: 0.08em;
+      color: var(--fg);
+    }
+    .card-header p {
+      font-size: 12px;
+      color: var(--fg-muted);
+      margin-top: 0.4rem;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+      margin-bottom: 0.3rem;
+      margin-top: 1.2rem;
+    }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font-family: inherit;
+      font-size: 14px;
+      padding: 0.6rem 0.75rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: var(--orange); }
+
+    /* ── Duration picker ──────────────────────────────── */
+    .duration-row {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin-top: 0.3rem;
+    }
+    .duration-row input[type="radio"] { display: none; }
+    .duration-row label {
+      margin: 0;
+      padding: 0.4rem 0.65rem;
+      font-size: 11px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      text-transform: none;
+      color: var(--fg-muted);
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .duration-row label:not(:first-of-type) { border-left: none; }
+    .duration-row input[type="radio"]:checked + label {
+      background: var(--orange);
+      color: #000;
+      border-color: var(--orange);
+    }
+    .duration-row label:hover:not(.checked) {
+      border-color: var(--orange-dim);
+      color: var(--fg);
+    }
+
+    /* ── Submit button ────────────────────────────────── */
+    .btn-submit {
+      display: block;
+      width: 100%;
+      margin-top: 1.8rem;
+      background: var(--orange);
+      color: #000;
+      border: none;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 0.75rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-submit:hover:not(:disabled) { background: var(--orange-dim); }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Error message ────────────────────────────────── */
+    .error-msg {
+      margin-top: 1rem;
+      font-size: 12px;
+      color: var(--error);
+      min-height: 1.2em;
+      text-align: center;
+    }
+
+    /* ── Footer ───────────────────────────────────────── */
+    .footer {
+      margin-top: 2rem;
+      font-size: 10px;
+      color: var(--fg-muted);
+      text-align: center;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <a class="wordmark" href="index.html">SAFE OS</a>
+    <span>
+      <span id="willow-dot" class="status-dot"></span>
+      <span id="willow-label">Willow</span>
+    </span>
+  </div>
+
+  <!-- Login card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="badge">SAFE OS</div>
+      <h1>SIGN IN</h1>
+      <p>Local identity — no cloud account required</p>
+    </div>
+
+    <form id="login-form" autocomplete="off">
+      <label for="username">Username</label>
+      <input id="username" type="text" name="username" autocomplete="username"
+             spellcheck="false" autocapitalize="none" required />
+
+      <label for="passphrase">Passphrase</label>
+      <input id="passphrase" type="password" name="passphrase" autocomplete="current-password" required />
+
+      <label>Keep active</label>
+      <div class="duration-row">
+        <input type="radio" name="duration" id="d-tab" value="0" />
+        <label for="d-tab">This tab</label>
+
+        <input type="radio" name="duration" id="d-4" value="4" checked />
+        <label for="d-4">4h</label>
+
+        <input type="radio" name="duration" id="d-12" value="12" />
+        <label for="d-12">12h</label>
+
+        <input type="radio" name="duration" id="d-24" value="24" />
+        <label for="d-24">24h</label>
+      </div>
+
+      <button type="submit" class="btn-submit" id="submit-btn">SIGN IN &rarr;</button>
+      <p class="error-msg" id="error-msg"></p>
+    </form>
+  </div>
+
+  <div class="footer">SAFE local-first identity &middot; no tracking &middot; no cloud</div>
+
+<script>
+  const WILLOW_API = 'http://localhost:8420';
+  const AUTH_KEY   = 'willow-auth-token';
+
+  // -- Willow status dot
+  async function pingWillow() {
+    try {
+      const r = await fetch(`${WILLOW_API}/api/health`, { signal: AbortSignal.timeout(2000) });
+      const ok = r.ok;
+      document.getElementById('willow-dot').className   = 'status-dot ' + (ok ? 'ok' : 'err');
+      document.getElementById('willow-label').textContent = ok ? 'Willow ●' : 'Willow ✗';
+    } catch {
+      document.getElementById('willow-dot').className   = 'status-dot err';
+      document.getElementById('willow-label').textContent = 'Willow offline';
+    }
+  }
+  pingWillow();
+
+  // -- Redirect helper
+  function getNextUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get('next');
+    if (next && next.startsWith('/') || (next && !next.startsWith('http'))) return next;
+    return null;
+  }
+
+  // -- Login form
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submit-btn');
+    const errEl = document.getElementById('error-msg');
+    errEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'SIGNING IN…';
+
+    const username = document.getElementById('username').value.trim();
+    const passphrase = document.getElementById('passphrase').value;
+    const durInput = document.querySelector('input[name="duration"]:checked');
+    const durationHours = parseInt(durInput?.value ?? '4');
+    const tabOnly = durationHours === 0;
+
+    try {
+      const res = await fetch(`${WILLOW_API}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          passphrase,
+          duration_hours: tabOnly ? 4 : durationHours,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+
+      const { token, display_name, expires_at } = await res.json();
+      const payload = JSON.stringify({ token, username, display_name, expires_at });
+
+      if (tabOnly) {
+        sessionStorage.setItem(AUTH_KEY, payload);
+        localStorage.removeItem(AUTH_KEY);
+      } else {
+        localStorage.setItem(AUTH_KEY, payload);
+        sessionStorage.removeItem(AUTH_KEY);
+      }
+
+      const next = getNextUrl();
+      window.location.href = next || 'index.html';
+
+    } catch (err) {
+      errEl.textContent = err.message === 'Invalid credentials'
+        ? 'Invalid username or passphrase'
+        : (err.message || 'Connection failed — is Willow running?');
+      btn.disabled = false;
+      btn.textContent = 'SIGN IN →';
+    }
+  });
+</script>
+</body>
+</html>"""
+
+login_path.write_text(html, encoding="utf-8")
+print(f"Written: {login_path} ({login_path.stat().st_size} bytes)")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

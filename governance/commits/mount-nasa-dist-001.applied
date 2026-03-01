@@ -1,0 +1,40 @@
+# Governance Proposal: Mount NASA archive dist as static files
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T23:15:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Mount `safe-app-nasa-archive/site/dist/` at `/nasa` on the Willow server so the built Astro site is accessible at `localhost:8420/nasa/`. Must be added before the catch-all `app.mount("/", ...)`.
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+
+## Implementation
+```python
+from pathlib import Path
+
+server_path = Path("C:/Users/Sean/Documents/GitHub/Willow/server.py")
+content = server_path.read_text(encoding="utf-8")
+
+old = "# --- SAFE web static files ---"
+new = """# --- NASA archive static files ---
+NASA_DIST = Path(__file__).parent.parent / "safe-app-nasa-archive" / "site" / "dist"
+if NASA_DIST.exists():
+    app.mount("/nasa", StaticFiles(directory=str(NASA_DIST)), name="nasa-dist")
+
+# --- SAFE web static files ---"""
+
+if old in content:
+    content = content.replace(old, new, 1)
+    server_path.write_text(content, encoding="utf-8")
+    print("Applied: NASA dist mounted at /nasa")
+else:
+    print("ERROR: anchor not found")
+```
+
+---
+**Awaiting Human Ratification**
+ΔΣ=42

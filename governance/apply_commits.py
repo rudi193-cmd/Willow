@@ -209,6 +209,59 @@ def apply_prose_patch(rel_path, old_str, new_str, dry_run=False):
     return True
 
 
+def extract_python_block(commit_file: Path):
+    """Extract Python code from the ## Implementation section.
+
+    Looks for:
+        ## Implementation
+        ```python
+        ...code...
+        ```
+
+    Returns the code string, or None if not found.
+    """
+    content = commit_file.read_text(encoding="utf-8")
+    m = re.search(r'## Implementation\s*\n.*?```python\n(.*?)```', content, re.DOTALL)
+    if m:
+        return m.group(1)
+    return None
+
+
+def apply_python_block(code: str, commit_id: str, dry_run: bool = False) -> bool:
+    """Execute a Python implementation block from a temp file.
+
+    Returns True on success (or dry-run), False on failure.
+    """
+    if dry_run:
+        first = code.strip().splitlines()[0] if code.strip() else '(empty)'
+        print(f"  [DRY] Would execute Python block ({len(code)} chars): {first}")
+        return True
+
+    tmp = GOVERNANCE_DIR / f".temp_{commit_id}_impl.py"
+    try:
+        tmp.write_text(code, encoding="utf-8")
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        result = subprocess.run(
+            [sys.executable, str(tmp)],
+            capture_output=True, text=True, encoding="utf-8", cwd=str(REPO_ROOT), env=env
+        )
+        if result.stdout.strip():
+            for line in result.stdout.strip().splitlines():
+                print(f"  [OUT] {line}")
+        if result.returncode != 0:
+            err = result.stderr.strip() or result.stdout.strip()
+            print(f"  [FAIL] Python block exited {result.returncode}: {err}")
+            return False
+        print("  [OK] Python implementation block executed")
+        return True
+    except Exception as exc:
+        print(f"  [FAIL] Python block execution error: {exc}")
+        return False
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def extract_metadata(commit_file: Path) -> dict:
     """Extract metadata from commit proposal."""
     content = commit_file.read_text(encoding="utf-8")
@@ -298,6 +351,15 @@ def apply_commit(commit_file: Path, dry_run: bool = False) -> bool:
                 if not apply_prose_patch(rel_path, old_str, new_str, dry_run):
                     all_ok = False
             if all_ok:
+                applied = True
+
+    # --- Strategy 4: Python implementation block ---
+    if not applied:
+        python_code = extract_python_block(commit_file)
+        if python_code:
+            patch_attempted = True
+            print("\nExecuting Python implementation block...")
+            if apply_python_block(python_code, commit_id, dry_run):
                 applied = True
 
     # --- No applicable change found ---

@@ -1,0 +1,29 @@
+# Governance Proposal: Fix SAFE dashboard redirect URLs
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T23:05:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+`SAFE/web/dashboard.html` contains 3 occurrences of `location.href = 'index.html'` (no-auth redirect + sign-out). Relative URL resolves to `SAFE/web/index.html` instead of the Willow hub at `/`. Fix all three to `'/'`.
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+
+## Implementation
+```python
+from pathlib import Path
+
+p = Path("C:/Users/Sean/Documents/GitHub/SAFE/web/dashboard.html")
+src = p.read_text(encoding="utf-8")
+fixed = src.replace("location.href = 'index.html';", "location.href = '/';")
+count = src.count("location.href = 'index.html';")
+p.write_text(fixed, encoding="utf-8")
+print(f"Fixed {count} redirect(s) in dashboard.html")
+```
+
+---
+**Awaiting Human Ratification**
+ΔΣ=42

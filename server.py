@@ -14,6 +14,7 @@ import psutil
 import queue
 import threading
 from datetime import datetime
+import asyncio
 from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
@@ -47,7 +48,7 @@ from core import agent_registry
 from core import tool_engine, kart_orchestrator, kart_tasks
 from core.awareness import on_scan_complete, on_organize_complete, on_coherence_update, on_topology_update, say as willow_say
 from apps.pa import drive_scan, drive_organize
-from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes
+from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes, auth_routes
 
 app = FastAPI(title="Willow", docs_url=None, redoc_url=None)
 
@@ -88,6 +89,7 @@ app.include_router(vision_routes.router)   # Vision board image classification
 app.include_router(dating_routes.router)   # Dating wellbeing red flag analysis
 app.include_router(die_namic_routes.router) # Die-namic system state (read-only)
 app.include_router(journal_routes.router)   # Journal sessions + events (Jane's pipeline)
+app.include_router(auth_routes.router)     # Local-first auth — login/verify/logout
 # Governance endpoints already defined in server.py (lines 1023-1155)
 
 
@@ -520,21 +522,26 @@ async def knowledge_entity_rename(entity_id: int, request: Request):
     username = body.get("username") or USERNAME
     if not new_name:
         raise HTTPException(status_code=400, detail="name required")
-    try:
-        db_path = knowledge._db_path(username)
-        conn = sqlite3.connect(db_path)
-        cur = conn.cursor()
-        if new_description is not None:
-            cur.execute("UPDATE entities SET name = ?, description = ? WHERE id = ?",
-                        (new_name, new_description, entity_id))
-        else:
-            cur.execute("UPDATE entities SET name = ? WHERE id = ?", (new_name, entity_id))
-        updated = cur.rowcount
-        conn.commit()
-        conn.close()
-        return {"success": bool(updated), "name": new_name}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+
+    def _do_rename():
+        try:
+            db_path = knowledge._db_path(username)
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            if new_description is not None:
+                cur.execute("UPDATE entities SET name = ?, description = ? WHERE id = ?",
+                            (new_name, new_description, entity_id))
+            else:
+                cur.execute("UPDATE entities SET name = ? WHERE id = ?", (new_name, entity_id))
+            updated = cur.rowcount
+            conn.commit()
+            conn.close()
+            return {"success": bool(updated), "name": new_name}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _do_rename)
 
 
 @app.get("/api/knowledge/graph")
@@ -2075,7 +2082,6 @@ async def patterns_reject_rule(request: Request):
     """User rejects a suggested routing rule."""
     try:
         from core import patterns
-        import sqlite3
         body = await request.json()
         pattern_type = body.get("pattern_type")
         pattern_value = body.get("pattern_value")
@@ -2084,15 +2090,17 @@ async def patterns_reject_rule(request: Request):
         if not all([pattern_type, pattern_value, destination]):
             return {"error": "Missing required fields"}
 
-        # Delete the suggestion from learned_preferences
-        conn = patterns._connect()
-        conn.execute("""
-            DELETE FROM learned_preferences
-            WHERE pattern_type = ? AND pattern_value = ? AND destination = ?
-        """, (pattern_type, pattern_value, destination))
-        conn.commit()
-        conn.close()
+        def _do_reject():
+            conn = patterns._connect()
+            conn.execute("""
+                DELETE FROM learned_preferences
+                WHERE pattern_type = ? AND pattern_value = ? AND destination = ?
+            """, (pattern_type, pattern_value, destination))
+            conn.commit()
+            conn.close()
 
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _do_reject)
         return {"success": True, "message": "Rule rejected and removed from suggestions"}
     except Exception as e:
         return {"error": str(e)}
@@ -2410,15 +2418,18 @@ async def unblacklist_provider(request: Request):
             return {"error": "Missing provider name"}
 
         # Manually unblacklist by updating database
-        conn = provider_health._connect()
-        conn.execute("""
-            UPDATE provider_health
-            SET status = 'healthy', blacklisted_until = NULL, consecutive_failures = 0
-            WHERE provider = ?
-        """, (provider_name,))
-        conn.commit()
-        conn.close()
+        def _do_unblacklist():
+            conn = provider_health._connect()
+            conn.execute("""
+                UPDATE provider_health
+                SET status = 'healthy', blacklisted_until = NULL, consecutive_failures = 0
+                WHERE provider = ?
+            """, (provider_name,))
+            conn.commit()
+            conn.close()
 
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _do_unblacklist)
         return {"success": True, "provider": provider_name, "message": f"{provider_name} unblacklisted"}
     except Exception as e:
         return {"error": str(e)}
@@ -3783,6 +3794,16 @@ async def gazelle_documents(session_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# --- NASA archive static files ---
+NASA_DIST = Path(__file__).parent.parent / "safe-app-nasa-archive" / "site" / "dist"
+if NASA_DIST.exists():
+    app.mount("/nasa", StaticFiles(directory=str(NASA_DIST)), name="nasa-dist")
+
+# --- SAFE web static files ---
+SAFE_WEB = Path(__file__).parent.parent / "SAFE" / "web"
+if SAFE_WEB.exists():
+    app.mount("/SAFE/web", StaticFiles(directory=str(SAFE_WEB)), name="safe-web")
 
 # --- Static file serving (production) — must be last to avoid shadowing API routes ---
 if UI_DIST.exists():

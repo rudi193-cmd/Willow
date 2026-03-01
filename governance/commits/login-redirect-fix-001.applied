@@ -1,0 +1,33 @@
+# Governance Proposal: Fix login.html post-login redirect
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T22:38:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+After a successful login, `login.html` redirects to the relative URL `index.html`. From `localhost:8420/SAFE/web/login.html` this resolves to `SAFE/web/index.html` (the public SAFE landing page) instead of `localhost:8420/` (the Willow hub). Fix: change the fallback to `/`.
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** None
+
+## Implementation
+```python
+from pathlib import Path
+
+p = Path("C:/Users/Sean/Documents/GitHub/SAFE/web/login.html")
+src = p.read_text(encoding="utf-8")
+old = "window.location.href = next || 'index.html';"
+new = "window.location.href = next || '/';"
+if old in src:
+    p.write_text(src.replace(old, new, 1), encoding="utf-8")
+    print("Fixed: login redirect -> /")
+else:
+    print("ERROR: string not found")
+```
+
+---
+**Awaiting Human Ratification**
+ΔΣ=42
