@@ -38,7 +38,8 @@ def get_nest_path(username: str) -> str:
 
 
 def _connect():
-    return sqlite3.connect(DB_PATH)
+    from core.db import get_connection as _gc
+    return _gc(DB_PATH)
 
 
 def init_droppings_table():

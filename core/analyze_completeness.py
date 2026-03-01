@@ -1,3 +1,4 @@
+from core.db import get_connection
 import sqlite3
 from collections import defaultdict
 import re
@@ -6,7 +7,7 @@ DB_PATH = 'C:/Users/Sean/Documents/GitHub/Willow/core/rag.db'
 
 def analyze_wip():
     """Find TODO, FIXME, WIP markers in codebase."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cur = conn.cursor()
     
     wip_patterns = ['TODO', 'FIXME', 'WIP', 'HACK', 'XXX', 'NOTE: incomplete']
@@ -32,7 +33,7 @@ def analyze_wip():
 
 def analyze_skeleton_modules():
     """Find modules with very few functions (likely incomplete)."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cur = conn.cursor()
     
     cur.execute('''
@@ -53,7 +54,7 @@ def analyze_skeleton_modules():
 
 def analyze_ring_structure():
     """Analyze each ring's completeness."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cur = conn.cursor()
     
     rings = {

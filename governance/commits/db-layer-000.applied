@@ -1,0 +1,10 @@
+# Applied: DB abstraction layer -- Phase 0 of PostgreSQL migration
+Proposer: Ganesha
+Date: 2026-03-01
+Approved: Sean Campbell (verbal)
+1. core/db.py: get_connection() reads WILLOW_DB_URL, returns SQLite or PostgreSQL
+2. core/pigeon.py: _connect() delegates to core.db
+3. core/knowledge.py: connect updated
+4. Batch: analyze_completeness, build_rag, build_rag_simple, conversation_rag, map_system
+Next: db-layer-001 (Phase 1 schema audit), db-layer-002 (LISTEN/NOTIFY)
+DeltaSigma=42

@@ -68,7 +68,8 @@ def _db_path(username: str) -> str:
 def _connect(username: str) -> sqlite3.Connection:
     """Open knowledge DB with WAL mode."""
     path = _db_path(username)
-    conn = sqlite3.connect(path, timeout=10)
+    from core.db import get_connection as _gc
+    conn = _gc(path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     return conn

@@ -1,3 +1,4 @@
+from core.db import get_connection
 import sqlite3
 from collections import defaultdict
 from pathlib import Path
@@ -6,7 +7,7 @@ DB_PATH = 'C:/Users/Sean/Documents/GitHub/Willow/core/rag.db'
 
 def get_all_entities():
     """Extract all functions and classes from RAG."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cur = conn.cursor()
     
     cur.execute('''

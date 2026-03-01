@@ -1,3 +1,4 @@
+from core.db import get_connection
 import os
 import sqlite3
 import ast
@@ -12,7 +13,7 @@ REPOS = {
 DB_PATH = 'C:/Users/Sean/Documents/GitHub/Willow/core/rag.db'
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     conn.execute('''
         CREATE TABLE IF NOT EXISTS chunks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,7 +147,7 @@ def index_repo(repo_path, repo_name):
     return indexed
 
 def search_rag(query, limit=5):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cur = conn.cursor()
     
     search_term = f"%{query}%"

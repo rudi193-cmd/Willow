@@ -1,0 +1,61 @@
+# Governance Proposal: Pigeon DB Lock Fix — WAL mode + connection timeout
+
+**Proposer:** Ganesha
+**Date:** 2026-03-01
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Pigeon daemon workers fail with "database is locked" despite the existing threading.Lock().
+Root cause: `sqlite3.connect()` has no timeout (fails immediately on lock) and uses the
+default journal mode (DELETE) which blocks concurrent writers. Fix: add `timeout=30` so
+connections wait up to 30s before failing, and enable WAL mode so readers never block
+writers and multiple connections queue cleanly.
+
+## Proposed Changes
+**File:** `core/pigeon.py`
+**Location:** `_connect()` function, line 41
+
+## Rationale
+- Default SQLite timeout = 5s, but Python's sqlite3 module actually defaults to 0 on lock
+- WAL (Write-Ahead Logging) mode: readers never block writers; writers queue, don't fail
+- `timeout=30` gives the threading.Lock() time to release before failing
+- Both changes together eliminate "database is locked" in normal operation
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove WAL pragma to revert; WAL files auto-cleanup on next close
+- **Dependencies:** None
+- **Testing:** Restart server, trigger pigeon scan, watch daemon logs — no lock errors
+
+## ΔE Impact
+Expected ΔE: +0.012 (eliminates recurring error noise, improves pipeline reliability)
+
+## Implementation
+
+```python
+import sys
+sys.path.insert(0, r"C:\Users\Sean\Documents\GitHub\Willow")
+from pathlib import Path
+
+p = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\pigeon.py")
+s = p.read_text(encoding="utf-8")
+
+old = "def _connect():\n    return sqlite3.connect(DB_PATH)"
+new = (
+    "def _connect():\n"
+    "    conn = sqlite3.connect(DB_PATH, timeout=30)\n"
+    "    conn.execute(\"PRAGMA journal_mode=WAL\")\n"
+    "    return conn"
+)
+assert old in s, f"anchor not found in pigeon.py"
+s = s.replace(old, new, 1)
+p.write_text(s, encoding="utf-8")
+print("pigeon.py: _connect() updated — WAL mode + 30s timeout")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
