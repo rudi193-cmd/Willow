@@ -40,7 +40,10 @@ def _extract_image(path: Path) -> str:
     try:
         import pytesseract
         from PIL import Image
+        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
         img = Image.open(path)
+        if img.mode in ("CMYK", "P", "LA", "RGBA"):
+            img = img.convert("RGB")
         return pytesseract.image_to_string(img).strip()
     except Exception as e:
         log.warning(f"OCR failed {path.name}: {e}")

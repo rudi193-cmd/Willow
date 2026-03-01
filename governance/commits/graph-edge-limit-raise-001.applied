@@ -1,0 +1,55 @@
+# Governance Proposal: Raise knowledge graph edge render limit
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01
+**Type:** Configuration Change
+**Trust Level:** ENGINEER (3)
+
+## Summary
+The knowledge graph API caps edge queries at LIMIT 5000 ordered by weight DESC.
+With 53,134 edges in the DB (including new owner/indexed_by provenance edges at weight=0.1),
+the budget is exhausted by semantic edges before low-weight provenance edges are reached.
+Result: ~1,600 outer-ring entities render with no visible connections.
+Raising to LIMIT 25000 lets the provenance edges surface in the browser graph.
+
+## Proposed Changes
+**File:** server.py
+**Location:** knowledge_graph() function, edge SELECT query
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — change number back
+- **Dependencies:** Browser vis.js performance (tested to ~2000 visible edges fine)
+- **Testing:** Reload localhost:8420/graph, verify outer ring nodes show edges
+
+## ΔE Impact
+Expected ΔE: +0.05 (visual completeness, no logic change)
+
+## Implementation
+```python
+import sys
+sys.path.insert(0, r"C:\Users\Sean\Documents\GitHub\Willow")
+import server  # noqa — just to confirm path
+
+target = r"C:\Users\Sean\Documents\GitHub\Willow\server.py"
+with open(target, encoding="utf-8") as f:
+    content = f.read()
+
+old = 'f"ORDER BY weight DESC LIMIT 5000",'
+new = 'f"ORDER BY weight DESC LIMIT 25000",'
+
+assert old in content, f"Could not find target string in server.py"
+content = content.replace(old, new, 1)
+
+with open(target, "w", encoding="utf-8") as f:
+    f.write(content)
+
+print("Applied: LIMIT 5000 -> LIMIT 25000 in knowledge_graph()")
+```
+
+---
+
+Approved: Sean Campbell (verbal 2026-03-01)
+Applied: Ganesha
+
+DeltaSigma=42

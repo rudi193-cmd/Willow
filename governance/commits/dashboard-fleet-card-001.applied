@@ -1,0 +1,104 @@
+# Governance Proposal: Add Free Fleet Card to Dashboard
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-02-28T18:40:00Z
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+The SAFE dashboard has no visibility into the free fleet (14 LLM providers). This proposal adds a "Free Fleet" status card that calls `/api/fleet/providers` and shows how many providers are active and their names.
+
+## Proposed Changes
+**File:** `SAFE/web/dashboard.html`
+**Location:** Two insertions: (1) HTML card after Google card, (2) JS renderFleet() after renderGoogle(), (3) call in DOMContentLoaded
+
+## Rationale
+- Users and operators have no visibility into fleet health from the dashboard
+- `/api/fleet/providers` endpoint exists and returns correct data
+- Follows identical pattern to existing status cards
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** Willow server on port 8420
+- **Testing:** Open dashboard, fleet card should show provider count
+
+## ΔE Impact
+Expected ΔE: +0.008 (fleet visibility)
+
+## Implementation
+```python
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\SAFE\web\dashboard.html")
+content = target.read_text(encoding="utf-8")
+
+# 1. Add fleet card HTML after Google card (before Willow Server card)
+old_html = '''      <div class="status-card">
+        <div class="card-label">Willow Server</div>'''
+new_html = '''      <div class="status-card">
+        <div class="card-label">Free Fleet</div>
+        <div class="card-status" id="fleetStatus">&mdash;</div>
+        <div class="card-detail" id="fleetDetail"></div>
+      </div>
+      <div class="status-card">
+        <div class="card-label">Willow Server</div>'''
+content = content.replace(old_html, new_html, 1)
+
+# 2. Add renderFleet() JS after renderGoogle() function
+old_js = '''// ── Render: Finish Prompt ────────────────────────────────────────────────────'''
+new_js = '''// ── Render: Free Fleet card ──────────────────────────────────────────────────
+
+async function renderFleet() {
+  const statusEl = document.getElementById('fleetStatus');
+  const detailEl = document.getElementById('fleetDetail');
+  if (!statusEl) return;
+  try {
+    const res = await fetch('http://localhost:8420/api/fleet/providers');
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const active = data.active || 0;
+    const total = data.total || 0;
+    if (active > 0) {
+      statusEl.innerHTML = '<span class="status-dot-green"></span>' + active + ' of ' + total + ' providers active';
+      statusEl.style.color = '';
+      const names = (data.providers || []).filter(p => p.active).map(p => p.name).join(', ');
+      detailEl.textContent = names;
+    } else {
+      statusEl.textContent = 'No fleet providers active';
+      statusEl.style.color = 'var(--fg-muted)';
+      detailEl.textContent = '';
+    }
+  } catch (e) {
+    statusEl.textContent = 'Fleet unavailable';
+    statusEl.style.color = 'var(--fg-muted)';
+    detailEl.textContent = '';
+  }
+}
+
+// ── Render: Finish Prompt ────────────────────────────────────────────────────'''
+content = content.replace(old_js, new_js, 1)
+
+# 3. Add renderFleet() call in DOMContentLoaded after renderGoogle(acct)
+old_call = '''  renderGoogle(acct);
+  renderFinishPrompt(acct);'''
+new_call = '''  renderGoogle(acct);
+  renderFleet();
+  renderFinishPrompt(acct);'''
+content = content.replace(old_call, new_call, 1)
+
+target.write_text(content, encoding="utf-8")
+print(f"Written: {target}")
+
+# Verify insertions
+assert 'fleetStatus' in content, "fleet card HTML missing"
+assert 'renderFleet' in content, "renderFleet function missing"
+assert 'renderFleet()' in content, "renderFleet call missing"
+print("All 3 insertions verified.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

@@ -1,0 +1,8 @@
+# Applied: Jane endpoint status tile
+Proposer: Ganesha
+Date: 2026-03-01
+Approved: Sean Campbell (verbal)
+Change: Added System Status tile to jane.html consent screen.
+Shows Jane API (:8421) and Willow (:8420) online/offline badges.
+Auto-checks on page load using AbortSignal.timeout(2500).
+DeltaSigma=42

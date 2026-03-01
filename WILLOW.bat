@@ -124,6 +124,10 @@ if exist apps\watcher.py (
     start "WILLOW-InboxWatcher"        /min cmd /c "python apps\watcher.py --no-consent                       >> logs\watcher.log 2>&1"
     echo   inbox watcher         logs\watcher.log
 )
+if exist core\watcher.py (
+    start "WILLOW-NestWatcher"         /min cmd /c "python core\watcher.py --no-consent                       >> logs\watcher_nest.log 2>&1"
+    echo   nest watcher          logs\watcher_nest.log
+)
 
 :: ---------------------------------------------------------------
 :: TUNNEL (optional)

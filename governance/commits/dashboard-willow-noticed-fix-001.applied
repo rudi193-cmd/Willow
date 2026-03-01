@@ -1,0 +1,106 @@
+# Governance Proposal: Fix Willow Noticed Dashboard Card
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-28T06:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Three bugs prevent the Willow Noticed card from displaying connection proposals on the
+SAFE dashboard. (1) loadConnections() doesn't unwrap the API envelope — API returns
+{"connections":[...]} but JS expects a bare array, so the card always shows empty.
+(2) buildConnectionCard() uses wrong field names — API returns name_a/name_b but JS
+looks for entity_a/entity_b, so entity names never render. (3) loadWillowKnows() is
+called on page load and on refresh but is never defined, causing a silent JS error that
+aborts further rendering. All three are one-line fixes plus adding the missing function.
+
+## Proposed Changes
+**File:** SAFE/web/dashboard.html
+**Location:** loadConnections() (~line 600), buildConnectionCard() (~line 616), missing loadWillowKnows()
+
+## Rationale
+- Dashboard shows blank "Willow Noticed" section despite 134 confirmed + pending connections in DB
+- Root cause: API response envelope mismatch + missing function definition
+- No architecture change — pure bug fix, zero new dependencies
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** None
+- **Testing:** Reload dashboard → Willow Noticed card shows pending connections; Scan button triggers POST /api/willow/scan-connections
+
+## ΔE Impact
+Expected ΔE: +0.050 (dashboard becomes functional — low delta, but unlocks Willow's proposal loop)
+
+## Implementation
+```python
+path = r"C:/Users/Sean/Documents/GitHub/SAFE/web/dashboard.html"
+with open(path, "r", encoding="utf-8") as f:
+    content = f.read()
+
+# Fix 1: Unwrap API envelope in loadConnections()
+content = content.replace(
+    "    const connections = await res.json();\n\n    if (!Array.isArray(connections) || connections.length === 0) {",
+    "    const data = await res.json();\n    const connections = data.connections || [];\n\n    if (connections.length === 0) {"
+)
+
+# Fix 2: Correct field names in buildConnectionCard()
+content = content.replace(
+    "  const entityA = escHtml(c.entity_a || c.source || '?');\n  const entityB = escHtml(c.entity_b || c.target || '?');\n  const reason  = escHtml(c.reason || c.description || '');",
+    "  const entityA = escHtml(c.name_a || '?');\n  const entityB = escHtml(c.name_b || '?');\n  const reason  = escHtml(c.connection_type || c.reason || '');"
+)
+
+# Fix 3: Add missing loadWillowKnows() function
+# Insert after the closing brace of loadConnections() (after the catch block)
+old_anchor = "// ── Pigeon Mail ────────────────────────────────────────────"
+new_func = '''async function loadWillowKnows() {
+  const el = document.getElementById('willowKnowsContainer');
+  if (!el) return;
+  el.innerHTML =
+    '<div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem">' +
+    '<button class="btn-willow-test" onclick="triggerWillowScan()" id="btnWillowScan">Scan for connections</button>' +
+    '<span id="willowScanResult" style="font-size:12px;color:var(--fg-muted)"></span>' +
+    '</div>';
+}
+
+async function triggerWillowScan() {
+  const btn = document.getElementById('btnWillowScan');
+  const result = document.getElementById('willowScanResult');
+  if (btn) btn.textContent = 'Scanning…';
+  try {
+    const res = await fetch(getWillowBase() + '/api/willow/scan-connections', { method: 'POST' });
+    const data = await res.json();
+    if (btn) btn.textContent = 'Scan for connections';
+    if (result) result.textContent = data.new_proposals > 0
+      ? data.new_proposals + ' new proposals found'
+      : 'No new connections found';
+    if (data.new_proposals > 0) loadConnections();
+  } catch (e) {
+    if (btn) btn.textContent = 'Scan for connections';
+    if (result) result.textContent = 'Willow offline';
+  }
+}
+
+'''
+content = content.replace(old_anchor, new_func + old_anchor)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+
+# Verify
+with open(path, "r", encoding="utf-8") as f:
+    check = f.read()
+
+ok1 = "data.connections || []" in check
+ok2 = "c.name_a" in check
+ok3 = "async function loadWillowKnows" in check
+print(f"Fix 1 (envelope unwrap): {'OK' if ok1 else 'FAILED'}")
+print(f"Fix 2 (field names): {'OK' if ok2 else 'FAILED'}")
+print(f"Fix 3 (loadWillowKnows): {'OK' if ok3 else 'FAILED'}")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

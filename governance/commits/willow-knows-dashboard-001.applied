@@ -1,0 +1,291 @@
+# Governance Proposal: Add "What Willow Knows" Section to SAFE Dashboard
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-27T17:30:00Z
+**Type:** Feature — User Transparency & Data Correction
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add a "What Willow Knows About You" section to the SAFE dashboard. This shows users all entities Willow has learned from their conversations and documents, explains why each entity was created (source transparency), and allows them to correct mistakes (rename or delete phantom entities). This is the user-facing expression of Dual Commit: Willow proposes knowledge, users ratify or correct it. Requires new server routes (already added to server.py as T2).
+
+## Proposed Changes
+**File:** C:\Users\Sean\Documents\GitHub\SAFE\web\dashboard.html
+**Location:** After Section 4 (Willow Noticed), before footer. CSS added in <style> block.
+
+## Rationale
+- Users need transparency: “what does Willow think it knows about me?”
+- Users need correction power: phantom entities (like “Work Sarah” from docs) must be removable
+- This is the core Dual Commit UX for data: AI proposes → human ratifies/corrects
+- Entities are grouped by type (person, project, concept, tool), with mention count
+- Each entity shows its source knowledge atoms (“why Willow knows this”)
+- Rename and Delete actions with confirmation
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — HTML/CSS/JS only, no data schema changes
+- **Dependencies:** Requires server.py routes /api/knowledge/entities, /api/knowledge/entities/{id}/sources, DELETE /api/knowledge/entities/{id}, PATCH /api/knowledge/entities/{id} (already added)
+- **Testing:** Load dashboard, verify section appears, click “Why?” to see sources, rename an entity, delete an entity
+
+## ΔE Impact
+Expected ΔE: +0.180 (significant user transparency gain; correction capability closes the Dual Commit loop for knowledge data)
+
+## Implementation
+
+```python
+import re
+
+filepath = r"C:\Users\Sean\Documents\GitHub\SAFE\web\dashboard.html"
+with open(filepath, "r", encoding="utf-8") as f:
+    content = f.read()
+
+# 1. Add CSS before /* TOAST */
+css_insert = '''    /* WHAT WILLOW KNOWS */
+    #willowKnowsContainer { margin-top: 1rem; }
+    .entity-group { margin-bottom: 1.5rem; }
+    .entity-group-label { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 0.5rem; }
+    .entity-row { border: 1px solid var(--border); border-radius: 4px; padding: 0.7rem 1rem; margin-bottom: 0.4rem; }
+    .entity-row-main { display: flex; align-items: center; gap: 0.75rem; }
+    .entity-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .entity-name { flex: 1; font-size: 14px; font-weight: 500; color: var(--fg); }
+    .entity-count { font-size: 12px; color: var(--fg-muted); flex-shrink: 0; }
+    .entity-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+    .btn-entity-why { font-size: 12px; padding: 0.2rem 0.55rem; background: none; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; font-family: inherit; }
+    .btn-entity-why:hover { border-color: var(--fg-muted); color: var(--fg); }
+    .btn-entity-rename { font-size: 12px; padding: 0.2rem 0.55rem; background: none; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; font-family: inherit; }
+    .btn-entity-rename:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-entity-delete { font-size: 12px; padding: 0.2rem 0.55rem; background: none; color: #c0392b; border: 1px solid #e8c4c0; border-radius: 3px; cursor: pointer; font-family: inherit; }
+    .btn-entity-delete:hover { background: #fdf2f1; }
+    .entity-sources { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border); display: none; }
+    .entity-sources.open { display: block; }
+    .entity-source-item { font-size: 12px; color: var(--fg-muted); padding: 0.25rem 0; }
+    .entity-source-title { font-weight: 500; color: var(--fg); }
+    .entity-sources-empty { font-size: 12px; color: var(--fg-muted); font-style: italic; }
+    .entity-rename-form { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border); display: none; gap: 0.5rem; align-items: center; }
+    .entity-rename-form.open { display: flex; }
+    .entity-rename-input { flex: 1; font-size: 13px; padding: 0.3rem 0.5rem; border: 1px solid var(--border); border-radius: 3px; font-family: inherit; color: var(--fg); background: var(--bg); }
+    .entity-rename-input:focus { outline: none; border-color: var(--accent); }
+    .btn-rename-apply { font-size: 12px; padding: 0.3rem 0.7rem; background: var(--accent-light); color: var(--accent); border: none; border-radius: 3px; cursor: pointer; font-family: inherit; font-weight: 600; }
+    .btn-rename-cancel { font-size: 12px; padding: 0.3rem 0.6rem; background: none; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; font-family: inherit; }
+    .knows-empty { font-size: 14px; color: var(--fg-muted); margin-top: 1rem; }
+    .knows-offline { font-size: 14px; color: var(--fg-muted); margin-top: 1rem; }
+
+'''
+content = content.replace("    /* TOAST */", css_insert + "    /* TOAST */")
+
+# 2. Add HTML section before </main>
+html_insert = '''
+  <!-- Section 5: What Willow Knows -->
+  <div class="section">
+    <div class="section-eyebrow">What Willow Knows</div>
+    <div class="section-sub">People, projects, and concepts Willow has learned from your conversations &mdash; yours to correct</div>
+    <div id="willowKnowsContainer"></div>
+  </div>
+'''
+content = content.replace("</main>", html_insert + "</main>")
+
+# 3. Add JS before // ── Init ────────────────────────────────────────────────────────────────────────────────
+js_insert = '''
+// ── What Willow Knows ────────────────────────────────────────────────────────────────────────────
+
+const ENTITY_COLORS = {
+  person:       '#4a90d9',
+  project:      '#2d6a4f',
+  concept:      '#9b59b6',
+  tool:         '#d4860a',
+  location:     '#c0392b',
+  event:        '#8b4513',
+  organization: '#888888'
+};
+
+async function loadWillowKnows() {
+  const el = document.getElementById('willowKnowsContainer');
+  el.innerHTML = '<p class="knows-empty" style="opacity:0.5">Loading…</p>';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const res = await fetch('http://localhost:8420/api/knowledge/entities?min_mentions=1', {
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const entities = data.entities || [];
+
+    if (entities.length === 0) {
+      el.innerHTML = '<p class="knows-empty">Willow hasn’t learned anything yet. Start a conversation to build your profile.</p>';
+      return;
+    }
+
+    // Group by type
+    const groups = {};
+    entities.forEach(function(e) {
+      const t = e.type || 'unknown';
+      if (!groups[t]) groups[t] = [];
+      groups[t].push(e);
+    });
+
+    const typeOrder = ['person', 'project', 'concept', 'tool', 'organization', 'location', 'event'];
+    const sorted = Object.keys(groups).sort(function(a, b) {
+      return (typeOrder.indexOf(a) + 1 || 99) - (typeOrder.indexOf(b) + 1 || 99);
+    });
+
+    el.innerHTML = sorted.map(function(type) {
+      const color = ENTITY_COLORS[type] || '#888';
+      const rows = groups[type].map(function(e) {
+        return buildEntityRow(e, color);
+      }).join('');
+      return '<div class="entity-group">' +
+        '<div class="entity-group-label">' + escHtml(type) + '</div>' +
+        rows +
+        '</div>';
+    }).join('');
+
+  } catch (e) {
+    clearTimeout(timer);
+    el.innerHTML = '<p class="knows-offline">Willow is offline. Entity data will appear when the server is running.</p>';
+  }
+}
+
+function buildEntityRow(e, color) {
+  const id = e.id;
+  const sourceNote = e.source_count > 0
+    ? e.source_count + ' source' + (e.source_count !== 1 ? 's' : '')
+    : 'no linked sources';
+  return '<div class="entity-row" id="er-' + id + '">' +
+    '<div class="entity-row-main">' +
+      '<span class="entity-dot" style="background:' + color + '"></span>' +
+      '<span class="entity-name">' + escHtml(e.name) + '</span>' +
+      '<span class="entity-count">' + e.mentions + ' mention' + (e.mentions !== 1 ? 's' : '') + (e.source_count > 0 ? ' &middot; ' + sourceNote : '') + '</span>' +
+      '<div class="entity-actions">' +
+        '<button class="btn-entity-why" onclick="toggleEntityWhy(' + id + ')">Why?</button>' +
+        '<button class="btn-entity-rename" onclick="toggleEntityRename(' + id + ', ' + JSON.stringify(escHtml(e.name)) + ')">Rename</button>' +
+        '<button class="btn-entity-delete" onclick="deleteEntity(' + id + ', ' + JSON.stringify(escHtml(e.name)) + ')">Delete</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="entity-sources" id="es-' + id + '"><p class="entity-sources-empty">Loading sources…</p></div>' +
+    '<div class="entity-rename-form" id="erf-' + id + '">' +
+      '<input class="entity-rename-input" id="eri-' + id + '" type="text" value="' + escHtml(e.name) + '">' +
+      '<button class="btn-rename-apply" onclick="applyRename(' + id + ')">Apply correction</button>' +
+      '<button class="btn-rename-cancel" onclick="toggleEntityRename(' + id + ')">Cancel</button>' +
+    '</div>' +
+    '</div>';
+}
+
+async function toggleEntityWhy(id) {
+  const el = document.getElementById('es-' + id);
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    return;
+  }
+  el.classList.add('open');
+  if (el.dataset.loaded) return;
+  el.dataset.loaded = '1';
+
+  try {
+    const res = await fetch('http://localhost:8420/api/knowledge/entities/' + id + '/sources');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const sources = data.sources || [];
+    if (sources.length === 0) {
+      el.innerHTML = '<p class="entity-sources-empty">No source records found. This entity may have been extracted from a document that wasn’t indexed.</p>';
+    } else {
+      el.innerHTML = sources.map(function(s) {
+        return '<div class="entity-source-item">' +
+          '<span class="entity-source-title">' + escHtml(s.title || s.source_id || 'Unknown source') + '</span>' +
+          (s.summary ? ' — ' + escHtml(s.summary.slice(0, 120)) + (s.summary.length > 120 ? '…' : '') : '') +
+          '</div>';
+      }).join('');
+    }
+  } catch (e) {
+    el.innerHTML = '<p class="entity-sources-empty">Could not load source information.</p>';
+  }
+}
+
+function toggleEntityRename(id) {
+  const form = document.getElementById('erf-' + id);
+  const isOpen = form.classList.contains('open');
+  form.classList.toggle('open', !isOpen);
+  if (!isOpen) {
+    const input = document.getElementById('eri-' + id);
+    if (input) { input.focus(); input.select(); }
+  }
+}
+
+async function applyRename(id) {
+  const input = document.getElementById('eri-' + id);
+  const row = document.getElementById('er-' + id);
+  const newName = (input ? input.value : '').trim();
+  if (!newName) return;
+
+  try {
+    const res = await fetch('http://localhost:8420/api/knowledge/entities/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.success) {
+      // Update displayed name
+      if (row) {
+        const nameEl = row.querySelector('.entity-name');
+        if (nameEl) nameEl.textContent = newName;
+      }
+      toggleEntityRename(id);
+      showToast('Correction applied: “' + newName + '”');
+    } else {
+      showToast('Rename failed');
+    }
+  } catch (e) {
+    showToast('Error applying correction');
+  }
+}
+
+async function deleteEntity(id, name) {
+  if (!confirm('Remove "' + name + '" from Willow’s knowledge?\n\nThis is your correction — Willow will no longer track this entity.')) return;
+
+  try {
+    const res = await fetch('http://localhost:8420/api/knowledge/entities/' + id, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.success) {
+      const row = document.getElementById('er-' + id);
+      if (row) row.remove();
+      showToast('Removed: “' + name + '”');
+      // Clean up empty groups
+      document.querySelectorAll('.entity-group').forEach(function(g) {
+        if (!g.querySelector('.entity-row')) g.remove();
+      });
+      const el = document.getElementById('willowKnowsContainer');
+      if (el && !el.querySelector('.entity-row')) {
+        el.innerHTML = '<p class="knows-empty">No entities remaining.</p>';
+      }
+    } else {
+      showToast('Delete failed');
+    }
+  } catch (e) {
+    showToast('Error removing entity');
+  }
+}
+
+'''
+content = content.replace("// ── Init ────────────────────────────────────────────────────────────────────────────────", js_insert + "// ── Init ────────────────────────────────────────────────────────────────────────────────")
+
+# 4. Add loadWillowKnows() call in DOMContentLoaded
+content = content.replace("  loadConnections();\n});", "  loadConnections();\n  loadWillowKnows();\n});")
+
+with open(filepath, "w", encoding="utf-8") as f:
+    f.write(content)
+
+print("dashboard.html updated successfully")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

@@ -1,0 +1,466 @@
+# Governance Proposal: Pigeon Mail — File Intake, Classification, Routing
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-28T00:03:00Z
+**Type:** Feature — File Intake System
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Build Pigeon Mail: a one-folder file intake system where the user drops files into a local `Nest/` folder. Pigeon (the carrier agent) watches that local folder, classifies each file via the free fleet, routes it to a permanent `Filed/{category}/` location, and leaves a "dropping" card on the SAFE dashboard. Droppings are ephemeral status receipts — the user sweeps them when done.
+
+**Architecture principle:** Pigeon watches a local folder only. If the user wants to sync GDrive, Dropbox, or any cloud storage to that folder, that is their choice — Pigeon doesn't care how files arrive. One local path. One responsibility.
+
+## Proposed Changes
+
+**New file:** `core/pigeon.py`
+**Modified:** `server.py` (add 4 routes)
+**Modified:** `SAFE/web/dashboard.html` (add Pigeon Mail section + CSS + JS)
+**DB:** Add `pigeon_droppings` table to `artifacts/Sweet-Pea-Rudi19/willow_knowledge.db`
+
+## Rationale
+
+- One folder. No categories the user has to think about. Pigeon thinks.
+- Droppings are acknowledgment, not storage. Ephemeral. Sweep when done.
+- Local-first by design: Nest/ is just a local folder. Cloud sync is the user's problem, not Willow's.
+- Replaces Drop/Pickup naming confusion with Nest/droppings — Willow-native vocabulary.
+- Pigeon is already registered as a WORKER agent (hl6hz-register-pigeon-agent.applied).
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — pigeon.py can be removed, routes removed, dashboard section commented out
+- **Dependencies:** llm_router, knowledge.py (existing), server.py (FastAPI), SAFE/web/dashboard.html
+- **Testing:** Drop a file in Nest/ → POST /api/pigeon/scan → droppings card appears → sweep → card gone
+
+## ΔE Impact
+
+Expected ΔE: +0.220 (closes the file intake loop; eliminates "where do I put this?" friction for all users)
+
+## Implementation
+
+```python
+import os, shutil, sqlite3
+
+WILLOW = r"C:\Users\Sean\Documents\GitHub\Willow"
+SAFE   = r"C:\Users\Sean\Documents\GitHub\SAFE"
+
+# ── 1. Write core/pigeon.py ────────────────────────────────────────────
+
+pigeon_py = '''
+core/pigeon.py - Pigeon Mail
+File intake, classification, routing, and droppings for the Willow ecosystem.
+
+Flow:
+  User drops file into Nest/ (local folder)
+  Pigeon scans -> classifies via fleet -> routes to Filed/{category}/
+  Pigeon creates dropping record -> appears on SAFE dashboard
+  User sweeps dropping when done
+
+Nest/ is a local folder. If the user syncs GDrive/Dropbox/etc to it, fine.
+Pigeon does not know or care about cloud storage. Local only.
+
+Default Nest path: C:\\Users\\{username}\\Willow\\Nest\\
+Default Filed path: C:\\Users\\{username}\\Willow\\Filed\\{category}\\
+'''
+
+# Full pigeon.py source, server.py routes, and dashboard patches
+# are embedded below as string replacements for governance apply.
+
+# ── pigeon.py full source ───────────────────────────────────────
+
+PIGEON_SRC = r'''
+import os, json, hashlib, shutil, sqlite3, logging, re
+from datetime import datetime, UTC
+from pathlib import Path
+
+logger = logging.getLogger("pigeon")
+
+DB_PATH = r"C:\\Users\\Sean\\Documents\\GitHub\\Willow\\artifacts\\Sweet-Pea-Rudi19\\willow_knowledge.db"
+
+NEST_PATHS = {
+    "Sweet-Pea-Rudi19": r"C:\\Users\\Sean\\Willow\\Nest",
+}
+
+FILED_BASE = {
+    "Sweet-Pea-Rudi19": r"C:\\Users\\Sean\\Willow\\Filed",
+}
+
+VALID_CATEGORIES = {"legal", "narrative", "personal", "code", "reference", "media"}
+
+
+def get_nest_path(username: str) -> str:
+    path = NEST_PATHS.get(username, os.path.join(r"C:\\Users\\Sean", "Willow", "Nest"))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _connect():
+    return sqlite3.connect(DB_PATH)
+
+
+def init_droppings_table():
+    conn = _connect()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pigeon_droppings (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT NOT NULL,
+            filename      TEXT NOT NULL,
+            original_path TEXT,
+            filed_to      TEXT,
+            category      TEXT,
+            summary       TEXT,
+            created_at    TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def _read_snippet(file_path: str, max_bytes: int = 2000) -> str:
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read(max_bytes)
+    except Exception:
+        try:
+            with open(file_path, "rb") as f:
+                return f.read(max_bytes).decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+
+def classify_file(filename: str, snippet: str) -> dict:
+    import sys
+    sys.path.insert(0, r"C:\\Users\\Sean\\Documents\\GitHub\\Willow\\core")
+    import llm_router
+    llm_router.load_keys_from_json()
+    prompt = (
+        "Classify this file and summarize it in 1-2 sentences.\\n"
+        "Categories: legal, narrative, personal, code, reference, media\\n"
+        f"Filename: {filename}\\nContent preview:\\n{snippet[:800]}\\n\\n"
+        'Respond as JSON only: {"category": "...", "summary": "..."}'
+    )
+    try:
+        resp = llm_router.ask(prompt, preferred_tier="free")
+        if resp and resp.content:
+            match = re.search(r"\\{[^{}]+\\}", resp.content, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+                cat = data.get("category", "reference").lower().strip()
+                if cat not in VALID_CATEGORIES:
+                    cat = "reference"
+                return {"category": cat, "summary": data.get("summary", "")[:300]}
+    except Exception as e:
+        logger.warning(f"PIGEON: classify failed for {filename}: {e}")
+    name = filename.lower()
+    if any(k in name for k in ["legal", "court", "bankruptcy", "motion", "schedule", "creditor"]):
+        return {"category": "legal", "summary": f"Legal document: {filename}"}
+    if any(k in name for k in ["book", "story", "chapter", "novel", "trappist", "mann", "manuscript"]):
+        return {"category": "narrative", "summary": f"Narrative document: {filename}"}
+    if any(k in name for k in [".jsonl", "kart", "claude", "chatgpt", "export", "sessions"]):
+        return {"category": "code", "summary": f"Code or export: {filename}"}
+    if any(k in name for k in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mp3"]):
+        return {"category": "media", "summary": f"Media file: {filename}"}
+    return {"category": "reference", "summary": f"Document: {filename}"}
+
+
+def route_file(file_path: str, category: str, username: str) -> str:
+    base = FILED_BASE.get(username, os.path.join(r"C:\\Users\\Sean", "Willow", "Filed"))
+    dest_dir = os.path.join(base, category)
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, Path(file_path).name)
+    if os.path.exists(dest):
+        stem = Path(file_path).stem
+        suffix = Path(file_path).suffix
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        dest = os.path.join(dest_dir, f"{stem}_{ts}{suffix}")
+    shutil.copy2(file_path, dest)
+    return dest
+
+
+def create_dropping(username, filename, original_path, filed_to, category, summary) -> int:
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO pigeon_droppings (username, filename, original_path, filed_to, category, summary, created_at) VALUES (?,?,?,?,?,?,?)",
+        (username, filename, original_path, filed_to, category, summary, datetime.now(UTC).isoformat())
+    )
+    conn.commit()
+    dropping_id = cur.lastrowid
+    conn.close()
+    return dropping_id
+
+
+def get_droppings(username: str) -> list:
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, filename, filed_to, category, summary, created_at FROM pigeon_droppings WHERE username=? ORDER BY created_at DESC",
+        (username,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [{"id": r[0], "filename": r[1], "filed_to": r[2], "category": r[3], "summary": r[4], "created_at": r[5][:16]} for r in rows]
+
+
+def sweep_dropping(username: str, dropping_id: int) -> bool:
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM pigeon_droppings WHERE id=? AND username=?", (dropping_id, username))
+    deleted = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def sweep_all(username: str) -> int:
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM pigeon_droppings WHERE username=?", (username,))
+    count = cur.rowcount
+    conn.commit()
+    conn.close()
+    return count
+
+
+def scan_and_process(username: str) -> list:
+    init_droppings_table()
+    nest_path = get_nest_path(username)
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT filename FROM pigeon_droppings WHERE username=?", (username,))
+    already_filed = {r[0] for r in cur.fetchall()}
+    conn.close()
+    new_droppings = []
+    for item in Path(nest_path).iterdir():
+        if not item.is_file() or item.name.startswith(".") or item.name in already_filed:
+            continue
+        try:
+            snippet = _read_snippet(str(item))
+            result = classify_file(item.name, snippet)
+            filed_to = route_file(str(item), result["category"], username)
+            dropping_id = create_dropping(username, item.name, str(item), filed_to, result["category"], result["summary"])
+            try:
+                import knowledge as kmod
+                file_hash = hashlib.md5(snippet.encode("utf-8", errors="replace")).hexdigest()
+                kmod.ingest_file_knowledge(username=username, filename=item.name, file_hash=file_hash,
+                                           category=result["category"], content_text=snippet, provider="pigeon")
+            except Exception as ke:
+                logger.warning(f"PIGEON: knowledge ingest failed for {item.name}: {ke}")
+            new_droppings.append({"id": dropping_id, "filename": item.name,
+                                   "category": result["category"], "summary": result["summary"], "filed_to": filed_to})
+            logger.info(f"PIGEON: filed {item.name} -> {result[chr(39)]category[chr(39)]}/")
+        except Exception as e:
+            logger.error(f"PIGEON: error processing {item.name}: {e}")
+    return new_droppings
+'''
+
+with open(os.path.join(WILLOW, 'core', 'pigeon.py'), 'w', encoding='utf-8') as f:
+    f.write(PIGEON_SRC)
+print('core/pigeon.py written')
+
+# ── 2. server.py routes ────────────────────────────────────────────
+
+server_path = os.path.join(WILLOW, 'server.py')
+with open(server_path, 'r', encoding='utf-8') as f:
+    srv = f.read()
+
+PIGEON_ROUTES = '''
+# ── Pigeon Mail ────────────────────────────────────────────
+
+@app.get('/api/pigeon/droppings')
+async def pigeon_get_droppings(username: str = 'Sweet-Pea-Rudi19'):
+    try:
+        from core import pigeon
+        pigeon.init_droppings_table()
+        return {'droppings': pigeon.get_droppings(username)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete('/api/pigeon/droppings/{dropping_id}')
+async def pigeon_sweep_one(dropping_id: int, username: str = 'Sweet-Pea-Rudi19'):
+    try:
+        from core import pigeon
+        ok = pigeon.sweep_dropping(username, dropping_id)
+        return {'success': ok}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete('/api/pigeon/droppings')
+async def pigeon_sweep_all_route(username: str = 'Sweet-Pea-Rudi19'):
+    try:
+        from core import pigeon
+        count = pigeon.sweep_all(username)
+        return {'success': True, 'swept': count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post('/api/pigeon/scan')
+async def pigeon_scan(username: str = 'Sweet-Pea-Rudi19'):
+    try:
+        from core import pigeon
+        new_droppings = pigeon.scan_and_process(username)
+        return {'success': True, 'new_droppings': len(new_droppings), 'droppings': new_droppings}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+'''
+
+marker = 'if __name__ == '
+if marker in srv:
+    srv = srv.replace(marker, PIGEON_ROUTES + marker, 1)
+    with open(server_path, 'w', encoding='utf-8') as f:
+        f.write(srv)
+    print('server.py: pigeon routes added')
+else:
+    print('WARNING: server.py marker not found')
+
+# ── 3. SAFE dashboard section ────────────────────────────────────
+
+dash_path = os.path.join(SAFE, 'web', 'dashboard.html')
+with open(dash_path, 'r', encoding='utf-8') as f:
+    dash = f.read()
+
+PIGEON_CSS = '''    /* PIGEON MAIL */
+    #pigeonMailContainer { margin-top: 1rem; }
+    .pigeon-dropping { border: 1px solid var(--border); border-radius: 4px; padding: 0.7rem 1rem; margin-bottom: 0.5rem; display: flex; align-items: flex-start; gap: 0.75rem; }
+    .pigeon-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+    .pigeon-body { flex: 1; min-width: 0; }
+    .pigeon-filename { font-size: 13px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pigeon-meta { font-size: 11px; color: var(--fg-muted); margin-top: 2px; }
+    .pigeon-summary { font-size: 12px; color: var(--fg-muted); margin-top: 4px; line-height: 1.4; }
+    .pigeon-category { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; background: var(--accent-light); color: var(--accent); margin-right: 6px; }
+    .btn-sweep { font-size: 12px; padding: 0.2rem 0.55rem; background: none; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; font-family: inherit; flex-shrink: 0; margin-top: 2px; }
+    .btn-sweep:hover { border-color: #c0392b; color: #c0392b; }
+    .pigeon-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    .btn-pigeon-scan { font-size: 12px; padding: 0.3rem 0.8rem; background: var(--accent-light); color: var(--accent); border: none; border-radius: 3px; cursor: pointer; font-family: inherit; font-weight: 600; }
+    .btn-pigeon-sweep-all { font-size: 12px; padding: 0.3rem 0.8rem; background: none; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; font-family: inherit; }
+    .pigeon-empty { font-size: 13px; color: var(--fg-muted); margin-top: 0.5rem; font-style: italic; }
+'''
+
+PIGEON_HTML = '''
+  <!-- Section: Pigeon Mail -->
+  <div class="section">
+    <div class="section-eyebrow">Pigeon Mail</div>
+    <div class="section-sub">Drop files in your Nest &mdash; Pigeon files them and leaves a note &mdash; sweep when done</div>
+    <div id="pigeonMailContainer"><p class="pigeon-empty" style="opacity:0.5">Loading&hellip;</p></div>
+    <div class="pigeon-actions">
+      <button class="btn-pigeon-scan" onclick="pigeonScan()">Scan Nest</button>
+      <button class="btn-pigeon-sweep-all" onclick="pigeonSweepAll()">Clean Nest</button>
+    </div>
+  </div>
+'''
+
+PIGEON_JS = r'''
+// ── Pigeon Mail ────────────────────────────────────────────
+
+async function loadPigeonMail() {
+  const el = document.getElementById('pigeonMailContainer');
+  try {
+    const res = await fetch('http://localhost:8420/api/pigeon/droppings');
+    if (!res.ok) throw new Error('offline');
+    const data = await res.json();
+    const droppings = data.droppings || [];
+    if (droppings.length === 0) {
+      el.innerHTML = '<p class="pigeon-empty">Nest is clean. Drop files in your Nest folder and click Scan Nest.</p>';
+      return;
+    }
+    el.innerHTML = droppings.map(function(d) {
+      const parts = (d.filed_to || '').replace(/\\/g, '/').split('/');
+      const filed = parts.slice(-2).join('/');
+      return '<div class="pigeon-dropping" id="pd-' + d.id + '">' +
+        '<span class="pigeon-icon">\uD83D\uDC26</span>' +
+        '<div class="pigeon-body">' +
+          '<div class="pigeon-filename">' + escHtml(d.filename) + '</div>' +
+          '<div class="pigeon-meta"><span class="pigeon-category">' + escHtml(d.category || '?') + '</span>Filed \u2192 ' + escHtml(filed) + '</div>' +
+          (d.summary ? '<div class="pigeon-summary">' + escHtml(d.summary) + '</div>' : '') +
+        '</div>' +
+        '<button class="btn-sweep" onclick="pigeonSweep(' + d.id + ')">\u00D7</button>' +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<p class="pigeon-empty">Pigeon is offline. Nest data appears when the server is running.</p>';
+  }
+}
+
+async function pigeonScan() {
+  const btn = document.querySelector('.btn-pigeon-scan');
+  if (btn) btn.textContent = 'Scanning\u2026';
+  try {
+    const res = await fetch('http://localhost:8420/api/pigeon/scan', { method: 'POST' });
+    const data = await res.json();
+    showToast(data.new_droppings > 0 ? 'Pigeon filed ' + data.new_droppings + ' file(s)' : 'Nest is empty');
+    await loadPigeonMail();
+  } catch (e) {
+    showToast('Scan failed');
+  } finally {
+    if (btn) btn.textContent = 'Scan Nest';
+  }
+}
+
+async function pigeonSweep(id) {
+  try {
+    const res = await fetch('http://localhost:8420/api/pigeon/droppings/' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      const el = document.getElementById('pd-' + id);
+      if (el) el.remove();
+      const c = document.getElementById('pigeonMailContainer');
+      if (c && !c.querySelector('.pigeon-dropping')) c.innerHTML = '<p class="pigeon-empty">Nest is clean.</p>';
+    }
+  } catch (e) { showToast('Sweep failed'); }
+}
+
+async function pigeonSweepAll() {
+  if (!confirm('Clean Nest? Removes all droppings (filed files are not affected).')) return;
+  try {
+    const res = await fetch('http://localhost:8420/api/pigeon/droppings', { method: 'DELETE' });
+    const data = await res.json();
+    showToast('Cleaned ' + (data.swept || 0) + ' droppings');
+    await loadPigeonMail();
+  } catch (e) { showToast('Clean failed'); }
+}
+
+'''
+
+if '/* TOAST */' in dash:
+    dash = dash.replace('    /* TOAST */', PIGEON_CSS + '    /* TOAST */')
+    print('dashboard: CSS added')
+if '</main>' in dash:
+    dash = dash.replace('</main>', PIGEON_HTML + '</main>')
+    print('dashboard: HTML section added')
+if '// ── Init ──' in dash:
+    dash = dash.replace('// ── Init ──', PIGEON_JS + '// ── Init ──')
+    print('dashboard: JS added')
+if 'loadWillowKnows();' in dash:
+    dash = dash.replace('  loadWillowKnows();', '  loadWillowKnows();\n  loadPigeonMail();')
+    print('dashboard: loadPigeonMail() call added')
+
+with open(dash_path, 'w', encoding='utf-8') as f:
+    f.write(dash)
+
+# ── 4. Create DB table ───────────────────────────────────────────
+conn = sqlite3.connect(r'C:\\Users\\Sean\\Documents\\GitHub\\Willow\\artifacts\\Sweet-Pea-Rudi19\\willow_knowledge.db')
+conn.execute('''
+    CREATE TABLE IF NOT EXISTS pigeon_droppings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        original_path TEXT,
+        filed_to TEXT,
+        category TEXT,
+        summary TEXT,
+        created_at TEXT NOT NULL
+    )
+''')
+conn.commit()
+conn.close()
+print('pigeon_droppings table created')
+print('\n=== ALL DONE ===')
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

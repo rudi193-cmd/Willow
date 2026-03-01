@@ -1,0 +1,13 @@
+# Applied: Pigeon improvements batch
+Proposer: Ganesha
+Date: 2026-03-01
+Approved: Sean Campbell (verbal)
+Changes:
+1. pigeon.py: _file_hash() - fast 64KB+size hash for content dedup
+2. pigeon.py: pigeon_errors table - failed files logged with error text
+3. pigeon.py: file_hash column in pigeon_droppings - hash-based already_filed check
+4. pigeon.py: data integrity rollback - file moved back to Nest if DB write fails
+5. pigeon.py: snippet cap 800 to 1500 in classify_file fleet prompt
+6. ocr_consumer.py: CMYK/P/LA/RGBA to RGB conversion before pytesseract
+7. watcher.py: 2-second debounce before triggering pigeon scan
+DeltaSigma=42

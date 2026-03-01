@@ -1,0 +1,8 @@
+# Applied: Pigeon DB lock fix
+Proposer: Ganesha
+Date: 2026-03-01
+Approved: Sean Campbell (verbal)
+Change: Added threading.Lock() (_DB_LOCK) to serialize SQLite writes in _process_one.
+Fleet calls remain parallel; only create_dropping + ingest_file_knowledge are serialized.
+Fixes: database is locked errors with 8 concurrent workers.
+DeltaSigma=42

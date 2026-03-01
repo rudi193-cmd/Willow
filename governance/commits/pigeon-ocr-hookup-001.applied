@@ -1,0 +1,6 @@
+# Applied: Hook OCR into Pigeon _read_snippet
+Proposer: Ganesha
+Date: 2026-02-28
+Approved: Sean Campbell (verbal)
+Change: _read_snippet now calls ocr_consumer._extract_image() for images, _extract_pdf() for PDFs
+DeltaSigma=42

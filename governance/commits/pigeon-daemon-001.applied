@@ -1,0 +1,9 @@
+# Applied: Pigeon daemon + system-wide timing config
+Proposer: Ganesha
+Date: 2026-03-01
+Approved: Sean Campbell (verbal)
+1. core/daemon_config.py: POLL_INTERVALS=[3,3,4,4,3], STARTUP_OFFSET=7
+2. core/pigeon_daemon.py: slot 0, 3s poll, trigger-file driven
+3. server.py: scan endpoint writes trigger; daemon launched on startup
+4. watcher.py: trigger_pigeon_scan() writes trigger file directly
+DeltaSigma=42

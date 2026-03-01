@@ -1,0 +1,6 @@
+# Applied: Add WILLOW-NestWatcher daemon to WILLOW.bat
+Proposer: Ganesha
+Date: 2026-02-28
+Approved: Sean Campbell (verbal)
+Change: Added core/watcher.py daemon launch alongside apps/watcher.py
+DeltaSigma=42

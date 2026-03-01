@@ -1,0 +1,139 @@
+# Governance Proposal: Concurrent Pigeon Scan (ThreadPoolExecutor)
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-02-28T19:20:00Z
+**Type:** Performance Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+`scan_and_process()` in `core/pigeon.py` processes files sequentially — one LLM fleet call, wait, next file, wait. With 14 fleet providers available, this leaves 13 sitting idle during any batch. This proposal replaces the sequential loop with a `ThreadPoolExecutor` (8 workers), dispatching files concurrently across fleet providers. Expected throughput improvement: ~6-8x on large batches.
+
+## Proposed Changes
+**File:** `core/pigeon.py`
+**Location:** `scan_and_process()` function — replace sequential loop with concurrent worker pattern
+
+## Rationale
+- 497-file batch took ~30 minutes sequentially; concurrent should take ~4-5 minutes
+- llm_router already round-robins across providers — concurrent callers naturally distribute load
+- DB writes are per-file and use separate connections, so no contention
+- route_file() uses shutil.move with collision handling — safe to call from multiple threads
+- 8 workers chosen conservatively: enough to saturate fleet without hammering any single provider
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — swap back to for-loop
+- **Dependencies:** None (ThreadPoolExecutor is stdlib)
+- **Testing:** Drop 10 files in Nest, trigger scan, confirm all filed, no duplicate droppings
+
+## ΔE Impact
+Expected ΔE: +0.022 (large batch performance, watcher responsiveness)
+
+## Implementation
+```python
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\pigeon.py")
+content = target.read_text(encoding="utf-8")
+
+old_import = "import os, json, hashlib, shutil, sqlite3, logging, re"
+new_import = "import os, json, hashlib, shutil, sqlite3, logging, re\nfrom concurrent.futures import ThreadPoolExecutor, as_completed"
+content = content.replace(old_import, new_import, 1)
+
+old_func = '''def scan_and_process(username: str) -> list:
+    init_droppings_table()
+    nest_path = get_nest_path(username)
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT filename FROM pigeon_droppings WHERE username=?", (username,))
+    already_filed = {r[0] for r in cur.fetchall()}
+    conn.close()
+    new_droppings = []
+    for item in Path(nest_path).iterdir():
+        if not item.is_file() or item.name.startswith(".") or item.name in already_filed:
+            continue
+        try:
+            snippet = _read_snippet(str(item))
+            result = classify_file(item.name, snippet)
+            filed_to = route_file(str(item), result["category"], username)
+            dropping_id = create_dropping(username, item.name, str(item), filed_to, result["category"], result["summary"])
+            try:
+                import knowledge as kmod
+                file_hash = hashlib.md5(snippet.encode("utf-8", errors="replace")).hexdigest()
+                kmod.ingest_file_knowledge(username=username, filename=item.name, file_hash=file_hash,
+                                           category=result["category"], content_text=snippet, provider="pigeon")
+            except Exception as ke:
+                logger.warning(f"PIGEON: knowledge ingest failed for {item.name}: {ke}")
+            new_droppings.append({"id": dropping_id, "filename": item.name,
+                                   "category": result["category"], "summary": result["summary"], "filed_to": filed_to})
+            logger.info(f"PIGEON: filed {item.name} -> {result['category']}/")
+        except Exception as e:
+            logger.error(f"PIGEON: error processing {item.name}: {e}")
+    return new_droppings'''
+
+new_func = '''def _process_one(item: Path, username: str) -> dict | None:
+    """Process a single file: classify, route, record. Returns dropping dict or None on error."""
+    try:
+        snippet = _read_snippet(str(item))
+        result = classify_file(item.name, snippet)
+        filed_to = route_file(str(item), result["category"], username)
+        dropping_id = create_dropping(username, item.name, str(item), filed_to, result["category"], result["summary"])
+        try:
+            import knowledge as kmod
+            file_hash = hashlib.md5(snippet.encode("utf-8", errors="replace")).hexdigest()
+            kmod.ingest_file_knowledge(username=username, filename=item.name, file_hash=file_hash,
+                                       category=result["category"], content_text=snippet, provider="pigeon")
+        except Exception as ke:
+            logger.warning(f"PIGEON: knowledge ingest failed for {item.name}: {ke}")
+        logger.info(f"PIGEON: filed {item.name} -> {result['category']}/")
+        return {"id": dropping_id, "filename": item.name,
+                "category": result["category"], "summary": result["summary"], "filed_to": filed_to}
+    except Exception as e:
+        logger.error(f"PIGEON: error processing {item.name}: {e}")
+        return None
+
+
+PIGEON_WORKERS = 8  # concurrent fleet calls
+
+
+def scan_and_process(username: str) -> list:
+    init_droppings_table()
+    nest_path = get_nest_path(username)
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT filename FROM pigeon_droppings WHERE username=?", (username,))
+    already_filed = {r[0] for r in cur.fetchall()}
+    conn.close()
+
+    pending = [
+        item for item in Path(nest_path).iterdir()
+        if item.is_file() and not item.name.startswith(".") and item.name not in already_filed
+    ]
+
+    if not pending:
+        return []
+
+    new_droppings = []
+    with ThreadPoolExecutor(max_workers=PIGEON_WORKERS) as executor:
+        futures = {executor.submit(_process_one, item, username): item for item in pending}
+        for future in as_completed(futures):
+            result = future.result()
+            if result is not None:
+                new_droppings.append(result)
+
+    return new_droppings'''
+
+content = content.replace(old_func, new_func, 1)
+target.write_text(content, encoding="utf-8")
+print(f"Written: {target}")
+
+assert "_process_one" in content, "_process_one missing"
+assert "ThreadPoolExecutor" in content, "ThreadPoolExecutor missing"
+assert "PIGEON_WORKERS" in content, "PIGEON_WORKERS missing"
+print("All assertions passed.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

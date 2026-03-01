@@ -1,0 +1,6 @@
+# Applied: Fleet-determined subcategory subfolders in Pigeon
+Proposer: Ganesha
+Date: 2026-02-28
+Approved: Sean Campbell (verbal)
+Change: classify_file() asks fleet for subcategory; route_file() routes to Filed/{category}/{subcategory}/
+DeltaSigma=42

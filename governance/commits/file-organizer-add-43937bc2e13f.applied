@@ -1,4 +1,50 @@
-"""
+# Governance Proposal: Add file_organizer.py to core/
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-26T00:00:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Add a new module `core/file_organizer.py` to the Willow personal OS. This module
+organizes files from the GDrive Pickup inbox by scanning for eligible files,
+extracting text via `ocr_consumer`, asking the free-tier fleet LLM to suggest
+clean snake_case rename stems (format: YYYY-MM-DD_type_subject), and moving
+filed items into `Pickup/Filed/{category}/` subdirectories. Supports dry-run
+mode throughout for safe previewing.
+
+## Proposed Changes
+
+**File:** `core/file_organizer.py` (new file)
+**Location:** N/A — new module
+
+## Rationale
+
+- Willow's Pickup inbox accumulates unsorted files; there is no current organizer module.
+- `ocr_consumer` already extracts text; this module builds on top of it.
+- The fleet LLM provides zero-cost rename suggestions via the existing `llm_router`.
+- All destructive operations (rename, move) are gated behind `dry_run=True` by default.
+- Follows existing Willow patterns: per-user paths, `GDRIVE_BASE`/`LOCAL_BASE` constants, structured result dicts.
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — new file only; no existing code modified. Deletion reverts fully.
+- **Dependencies:** `core.ocr_consumer` (optional, imported deferred), `core.filename_sanitizer`, `core.llm_router`
+- **Testing:** Import the module and call `scan_pickup('Sweet-Pea-Rudi19')` to verify path scanning. Call `batch_organize('Sweet-Pea-Rudi19', auto_apply=False)` for a safe dry-run end-to-end test.
+
+## ΔE Impact
+
+Expected ΔE: +0.180 (new organizer capability; zero risk to existing modules)
+
+## Implementation
+
+```python
+# Python string — write file directly
+target = r"C:\Users\Sean\Documents\GitHub\Willow\core\file_organizer.py"
+
+content = '''"""
 file_organizer.py — Willow file organization module.
 
 Organizes files from a GDrive Pickup inbox using OCR-extracted text and
@@ -48,7 +94,7 @@ def scan_pickup(username: str) -> list[dict]:
     """List all organizable files in the GDrive Pickup folder for *username*.
 
     Skips:
-    - Hidden files (name starts with '.')
+    - Hidden files (name starts with \'.\')
     - Files with prefixes: ocr_done_, ocr_skip_, ocr_queue_
     - Files with extensions: .json, .md
     - Any subdirectory (including Filed/)
@@ -107,7 +153,7 @@ def suggest_rename(
     Args:
         file_path:      Original file path (used for extension-less fallback).
         extracted_text: OCR or raw text from the file.
-        category:       Classifier category string (e.g. 'legal_document').
+        category:       Classifier category string (e.g. \'legal_document\').
 
     Returns:
         Suggested filename stem (no extension), max 60 chars.
@@ -136,8 +182,8 @@ def suggest_rename(
         if resp and resp.content.strip():
             stem = (
                 resp.content.strip()
-                .strip('"')
-                .strip("'")
+                .strip(\'"\')
+                .strip("\'")
                 .split()[0]
             )
             if stem:
@@ -236,7 +282,7 @@ def move_to_filed(
     Args:
         file_path: Current (post-rename) file path.
         category:  Classifier category string (used to determine subfolder).
-        username:  Willow username (e.g. 'Sweet-Pea-Rudi19').
+        username:  Willow username (e.g. \'Sweet-Pea-Rudi19\').
         dry_run:   If True, return destination path without touching disk.
 
     Returns:
@@ -426,3 +472,16 @@ def batch_organize(username: str, auto_apply: bool = False) -> list[dict]:
         len(results),
     )
     return results
+'''
+
+with open(target, "w", encoding="utf-8") as f:
+    f.write(content)
+
+print(f"Written: {target}")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

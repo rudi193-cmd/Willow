@@ -51,6 +51,13 @@ from api import kart_routes, agent_routes, safe_routes, social_routes, social_wo
 
 app = FastAPI(title="Willow", docs_url=None, redoc_url=None)
 
+# -- Launch Pigeon daemon subprocess ---
+import subprocess as _subprocess
+_pigeon_daemon = _subprocess.Popen(
+    [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
+    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+)
+
 # Track server start time for uptime
 SERVER_START_TIME = datetime.now()
 
@@ -397,6 +404,230 @@ def knowledge_stats():
     except:
         pass
     return stats
+
+
+@app.get("/api/safe/whoami")
+def safe_whoami():
+    """Identity handshake — lets SAFE dashboard verify server connection and discover the default user."""
+    return {
+        "status": "ok",
+        "username": USERNAME,
+        "server": "willow",
+        "version": "1.0"
+    }
+
+
+@app.get("/api/knowledge/entities")
+def knowledge_entities_list(min_mentions: int = 1, username: str = USERNAME):
+    """Return all known entities with source atom count — for user-facing 'What Willow Knows' dashboard."""
+    import sqlite3
+    resolved = username or USERNAME
+    try:
+        db_path = knowledge._db_path(resolved)
+        if not Path(db_path).exists():
+            return {"entities": [], "username": resolved}
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT e.id, e.name, e.entity_type, e.mention_count, e.description, "
+            "COUNT(ke.knowledge_id) AS source_count "
+            "FROM entities e "
+            "LEFT JOIN knowledge_entities ke ON e.id = ke.entity_id "
+            "WHERE e.mention_count >= ? "
+            "GROUP BY e.id "
+            "ORDER BY e.entity_type, e.mention_count DESC",
+            (min_mentions,)
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return {"entities": [
+            {"id": r[0], "name": r[1], "type": r[2], "mentions": r[3],
+             "description": r[4] or "", "source_count": r[5]}
+            for r in rows
+        ], "username": resolved}
+    except Exception as e:
+        return {"entities": [], "error": str(e), "username": resolved}
+
+
+@app.get("/api/knowledge/entities/{entity_id}/sources")
+def knowledge_entity_sources(entity_id: int, username: str = USERNAME):
+    """Return knowledge atoms that reference this entity — explains why Willow knows about them."""
+    import sqlite3
+    resolved = username or USERNAME
+    try:
+        db_path = knowledge._db_path(resolved)
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT k.id, k.title, k.source_type, k.source_id, k.summary, k.created_at "
+            "FROM knowledge k "
+            "JOIN knowledge_entities ke ON k.id = ke.knowledge_id "
+            "WHERE ke.entity_id = ? "
+            "ORDER BY k.created_at DESC LIMIT 10",
+            (entity_id,)
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return {"sources": [
+            {"id": r[0], "title": r[1], "source_type": r[2],
+             "source_id": r[3], "summary": r[4] or "", "created_at": r[5]}
+            for r in rows
+        ]}
+    except Exception as e:
+        return {"sources": [], "error": str(e)}
+
+
+@app.delete("/api/knowledge/entities/{entity_id}")
+def knowledge_entity_delete(entity_id: int, username: str = USERNAME):
+    """Delete an entity and its edges. User-initiated correction — user is the authority on their own data."""
+    import sqlite3
+    resolved = username or USERNAME
+    try:
+        db_path = knowledge._db_path(resolved)
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM knowledge_edges WHERE source_id = ? OR target_id = ?", (entity_id, entity_id))
+        edges_deleted = cur.rowcount
+        cur.execute("DELETE FROM knowledge_entities WHERE entity_id = ?", (entity_id,))
+        cur.execute("DELETE FROM entities WHERE id = ?", (entity_id,))
+        entity_deleted = cur.rowcount
+        conn.commit()
+        conn.close()
+        return {"success": bool(entity_deleted), "edges_deleted": edges_deleted}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.patch("/api/knowledge/entities/{entity_id}")
+async def knowledge_entity_rename(entity_id: int, request: Request):
+    """Rename or correct an entity. Creates an audit trail in the entity record."""
+    import sqlite3
+    body = await request.json()
+    new_name = (body.get("name") or "").strip()
+    new_description = body.get("description")
+    username = body.get("username") or USERNAME
+    if not new_name:
+        raise HTTPException(status_code=400, detail="name required")
+    try:
+        db_path = knowledge._db_path(username)
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        if new_description is not None:
+            cur.execute("UPDATE entities SET name = ?, description = ? WHERE id = ?",
+                        (new_name, new_description, entity_id))
+        else:
+            cur.execute("UPDATE entities SET name = ? WHERE id = ?", (new_name, entity_id))
+        updated = cur.rowcount
+        conn.commit()
+        conn.close()
+        return {"success": bool(updated), "name": new_name}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/knowledge/graph")
+def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_node: int = 6):
+    import sqlite3
+    from collections import defaultdict
+    TYPE_COLORS = {
+        "person": "#4a90d9", "project": "#2d6a4f", "concept": "#9b59b6",
+        "tool": "#d4860a", "location": "#c0392b", "event": "#8b4513",
+    }
+    try:
+        db_path = knowledge._db_path(USERNAME)
+        if not Path(db_path).exists():
+            return {"nodes": [], "edges": []}
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+
+        # Fix 3: exclude noise entities (file paths, extensions, directories)
+        noise_filter = "name NOT LIKE '%.%' AND name NOT LIKE '%/'"
+
+        # Standard filtered nodes
+        cur.execute(
+            f"SELECT id, name, entity_type, mention_count, description FROM entities "
+            f"WHERE mention_count >= ? AND {noise_filter} "
+            f"ORDER BY mention_count DESC LIMIT ?",
+            (min_mentions, max_nodes)
+        )
+        entity_dict = {r[0]: r for r in cur.fetchall()}
+
+        # Fix 2: always include the top person entity + all their direct neighbors
+        cur.execute(
+            f"SELECT id, name, entity_type, mention_count, description FROM entities "
+            f"WHERE entity_type = 'person' AND {noise_filter} "
+            f"ORDER BY mention_count DESC LIMIT 1"
+        )
+        user_row = cur.fetchone()
+        user_id = None
+        if user_row:
+            user_id = user_row[0]
+            entity_dict[user_id] = user_row
+            # Add all neighbors of the user entity regardless of min_mentions
+            cur.execute(
+                f"SELECT DISTINCT e.id, e.name, e.entity_type, e.mention_count, e.description "
+                f"FROM entities e "
+                f"JOIN knowledge_edges ke ON "
+                f"  (ke.source_id = ? AND ke.target_id = e.id) OR "
+                f"  (ke.target_id = ? AND ke.source_id = e.id) "
+                f"WHERE {noise_filter}",
+                (user_id, user_id)
+            )
+            for r in cur.fetchall():
+                entity_dict[r[0]] = r
+
+        entity_ids = set(entity_dict.keys())
+        nodes = [{"id": r[0], "label": r[1], "type": r[2],
+                  "size": max(8, min(40, r[3] * 4)), "mentions": r[3],
+                  "description": r[4] or "",
+                  "color": TYPE_COLORS.get(r[2], "#888888")} for r in entity_dict.values()]
+
+        if not entity_ids:
+            conn.close()
+            return {"nodes": [], "edges": []}
+
+        id_placeholders = ",".join("?" * len(entity_ids))
+        id_list = list(entity_ids)
+        cur.execute(
+            f"SELECT source_id, target_id, edge_type, weight, canonical FROM knowledge_edges "
+            f"WHERE source_id IN ({id_placeholders}) AND target_id IN ({id_placeholders}) "
+            f"ORDER BY weight DESC LIMIT 25000",
+            id_list + id_list
+        )
+
+        # Deduplicate bidirectional edges
+        all_edges, seen = [], set()
+        for src, tgt, etype, weight, canonical in cur.fetchall():
+            key = (min(src, tgt), max(src, tgt), etype)
+            if key in seen:
+                continue
+            seen.add(key)
+            all_edges.append((src, tgt, etype, float(weight), bool(canonical)))
+
+        # Per-node edge cap — user entity is exempt
+        node_edge_count = defaultdict(int)
+        edges = []
+        for src, tgt, etype, weight, canonical in all_edges:
+            src_ok = (src == user_id) or (node_edge_count[src] < max_edges_per_node)
+            tgt_ok = (tgt == user_id) or (node_edge_count[tgt] < max_edges_per_node)
+            if src_ok and tgt_ok:
+                if src != user_id:
+                    node_edge_count[src] += 1
+                if tgt != user_id:
+                    node_edge_count[tgt] += 1
+                edges.append({"from": src, "to": tgt, "type": etype,
+                               "weight": weight, "canonical": canonical,
+                               "width": max(1, min(5, int(weight * 3)))})
+
+        conn.close()
+        return {"nodes": nodes, "edges": edges}
+    except Exception as e:
+        return {"error": str(e), "nodes": [], "edges": []}
+
+
+@app.get("/graph")
+def serve_graph():
+    return FileResponse("ui/graph.html")
 
 
 @app.get("/api/coherence")
@@ -2543,6 +2774,42 @@ async def willow_connection_edit(connection_id: int, request: Request, username:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+def _willow_scan_connections_internal(username: str = "Sweet-Pea-Rudi19") -> dict:
+    """Core scan logic — reusable by route and auto-triggers."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        if not rt.conn:
+            return {"status": "error", "error": "DB unavailable"}
+        # Get all knowledge atom IDs
+        rows = rt.conn.execute("SELECT id FROM knowledge ORDER BY id").fetchall()
+        knowledge_ids = [r["id"] for r in rows]
+        if not knowledge_ids:
+            return {"status": "ok", "new_proposals": 0, "total_suggestions": 0}
+        suggestions = rt.suggest_connections(knowledge_ids)
+        new_count = 0
+        for s in suggestions:
+            result = rt.record_connection(
+                entity_a_id=s["entity_a"]["id"],
+                entity_b_id=s["entity_b"]["id"],
+                connection_type=s.get("connection_type", "co-mention"),
+                weight=s.get("confidence", 0.5),
+                source="willow-auto-scan",
+            )
+            if result:
+                new_count += 1
+        return {"status": "scanned", "new_proposals": new_count, "total_suggestions": len(suggestions)}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/willow/scan-connections")
+async def willow_scan_connections(username: str = "Sweet-Pea-Rudi19"):
+    """Scan all knowledge atoms for co-occurring entity pairs and propose connections.
+    Results appear in /api/willow/connections/pending for user approve/deny."""
+    return _willow_scan_connections_internal(username)
+
+
 
 BINDER_HTML = Path(__file__).parent / "binder.html"
 
@@ -3009,6 +3276,47 @@ async def admin_restart():
         os._exit(0)
     threading.Thread(target=_do_restart, daemon=True).start()
     return {"status": "restarting", "message": "Server restarting in 0.5s — reconnect in ~5s"}
+
+
+# ── Pigeon Mail ────────────────────────────────────────────
+
+@app.get('/api/pigeon/droppings')
+async def pigeon_get_droppings(username: str = 'Sweet-Pea-Rudi19'):
+    try:
+        from core import pigeon
+        pigeon.init_droppings_table()
+        return {'droppings': pigeon.get_droppings(username)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete('/api/pigeon/droppings/{dropping_id}')
+async def pigeon_sweep_one(dropping_id: int, username: str = 'Sweet-Pea-Rudi19'):
+    try:
+        from core import pigeon
+        ok = pigeon.sweep_dropping(username, dropping_id)
+        return {'success': ok}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete('/api/pigeon/droppings')
+async def pigeon_sweep_all_route(username: str = 'Sweet-Pea-Rudi19'):
+    try:
+        from core import pigeon
+        count = pigeon.sweep_all(username)
+        return {'success': True, 'swept': count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post('/api/pigeon/scan')
+async def pigeon_scan(username: str = 'Sweet-Pea-Rudi19'):
+    try:
+        trigger = Path(f'artifacts/{username}/.pigeon_trigger')
+        trigger.parent.mkdir(parents=True, exist_ok=True)
+        trigger.touch()
+        new_droppings = []  # pigeon_daemon handles the actual scan
+        return {'success': True, 'new_droppings': 0, 'droppings': [], 'status': 'triggered'}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

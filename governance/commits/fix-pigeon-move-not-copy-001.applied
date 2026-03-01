@@ -1,0 +1,47 @@
+# Governance Proposal: Fix pigeon.py route_file — copy → move
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-02-28
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`core/pigeon.py` line 106 uses `shutil.copy2()` to move files from Nest to Filed. This copies the file but leaves the original in Nest, so files never actually leave the Nest folder. Should be `shutil.move()`.
+
+## Proposed Changes
+
+**File:** `core/pigeon.py`
+**Location:** Line 106, inside `route_file()`
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — files will be in Filed/{category}/, recoverable
+- **Dependencies:** None
+- **Testing:** Drop a file in Nest/, trigger scan, confirm file appears in Filed/ and is gone from Nest/
+
+## Implementation
+
+```python
+path = r"C:/Users/Sean/Documents/GitHub/Willow/core/pigeon.py"
+with open(path, encoding="utf-8") as f:
+    content = f.read()
+
+old = "    shutil.copy2(file_path, dest)"
+new = "    shutil.move(file_path, dest)"
+
+assert old in content, f"Pattern not found — file may have changed"
+content = content.replace(old, new, 1)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+
+print("Applied: fix-pigeon-move-not-copy-001")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

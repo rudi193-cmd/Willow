@@ -1,0 +1,255 @@
+# Governance Proposal: Willow Account Linking in SAFE Dashboard
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-02-27T18:00:00Z
+**Type:** Feature — Account Linking / Identity Bridge
+**Trust Level:** ENGINEER (3)
+
+## Summary
+The SAFE dashboard and Willow backend are separate identity systems with no bridge. The dashboard stores a SAFE account in localStorage but makes API calls to a hardcoded URL with no user identity. This proposal adds: (1) a "Willow Server" card in the Setup section with URL + username fields, (2) a Test Connection button that calls /api/safe/whoami to verify and auto-fill the username, (3) a getWillowBase()/getWillowUser() helper used by all API calls so data flows from the right server and user. Stores willow_url + willow_user in the existing safe_account localStorage object.
+
+## Proposed Changes
+**File:** C:\Users\Sean\Documents\GitHub\SAFE\web\dashboard.html
+**Sections touched:** Setup card HTML, CSS for Willow setup form, JS helpers + linkWillow(), renderWillowServer(), updated loadConnections/loadWillowKnows/approveConnection/dismissConnection/entity actions.
+
+## Rationale
+- Currently "What Willow Knows" and "Willow Noticed" sections fetch from localhost:8420 hardcoded — no user identity passed
+- Every user of SAFE needs to configure their own Willow instance URL and username
+- Single source of truth: safe_account.willow_url + willow_user in localStorage
+- getWillowBase() / getWillowUser() used everywhere so one change propagates
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — localStorage only, HTML/JS
+- **Dependencies:** /api/safe/whoami endpoint (already added to server.py)
+- **Testing:** Open dashboard, click "Configure" under Willow Server, enter URL + click Test, verify username auto-fills, save. Reload — "What Willow Knows" should populate.
+
+## ΔE Impact
+Expected ΔE: +0.220 (closes the identity gap between SAFE frontend and Willow backend; enables multi-user future)
+
+## Implementation
+
+```python
+filepath = r"C:\Users\Sean\Documents\GitHub\SAFE\web\dashboard.html"
+with open(filepath, "r", encoding="utf-8") as f:
+    content = f.read()
+
+# 1. Add CSS for Willow server setup form (before /* WHAT WILLOW KNOWS */)
+willow_css = """    /* WILLOW SERVER LINK */
+    .willow-setup-form { margin-top: 0.75rem; display: none; }
+    .willow-setup-form.open { display: block; }
+    .willow-setup-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center; }
+    .willow-setup-label { font-size: 12px; color: var(--fg-muted); width: 68px; flex-shrink: 0; }
+    .willow-setup-input { flex: 1; font-size: 13px; padding: 0.3rem 0.5rem; border: 1px solid var(--border); border-radius: 3px; font-family: inherit; color: var(--fg); background: var(--bg); }
+    .willow-setup-input:focus { outline: none; border-color: var(--accent); }
+    .willow-setup-actions { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+    .btn-willow-test { font-size: 12px; padding: 0.3rem 0.7rem; background: var(--accent-light); color: var(--accent); border: none; border-radius: 3px; cursor: pointer; font-family: inherit; font-weight: 600; }
+    .btn-willow-save { font-size: 12px; padding: 0.3rem 0.7rem; background: var(--accent); color: #fff; border: none; border-radius: 3px; cursor: pointer; font-family: inherit; font-weight: 600; }
+    .btn-willow-cancel { font-size: 12px; padding: 0.3rem 0.6rem; background: none; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; font-family: inherit; }
+    .willow-test-result { font-size: 12px; margin-top: 0.35rem; }
+
+"""
+content = content.replace("    /* WHAT WILLOW KNOWS */", willow_css + "    /* WHAT WILLOW KNOWS */")
+
+# 2. Add Willow Server card to the status-cards grid (after Google card closing tag)
+willow_card = """
+      <div class="status-card">
+        <div class="card-label">Willow Server</div>
+        <div class="card-status" id="willowServerStatus">&mdash;</div>
+        <div class="card-detail" id="willowServerDetail"></div>
+        <div id="willowServerAction"><a href="#" class="card-link" onclick="toggleWillowSetup(); return false;">Configure &rarr;</a></div>
+        <div class="willow-setup-form" id="willowSetupForm">
+          <div class="willow-setup-row">
+            <span class="willow-setup-label">Server URL</span>
+            <input class="willow-setup-input" id="willowUrlInput" type="text" placeholder="http://localhost:8420">
+          </div>
+          <div class="willow-setup-row">
+            <span class="willow-setup-label">Username</span>
+            <input class="willow-setup-input" id="willowUserInput" type="text" placeholder="auto-detect">
+          </div>
+          <div class="willow-test-result" id="willowTestResult"></div>
+          <div class="willow-setup-actions">
+            <button class="btn-willow-test" onclick="testWillowConnection()">Test</button>
+            <button class="btn-willow-save" onclick="saveWillowLink()">Save</button>
+            <button class="btn-willow-cancel" onclick="toggleWillowSetup()">Cancel</button>
+          </div>
+        </div>
+      </div>"""
+
+# Insert after the Google card's closing </div> inside status-cards
+content = content.replace(
+    "    </div>\n  </div>\n\n  <!-- Section 3: Pickup Box -->",
+    "    </div>" + willow_card + "\n  </div>\n\n  <!-- Section 3: Pickup Box -->"
+)
+
+# 3. Add JS helpers and Willow linking functions (before // ── What Willow Knows)
+willow_js = """
+// ── Willow Server Link ────────────────────────────────────────────────────────
+
+function getWillowBase() {
+  try {
+    const raw = localStorage.getItem('safe_account');
+    if (raw) {
+      const acct = JSON.parse(raw);
+      if (acct && acct.willow_url) return acct.willow_url.replace(/\/$/, '');
+    }
+  } catch (e) { /* ignore */ }
+  return 'http://localhost:8420';
+}
+
+function getWillowUser() {
+  try {
+    const raw = localStorage.getItem('safe_account');
+    if (raw) {
+      const acct = JSON.parse(raw);
+      if (acct && acct.willow_user) return acct.willow_user;
+    }
+  } catch (e) { /* ignore */ }
+  return '';
+}
+
+function renderWillowServer(acct) {
+  const statusEl = document.getElementById('willowServerStatus');
+  const detailEl = document.getElementById('willowServerDetail');
+  const actionEl = document.getElementById('willowServerAction');
+  const urlInput = document.getElementById('willowUrlInput');
+  const userInput = document.getElementById('willowUserInput');
+
+  if (acct && acct.willow_url && acct.willow_user) {
+    statusEl.innerHTML = '<span class="status-dot-green"></span>' + escHtml(acct.willow_user) + ' · linked';
+    detailEl.textContent = acct.willow_url;
+    actionEl.innerHTML = '<a href="#" class="card-link" onclick="toggleWillowSetup(); return false;">Change →</a>';
+  } else {
+    statusEl.textContent = 'Not linked';
+    statusEl.style.color = 'var(--fg-muted)';
+    detailEl.textContent = '';
+    actionEl.innerHTML = '<a href="#" class="card-link" onclick="toggleWillowSetup(); return false;">Configure →</a>';
+  }
+  if (urlInput) urlInput.value = (acct && acct.willow_url) || 'http://localhost:8420';
+  if (userInput) userInput.value = (acct && acct.willow_user) || '';
+}
+
+function toggleWillowSetup() {
+  const form = document.getElementById('willowSetupForm');
+  form.classList.toggle('open');
+}
+
+async function testWillowConnection() {
+  const url = (document.getElementById('willowUrlInput').value || '').trim().replace(/\/$/, '');
+  const resultEl = document.getElementById('willowTestResult');
+  if (!url) { resultEl.textContent = 'Enter a server URL first'; resultEl.style.color = '#c0392b'; return; }
+  resultEl.textContent = 'Testing…';
+  resultEl.style.color = 'var(--fg-muted)';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(url + '/api/safe/whoami', { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.status === 'ok' && data.username) {
+      document.getElementById('willowUserInput').value = data.username;
+      resultEl.textContent = '✓ Connected — user: ' + data.username;
+      resultEl.style.color = 'var(--accent)';
+    } else {
+      resultEl.textContent = 'Connected but no user returned';
+      resultEl.style.color = 'var(--fg-muted)';
+    }
+  } catch (e) {
+    clearTimeout(timer);
+    resultEl.textContent = e.name === 'AbortError' ? 'Connection timed out' : 'Could not reach server';
+    resultEl.style.color = '#c0392b';
+  }
+}
+
+function saveWillowLink() {
+  const url = (document.getElementById('willowUrlInput').value || '').trim().replace(/\/$/, '');
+  const user = (document.getElementById('willowUserInput').value || '').trim();
+  if (!url) { showToast('Enter a server URL'); return; }
+
+  const raw = localStorage.getItem('safe_account');
+  if (!raw) { showToast('No account found'); return; }
+  try {
+    const acct = JSON.parse(raw);
+    acct.willow_url = url;
+    acct.willow_user = user;
+    localStorage.setItem('safe_account', JSON.stringify(acct));
+    renderWillowServer(acct);
+    toggleWillowSetup();
+    showToast('Willow server linked');
+    // Reload knowledge sections with new server
+    loadConnections();
+    loadWillowKnows();
+  } catch (e) {
+    showToast('Save failed');
+  }
+}
+
+"""
+content = content.replace("// ── What Willow Knows ──", willow_js + "// ── What Willow Knows ──")
+
+# 4. Update all API calls to use getWillowBase() + getWillowUser()
+
+# loadConnections
+content = content.replace(
+    "    const res = await fetch('http://localhost:8420/api/willow/connections/pending', {",
+    "    const res = await fetch(getWillowBase() + '/api/willow/connections/pending', {"
+)
+content = content.replace(
+    "    await fetch('http://localhost:8420/api/willow/connections/' + id + '/approve', {",
+    "    await fetch(getWillowBase() + '/api/willow/connections/' + id + '/approve', {"
+)
+content = content.replace(
+    "    await fetch('http://localhost:8420/api/willow/connections/' + id + '/deny', {",
+    "    await fetch(getWillowBase() + '/api/willow/connections/' + id + '/deny', {"
+)
+
+# loadWillowKnows - pass username param
+content = content.replace(
+    "    const res = await fetch('http://localhost:8420/api/knowledge/entities?min_mentions=1', {",
+    "    const willowUser = getWillowUser();\n    const userParam = willowUser ? '&username=' + encodeURIComponent(willowUser) : '';\n    const res = await fetch(getWillowBase() + '/api/knowledge/entities?min_mentions=1' + userParam, {"
+)
+
+# entity sources fetch
+content = content.replace(
+    "    const res = await fetch('http://localhost:8420/api/knowledge/entities/' + id + '/sources');",
+    "    const userParam2 = getWillowUser() ? '?username=' + encodeURIComponent(getWillowUser()) : '';\n    const res = await fetch(getWillowBase() + '/api/knowledge/entities/' + id + '/sources' + userParam2);"
+)
+
+# applyRename fetch
+content = content.replace(
+    "      body: JSON.stringify({ name: newName })",
+    "      body: JSON.stringify({ name: newName, username: getWillowUser() })"
+)
+
+# deleteEntity fetch
+content = content.replace(
+    "    const res = await fetch('http://localhost:8420/api/knowledge/entities/' + id, {\n      method: 'DELETE'",
+    "    const delUser = getWillowUser() ? '?username=' + encodeURIComponent(getWillowUser()) : '';\n    const res = await fetch(getWillowBase() + '/api/knowledge/entities/' + id + delUser, {\n      method: 'DELETE'"
+)
+
+# entity sources toggle (second fetch inside toggleEntityWhy uses relative path - already updated above)
+# Also fix the applyRename URL
+content = content.replace(
+    "    const res = await fetch('http://localhost:8420/api/knowledge/entities/' + id, {\n      method: 'PATCH'",
+    "    const res = await fetch(getWillowBase() + '/api/knowledge/entities/' + id, {\n      method: 'PATCH'"
+)
+
+# 5. Add renderWillowServer(acct) call in DOMContentLoaded
+content = content.replace(
+    "  renderFinishPrompt(acct);\n  renderPickup();\n  loadConnections();\n  loadWillowKnows();",
+    "  renderFinishPrompt(acct);\n  renderWillowServer(acct);\n  renderPickup();\n  loadConnections();\n  loadWillowKnows();"
+)
+
+with open(filepath, "w", encoding="utf-8") as f:
+    f.write(content)
+
+print("dashboard.html account linking applied successfully")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

@@ -1,0 +1,54 @@
+# Governance Proposal: Fix syntax error in dashboard.html Google connect link
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-02-28
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Line 444 of `SAFE/web/dashboard.html` has a JavaScript syntax error: the `onclick` attribute string uses unescaped single quotes inside a single-quoted JS string literal, breaking the `innerHTML` assignment.
+
+## Proposed Changes
+
+**File:** `SAFE/web/dashboard.html`
+**Location:** Line 444
+
+## Rationale
+
+- Syntax error will cause a JS exception when `renderGoogle()` is called with `acct.google` not equal to `'pending'`
+- One-character class of fix: escape the inner single quotes
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** None
+- **Testing:** Open dashboard, verify Google card renders without console errors
+
+## Implementation
+
+```python
+import re
+
+path = r"C:/Users/Sean/Documents/GitHub/SAFE/web/dashboard.html"
+with open(path, encoding="utf-8") as f:
+    content = f.read()
+
+old = """      '<a href="#" class="card-link" onclick="showToast('Coming soon'); return false;">Connect →</a>';"""
+new = """      '<a href="#" class="card-link" onclick="showToast(\\'Coming soon\\'); return false;">Connect →</a>';"""
+
+assert old in content, "Pattern not found — file may have changed"
+content = content.replace(old, new, 1)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+
+print("Applied: dashboard-google-quote-fix-001")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
