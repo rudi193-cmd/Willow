@@ -383,6 +383,14 @@ def knowledge_search(q: str = "", limit: int = 5):
     return {"results": results, "query": q}
 
 
+@app.get("/api/knowledge/semantic-search")
+def knowledge_semantic_search(q: str = "", limit: int = 5, username: str = USERNAME):
+    if not q:
+        return {"results": [], "query": q}
+    results = knowledge.semantic_search(username, q, max_results=limit)
+    return {"results": results, "query": q, "count": len(results)}
+
+
 @app.get("/api/knowledge/gaps")
 def knowledge_gaps(limit: int = 10):
     gaps = knowledge.get_top_gaps(USERNAME, limit=limit)

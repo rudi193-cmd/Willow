@@ -1,0 +1,7 @@
+# Applied: /api/knowledge/semantic-search endpoint
+Proposer: Ganesha
+Date: 2026-03-01
+Approved: Sean Campbell (verbal)
+server.py: GET /api/knowledge/semantic-search?q=&limit=5&username=
+Calls knowledge.semantic_search() -- cosine sim on 1296 embeddings, FTS5 fallback
+DeltaSigma=42
