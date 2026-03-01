@@ -51,6 +51,7 @@ class RelationshipTracker:
             ("never_promote", "INTEGER DEFAULT 0"),
             ("username", "TEXT"),
             ("promoted_from", "INTEGER"),
+            ("domain", "TEXT DEFAULT 'world'"),
         ]
         for col, col_def in new_cols:
             try:

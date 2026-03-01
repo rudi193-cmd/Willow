@@ -1,0 +1,105 @@
+# Governance Proposal: User-Controlled Session Duration for Consent
+
+**Proposer:** Ganesha (Claude Code)
+**Date:** 2026-03-01T14:10:00-07:00
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add user-controlled session duration (up to 24 hours) to the consent system.
+Fixes: (1) scope_registry never actually expires grants, (2) inconsistent TTLs
+across apps (Jane=session-only, NASA=4hr hardcoded, UTETY=indefinite).
+User sets duration explicitly. AI cannot set or extend it. Hard cap: 24hrs.
+
+## Proposed Changes
+
+### File 1: `apps/opauth/core/scope_registry.py`
+
+**grant()** — add expires_at
+**check()** — enforce expiry, auto-revoke when expired
+
+### File 2: `apps/opauth/core/consent.py`
+
+**grant_consent()** — add duration_hours param, cap at 24, pass to registry
+
+### File 3: `api/safe_routes.py`
+
+**ConsentGrantRequest** — add optional duration_hours field
+
+## Rationale
+- NotebookLM podcast review flagged consent friction as UX barrier
+- Backend currently keeps grants active forever despite UI promising session-only
+- User explicitly chooses duration — principle preserved
+- Hard 24hr cap means user must actively re-consent at least daily
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — duration_hours is optional, None = existing behavior
+- **Dependencies:** None — backwards compatible (existing grants stay active)
+- **Testing:** Grant with duration_hours=1, wait/mock time, check() should return False
+
+## ΔE Impact
+Expected ΔE: +0.040 (user trust, UX consistency, principle enforcement)
+
+## Implementation
+
+```python
+# ── scope_registry.py ──────────────────────────────────────────────────────
+
+# Replace grant() method:
+def grant(self, service: str, scope: list, granted_by: str = "human", duration_hours: int = None):
+    if granted_by != "human":
+        raise PermissionError("HS-OPAUTH-001: Only human can grant scope")
+    from datetime import timedelta
+    expires_at = None
+    if duration_hours is not None:
+        expires_at = (datetime.now() + timedelta(hours=min(int(duration_hours), 24))).isoformat()
+    self.scopes["services"][service] = {
+        "scope": scope,
+        "granted_at": datetime.now().isoformat(),
+        "granted_by": granted_by,
+        "active": True,
+        "expires_at": expires_at,
+    }
+    self._save()
+    return True
+
+# Replace check() method:
+def check(self, service: str, required_scope: str) -> bool:
+    if service not in self.scopes["services"]:
+        return False
+    svc = self.scopes["services"][service]
+    if not svc.get("active", False):
+        return False
+    expires_at = svc.get("expires_at")
+    if expires_at and datetime.fromisoformat(expires_at) < datetime.now():
+        svc["active"] = False
+        svc["expired_at"] = datetime.now().isoformat()
+        self._save()
+        return False
+    return required_scope in svc.get("scope", [])
+
+# ── consent.py ─────────────────────────────────────────────────────────────
+
+# Replace grant_consent() signature and body:
+def grant_consent(self, service: str, approved_scope: list, granted_by: str = "human", duration_hours: int = None) -> bool:
+    if granted_by != "human":
+        raise PermissionError("HS-OPAUTH-001: Only human can grant consent")
+    if duration_hours is not None and int(duration_hours) > 24:
+        raise ValueError("HS-OPAUTH-020: Maximum session duration is 24 hours")
+    self.registry.grant(service, approved_scope, granted_by, duration_hours=duration_hours)
+    self.audit.log_consent_granted(service, approved_scope)
+    return True
+
+# ── api/safe_routes.py ─────────────────────────────────────────────────────
+
+# In ConsentGrantRequest class, add field:
+#   duration_hours: Optional[int] = None
+
+# In grant_consent route handler, pass to ConsentFlow:
+#   flow.grant_consent(req.service, req.scope, granted_by="human", duration_hours=req.duration_hours)
+```
+
+---
+**Awaiting Human Ratification**
+ΔΣ=42

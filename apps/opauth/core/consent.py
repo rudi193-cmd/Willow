@@ -33,14 +33,16 @@ class ConsentFlow:
             "instructions": "Human must call grant_consent() or deny_consent()"
         }
 
-    def grant_consent(self, service: str, approved_scope: list, granted_by: str = "human") -> bool:
+    def grant_consent(self, service: str, approved_scope: list, granted_by: str = "human", duration_hours: int = None) -> bool:
         """
         Human grants consent. HUMAN ONLY.
+        duration_hours: keep active for N hours (max 24). None = session-only.
         """
         if granted_by != "human":
             raise PermissionError("HS-OPAUTH-001: Only human can grant consent")
-
-        self.registry.grant(service, approved_scope, granted_by)
+        if duration_hours is not None and int(duration_hours) > 24:
+            raise ValueError("HS-OPAUTH-020: Maximum session duration is 24 hours")
+        self.registry.grant(service, approved_scope, granted_by, duration_hours=duration_hours)
         self.audit.log_consent_granted(service, approved_scope)
         return True
 

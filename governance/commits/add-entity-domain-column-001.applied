@@ -1,0 +1,39 @@
+# Governance Proposal: Add domain column to entities table
+
+**Proposer:** Ganesha (Claude Code)
+**Date:** 2026-03-01T20:45:00-07:00
+**Type:** Schema Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add `domain` column to the `entities` table in `relationship_tracker.py`'s `_init_schema`. This enables the personal/self/world knowledge segmentation needed for the planned public knowledge graph strip-out.
+
+## Proposed Changes
+**File:** `core/relationship_tracker.py`
+**Location:** `_init_schema` new_cols list (line ~43)
+
+## Rationale
+- The `entities` table needs a `domain` field to distinguish: `personal` (Sean's private context), `self` (Willow system knowledge), `world` (public general knowledge)
+- This is the mechanism that enables stripping personal context before publishing the knowledge graph
+- Column added idempotently — safe to run on existing DBs with the existing try/except ALTER TABLE pattern
+- `migrate.py` handles backfilling existing entities; this change ensures new entities get the column from creation
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — column can be dropped or ignored
+- **Dependencies:** migrate.py (already written, handles backfill)
+- **Testing:** Server startup applies `_init_schema` — column appears in new DBs immediately
+
+## ΔE Impact
+Expected ΔE: +0.015 (structural clarity, enables strip-out workflow)
+
+## Implementation
+
+```python
+# In _init_schema, add to new_cols list after line 53 ("promoted_from", "INTEGER"):
+("domain", "TEXT DEFAULT 'world'"),
+```
+
+---
+**Awaiting Human Ratification**
+ΔΣ=42

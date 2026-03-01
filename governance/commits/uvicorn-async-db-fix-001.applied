@@ -1,0 +1,201 @@
+# Governance Proposal: Fix Async DB Blocking — 3 Handlers
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T19:35:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Three `async def` handlers in server.py make synchronous sqlite3 calls that block the uvicorn event loop. This causes "database is locked" errors and prevents WAL checkpointing (WAL currently at 4MB). The fix wraps each sync DB block in `asyncio.get_event_loop().run_in_executor(None, fn)`.
+
+Affected handlers:
+1. `knowledge_entity_rename` (line ~514)
+2. `patterns_reject_rule` (line ~2073)
+3. `unblacklist_provider` (line ~2404)
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — each change is a wrapper around existing logic
+- **Dependencies:** `asyncio` (already in stdlib, already used in server.py)
+- **Testing:** Rename an entity while knowledge graph is loading — should not lock
+
+## ΔE Impact
+
+Expected ΔE: +0.008 (DB stability, no more lock cascades during graph rendering)
+
+## Implementation
+
+```python
+import pathlib
+
+def _apply():
+    server_path = pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+    src = server_path.read_text(encoding="utf-8")
+
+    # Verify asyncio is imported
+    if "import asyncio" not in src:
+        src = src.replace("from pathlib import Path", "import asyncio\nfrom pathlib import Path", 1)
+
+    # ── Fix 1: knowledge_entity_rename ───────────────────────────────────────
+    OLD1 = '''async def knowledge_entity_rename(entity_id: int, request: Request):
+    """Rename or correct an entity. Creates an audit trail in the entity record."""
+    import sqlite3
+    body = await request.json()
+    new_name = (body.get("name") or "").strip()
+    new_description = body.get("description")
+    username = body.get("username") or USERNAME
+    if not new_name:
+        raise HTTPException(status_code=400, detail="name required")
+    try:
+        db_path = knowledge._db_path(username)
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        if new_description is not None:
+            cur.execute("UPDATE entities SET name = ?, description = ? WHERE id = ?",
+                        (new_name, new_description, entity_id))
+        else:
+            cur.execute("UPDATE entities SET name = ? WHERE id = ?", (new_name, entity_id))
+        updated = cur.rowcount
+        conn.commit()
+        conn.close()
+        return {"success": bool(updated), "name": new_name}
+    except Exception as e:
+        return {"success": False, "error": str(e)}'''
+
+    NEW1 = '''async def knowledge_entity_rename(entity_id: int, request: Request):
+    """Rename or correct an entity. Creates an audit trail in the entity record."""
+    import sqlite3
+    body = await request.json()
+    new_name = (body.get("name") or "").strip()
+    new_description = body.get("description")
+    username = body.get("username") or USERNAME
+    if not new_name:
+        raise HTTPException(status_code=400, detail="name required")
+
+    def _do_rename():
+        try:
+            db_path = knowledge._db_path(username)
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            if new_description is not None:
+                cur.execute("UPDATE entities SET name = ?, description = ? WHERE id = ?",
+                            (new_name, new_description, entity_id))
+            else:
+                cur.execute("UPDATE entities SET name = ? WHERE id = ?", (new_name, entity_id))
+            updated = cur.rowcount
+            conn.commit()
+            conn.close()
+            return {"success": bool(updated), "name": new_name}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _do_rename)'''
+
+    # ── Fix 2: patterns_reject_rule ──────────────────────────────────────────
+    OLD2 = '''async def patterns_reject_rule(request: Request):
+    """User rejects a suggested routing rule."""
+    try:
+        from core import patterns
+        import sqlite3
+        body = await request.json()
+        pattern_type = body.get("pattern_type")
+        pattern_value = body.get("pattern_value")
+        destination = body.get("destination")
+
+        if not all([pattern_type, pattern_value, destination]):
+            return {"error": "Missing required fields"}
+
+        # Delete the suggestion from learned_preferences
+        conn = patterns._connect()
+        conn.execute("""
+            DELETE FROM learned_preferences
+            WHERE pattern_type = ? AND pattern_value = ? AND destination = ?
+        """, (pattern_type, pattern_value, destination))
+        conn.commit()
+        conn.close()
+
+        return {"success": True, "message": "Rule rejected and removed from suggestions"}
+    except Exception as e:
+        return {"error": str(e)}'''
+
+    NEW2 = '''async def patterns_reject_rule(request: Request):
+    """User rejects a suggested routing rule."""
+    try:
+        from core import patterns
+        body = await request.json()
+        pattern_type = body.get("pattern_type")
+        pattern_value = body.get("pattern_value")
+        destination = body.get("destination")
+
+        if not all([pattern_type, pattern_value, destination]):
+            return {"error": "Missing required fields"}
+
+        def _do_reject():
+            conn = patterns._connect()
+            conn.execute("""
+                DELETE FROM learned_preferences
+                WHERE pattern_type = ? AND pattern_value = ? AND destination = ?
+            """, (pattern_type, pattern_value, destination))
+            conn.commit()
+            conn.close()
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _do_reject)
+        return {"success": True, "message": "Rule rejected and removed from suggestions"}
+    except Exception as e:
+        return {"error": str(e)}'''
+
+    # ── Fix 3: unblacklist_provider ──────────────────────────────────────────
+    OLD3 = '''        # Manually unblacklist by updating database
+        conn = provider_health._connect()
+        conn.execute("""
+            UPDATE provider_health
+            SET status = 'healthy', blacklisted_until = NULL, consecutive_failures = 0
+            WHERE provider = ?
+        """, (provider_name,))
+        conn.commit()
+        conn.close()
+
+        return {"success": True, "provider": provider_name, "message": f"{provider_name} unblacklisted"}'''
+
+    NEW3 = '''        # Manually unblacklist by updating database
+        def _do_unblacklist():
+            conn = provider_health._connect()
+            conn.execute("""
+                UPDATE provider_health
+                SET status = 'healthy', blacklisted_until = NULL, consecutive_failures = 0
+                WHERE provider = ?
+            """, (provider_name,))
+            conn.commit()
+            conn.close()
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _do_unblacklist)
+        return {"success": True, "provider": provider_name, "message": f"{provider_name} unblacklisted"}'''
+
+    changed = 0
+    for old, new, label in [(OLD1, NEW1, "knowledge_entity_rename"), (OLD2, NEW2, "patterns_reject_rule"), (OLD3, NEW3, "unblacklist_provider")]:
+        if old in src:
+            src = src.replace(old, new)
+            changed += 1
+            print(f"  Fixed: {label}")
+        else:
+            print(f"  SKIP (not found or already fixed): {label}")
+
+    if changed:
+        server_path.write_text(src, encoding="utf-8")
+        print(f"server.py updated — {changed} handlers fixed.")
+    else:
+        print("No changes made.")
+
+_apply()
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

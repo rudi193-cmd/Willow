@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/nasa", tags=["nasa"])
 NASA_DATA = Path(r"C:\Users\Sean\Documents\GitHub\safe-app-nasa-archive\data")
+NASA_APPS_DIR = Path(r"C:\Users\Sean\Willow\Apps\nasa-archive")  # per SAFE_APP_CONNECTION.md
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -62,6 +64,63 @@ def get_rally(slug: str):
     matches = [r for r in _load("index.json").get("rallies_list",[]) if r.get("slug") in (slug, norm)]
     if not matches: raise HTTPException(404, detail=f"Rally not found: {slug}")
     return JSONResponse(matches[0], headers=CORS_HEADERS)
+
+# ── Community contribution routes ────────────────────────────────────────────
+
+class _NasaSession(BaseModel):
+    type: str = "nasa_memory"
+    version: str = "1.0"
+    rally: str
+    rally_title: str = ""
+    session_id: str
+    timestamp: str
+    photos_tagged: list = []
+    album_claim: Optional[str] = None
+    oral_history: list = []
+    contributed: bool = False
+
+class _NasaStory(BaseModel):
+    rally_slug: str
+    narrator_name: str
+    content: str
+    correction: Optional[str] = None
+    capture_date: str
+
+@router.post("/contribute")
+def nasa_contribute(session: _NasaSession):
+    try:
+        dest = NASA_APPS_DIR / "intake"
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / f"{session.session_id}.json").write_text(
+            json.dumps(session.dict(), indent=2), encoding="utf-8"
+        )
+        return {"ok": True, "session_id": session.session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/story")
+def nasa_story(story: _NasaStory):
+    try:
+        dest = NASA_APPS_DIR / "stories"
+        dest.mkdir(parents=True, exist_ok=True)
+        path = dest / f"{story.rally_slug}.json"
+        stories = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+        stories.append(story.dict())
+        path.write_text(json.dumps(stories, indent=2), encoding="utf-8")
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/stories")
+def nasa_stories(rally: str = Query(...)):
+    path = NASA_APPS_DIR / "stories" / f"{rally}.json"
+    if not path.exists():
+        return []
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/query")
 def nasa_query(q: Optional[str]=Query(None), category: Optional[str]=Query(None), limit: int=Query(50,le=200), offset: int=Query(0)):

@@ -35,19 +35,24 @@ class ScopeRegistry:
         with open(self.registry_path, 'w') as f:
             json.dump(self.scopes, f, indent=2)
 
-    def grant(self, service: str, scope: list, granted_by: str = "human"):
+    def grant(self, service: str, scope: list, granted_by: str = "human", duration_hours: int = None):
         """
         Grant scope to a service. HUMAN ONLY.
         AI cannot call this directly.
+        duration_hours: how long to keep active (max 24). None = session-only (no auto-expiry).
         """
         if granted_by != "human":
             raise PermissionError("HS-OPAUTH-001: Only human can grant scope")
-
+        from datetime import timedelta
+        expires_at = None
+        if duration_hours is not None:
+            expires_at = (datetime.now() + timedelta(hours=min(int(duration_hours), 24))).isoformat()
         self.scopes["services"][service] = {
             "scope": scope,
             "granted_at": datetime.now().isoformat(),
             "granted_by": granted_by,
-            "active": True
+            "active": True,
+            "expires_at": expires_at,
         }
         self._save()
         return True
@@ -66,15 +71,19 @@ class ScopeRegistry:
 
     def check(self, service: str, required_scope: str) -> bool:
         """
-        Check if a scope is granted. AI can call this.
+        Check if a scope is granted. Auto-revokes expired grants. AI can call this.
         """
         if service not in self.scopes["services"]:
             return False
-
         svc = self.scopes["services"][service]
         if not svc.get("active", False):
             return False
-
+        expires_at = svc.get("expires_at")
+        if expires_at and datetime.fromisoformat(expires_at) < datetime.now():
+            svc["active"] = False
+            svc["expired_at"] = datetime.now().isoformat()
+            self._save()
+            return False
         return required_scope in svc.get("scope", [])
 
     def list_services(self) -> dict:

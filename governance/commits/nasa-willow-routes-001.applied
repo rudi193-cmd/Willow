@@ -1,0 +1,141 @@
+# Governance Proposal: NASA Archive Routes — Willow Backend
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T19:10:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Add three FastAPI routes to Willow's server.py to serve as the backend for the NASA (North America Scootering Archive) community archive. Replaces Supabase entirely. Stores contributions and stories as JSON files in `artifacts/Sweet-Pea-Rudi19/nasa/` — readable by the knowledge graph on the next ingest cycle.
+
+## Proposed Changes
+
+**File:** `server.py`
+**Location:** Before the final `if __name__ == "__main__":` block
+
+## Rationale
+
+- User decided to drop Supabase entirely from safe-app-nasa-archive
+- All photo data is on scoot.net; user sessions are local-first
+- Contributions flow into Willow artifacts → knowledge atoms → entity connections
+- Sean (entity id=2) ↔ rally entities = the edges the user wants to see in the graph
+- Simple JSON file storage is immediately testable; knowledge graph wiring is a follow-on
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — delete the three route functions
+- **Dependencies:** Adds `BaseModel` (pydantic) and `Query` (fastapi) to server.py imports
+- **Testing:** `curl -X POST http://localhost:8420/api/nasa/story -H 'Content-Type: application/json' -d '{"rally_slug":"test","narrator_name":"Sweet-Pea","content":"It was cold.","capture_date":"2026-03-01"}'`
+
+## ΔE Impact
+
+Expected ΔE: +0.012 (new community memory pathway opens, NASA→Willow edges now possible)
+
+## Implementation
+
+```python
+import pathlib, json as _nasa_json
+
+def _apply():
+    server_path = pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+    src = server_path.read_text(encoding="utf-8")
+
+    # Also patch the fastapi import line to add BaseModel and Query
+    OLD_IMPORT = 'from fastapi import FastAPI, Request, UploadFile, File, HTTPException'
+    NEW_IMPORT = 'from fastapi import FastAPI, Request, UploadFile, File, HTTPException, Query\nfrom pydantic import BaseModel'
+    if OLD_IMPORT in src and 'from pydantic import BaseModel' not in src:
+        src = src.replace(OLD_IMPORT, NEW_IMPORT)
+
+    NEW_ROUTES = '''
+# ── NASA Archive routes ──────────────────────────────────────────────────────
+import json as _nasa_json
+
+_NASA_DIR = Path(r"C:\Users\Sean\Willow") / "Apps" / "nasa-archive"  # per SAFE_APP_CONNECTION.md
+
+
+class _NasaSession(BaseModel):
+    type: str = "nasa_memory"
+    version: str = "1.0"
+    rally: str
+    rally_title: str = ""
+    session_id: str
+    timestamp: str
+    photos_tagged: list = []
+    album_claim: Optional[str] = None
+    oral_history: list = []
+    contributed: bool = False
+
+
+class _NasaStory(BaseModel):
+    rally_slug: str
+    narrator_name: str
+    content: str
+    correction: Optional[str] = None
+    capture_date: str
+
+
+@app.post("/api/nasa/contribute")
+async def nasa_contribute(session: _NasaSession):
+    try:
+        dest = _NASA_DIR / "contributions"
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / f"{session.session_id}.json").write_text(
+            _nasa_json.dumps(session.dict(), indent=2), encoding="utf-8"
+        )
+        return {"ok": True, "session_id": session.session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/nasa/story")
+async def nasa_story(story: _NasaStory):
+    try:
+        dest = _NASA_DIR / "stories"
+        dest.mkdir(parents=True, exist_ok=True)
+        path = dest / f"{story.rally_slug}.json"
+        stories = _nasa_json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+        stories.append(story.dict())
+        path.write_text(_nasa_json.dumps(stories, indent=2), encoding="utf-8")
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/nasa/stories")
+async def nasa_stories(rally: str = Query(...)):
+    path = _NASA_DIR / "stories" / f"{rally}.json"
+    if not path.exists():
+        return []
+    try:
+        return _nasa_json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+'''
+
+    # Insert before the final if __name__ block
+    marker = '\nif __name__ == "__main__":'
+    if marker not in src:
+        marker = '\nif __name__ == \'__main__\':'
+    if marker not in src:
+        print("ERROR: could not find insertion marker in server.py")
+        return
+
+    if '/api/nasa/contribute' in src:
+        print("NASA routes already present — skipping.")
+        return
+
+    new_src = src.replace(marker, NEW_ROUTES + marker)
+    server_path.write_text(new_src, encoding="utf-8")
+    print("NASA routes added to server.py.")
+
+_apply()
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

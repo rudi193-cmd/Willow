@@ -68,6 +68,7 @@ def _prune_expired():
 class ConsentGrantRequest(BaseModel):
     session_id: str
     scope: str = "web"
+    duration_hours: Optional[int] = None  # 1-24. None defaults to 4hrs.
 
 class ConsentRevokeRequest(BaseModel):
     session_id: str
@@ -78,14 +79,16 @@ class ConsentRevokeRequest(BaseModel):
 @router.post("/consent/grant")
 def grant_consent(body: ConsentGrantRequest):
     _prune_expired()
-    expires = datetime.now() + timedelta(hours=4)
+    hours = min(int(body.duration_hours), 24) if body.duration_hours else 4
+    expires = datetime.now() + timedelta(hours=hours)
     _sessions[body.session_id] = {
         "scope": body.scope,
         "granted_at": datetime.now().isoformat(),
         "expires": expires,
+        "duration_hours": hours,
     }
     return JSONResponse(
-        {"ok": True, "token": body.session_id, "expires": expires.isoformat()},
+        {"ok": True, "token": body.session_id, "expires": expires.isoformat(), "duration_hours": hours},
         headers=CORS_HEADERS,
     )
 
