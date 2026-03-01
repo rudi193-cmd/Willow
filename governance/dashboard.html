@@ -46,6 +46,7 @@
   .empty-state { text-align: center; color: var(--dim); padding: 40px 20px; }
   .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
   .badge-approved { background: var(--green); color: #000; }
+  .badge-applied { background: var(--green); color: #000; }
   .badge-rejected { background: var(--red); color: #fff; }
   .batch-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
   .batch-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; color: var(--dim); }
@@ -78,7 +79,7 @@
 <div id="error-banner"></div>
 
 <div class="section">
-  <h2>Pending Commits</h2>
+  <h2 style="display:flex;justify-content:space-between;align-items:center">Pending Commits <button class="btn-view" style="font-size:0.75rem;padding:4px 10px" onclick="loadPending()">↻</button></h2>
   <div id="batch-controls" class="batch-controls" style="display:none">
     <label><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"> Select All</label>
     <span id="batch-count" class="batch-count">0 selected</span>
@@ -90,7 +91,7 @@
 </div>
 
 <div class="section">
-  <h2>History</h2>
+  <h2 style="display:flex;justify-content:space-between;align-items:center">History <button class="btn-view" style="font-size:0.75rem;padding:4px 10px" onclick="loadHistory()">↻</button></h2>
   <div id="history-list" class="history-list">
     <div class="empty-state">Loading...</div>
   </div>
@@ -110,6 +111,7 @@
       <button class="btn-view" onclick="closeModal()">Close</button>
       <button class="btn-danger" onclick="showRejectPrompt()">Reject</button>
       <button class="btn-primary" onclick="approveCommit()">Approve</button>
+      <button class="btn-apply" onclick="approveAndApplyFromModal()">Approve & Apply</button>
     </div>
   </div>
 </div>
@@ -221,9 +223,9 @@ async function loadPending() {
           </label>
           <span class="commit-timestamp">${new Date(commit.timestamp).toLocaleString()}</span>
         </div>
+        <div style="font-size:0.85rem;color:var(--text);font-weight:500;margin-bottom:8px">${formatCommitId(commit.id)}</div>
         <div class="commit-actions">
           <button class="btn-view" onclick="viewCommit('${commit.id}')">View Diff</button>
-          <button class="btn-primary" onclick="viewCommit('${commit.id}')">Review</button>
           <button class="btn-apply" onclick="approveAndApply('${commit.id}')">Approve & Apply</button>
         </div>
       </div>
@@ -237,24 +239,26 @@ async function loadPending() {
 
 async function loadHistory() {
   try {
-    const r = await fetch('/api/governance/history');
+    const r = await fetch('/api/governance/decisions?limit=50');
     const data = await r.json();
     const list = document.getElementById('history-list');
 
-    if (!data.history || data.history.length === 0) {
+    if (!data.decisions || data.decisions.length === 0) {
       list.innerHTML = '<div class="empty-state">No history yet.</div>';
       return;
     }
 
-    list.innerHTML = data.history.map(commit => `
+    list.innerHTML = data.decisions.map(d => `
       <div class="commit-card">
         <div class="commit-header">
           <div>
-            <span class="commit-id">${commit.id}</span>
-            <span class="badge badge-${commit.action}">${commit.action}</span>
+            <span class="commit-id">${d.id || d.filename}</span>
+            <span class="badge badge-${d.action}">${d.action}</span>
           </div>
-          <span class="commit-timestamp">${new Date(commit.timestamp).toLocaleString()}</span>
+          <span class="commit-timestamp">${new Date(d.timestamp).toLocaleString()}</span>
         </div>
+        ${d.title ? `<div style="font-weight:500;margin:6px 0 4px;font-size:0.9rem">${d.title}</div>` : ''}
+        ${d.summary ? `<div style="font-size:0.8rem;color:var(--dim);line-height:1.5">${d.summary.slice(0,200)}${d.summary.length>200?'…':''}</div>` : ''}
       </div>
     `).join('');
   } catch(e) {
@@ -378,6 +382,17 @@ async function approveAndApply(commitId) {
   } catch(e) {
     alert('Error: ' + e.message);
   }
+}
+
+function formatCommitId(id) {
+  // "pigeon-db-lock-fix-002" → "Pigeon DB Lock Fix 002"
+  return id.split('-').map(w => w.match(/^\d+$/) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+async function approveAndApplyFromModal() {
+  if (!currentCommitId) return;
+  closeModal();
+  await approveAndApply(currentCommitId);
 }
 
 // Load on boot
