@@ -1,0 +1,7 @@
+# Applied: OCR consumer daemon (slot 2)
+Proposer: Ganesha
+Date: 2026-03-01
+Approved: Sean Campbell (verbal)
+1. core/ocr_consumer_daemon.py: slot 2, 4s poll, 14s startup delay
+2. server.py: _ocr_consumer_daemon Popen added on startup
+DeltaSigma=42

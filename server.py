@@ -57,6 +57,10 @@ _pigeon_daemon = _subprocess.Popen(
     [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
     creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
 )
+_ocr_consumer_daemon = _subprocess.Popen(
+    [sys.executable, str(Path(__file__).parent / "core" / "ocr_consumer_daemon.py")],
+    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+)
 
 # Track server start time for uptime
 SERVER_START_TIME = datetime.now()
