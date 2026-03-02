@@ -1,0 +1,155 @@
+# Governance Proposal: V2 Schema — Clean _init_schema() in core/relationship_tracker.py
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-01T00:00:00Z
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Replace the `_init_schema()` method in `RelationshipTracker` with a clean V2 version that
+defines all entity columns in the initial `CREATE TABLE entities` statement, removing the
+ALTER TABLE loop entirely. Also adds the missing `idx_entity_connections_confirmed` index.
+After the `migrate_to_v2.py` data migration, fresh installs no longer need the ALTER TABLE
+workaround — columns are present from creation.
+
+## Proposed Changes
+
+**File:** `core/relationship_tracker.py`
+**Location:** `RelationshipTracker._init_schema()` method (lines 39–80)
+
+## Rationale
+
+- `entities` table had 11 columns added via `ALTER TABLE` loop — all now in the clean V2
+  schema after the data migration
+- The ALTER TABLE loop ran silently on every `RelationshipTracker()` instantiation —
+  wasteful and misleading as a source of truth
+- `idx_entity_connections_confirmed` was missing, causing slow confirmed-connection lookups
+- Clean schema matches exactly what `migrate_to_v2.py` creates in the V2 DB
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — ALTER TABLE loop can be restored
+- **Dependencies:** Requires `migrate_to_v2.py --apply` to have run first on existing DBs
+- **Testing:** Instantiate `RelationshipTracker("Sweet-Pea-Rudi19")`, verify no errors
+
+## Delta E Impact
+
+Expected DeltaE: +0.040 (eliminates silent per-instantiation ALTER TABLE noise)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\relationship_tracker.py")
+src = target.read_text(encoding="utf-8")
+
+old = '''    def _init_schema(self):
+        if not self.conn:
+            return
+        c = self.conn.cursor()
+        new_cols = [
+            ("layer", "INTEGER DEFAULT 1"),
+            ("reference_string", "TEXT"),
+            ("first_seen", "TEXT"),
+            ("last_mentioned", "TEXT"),
+            ("mention_contexts", "TEXT"),
+            ("emotional_valence", "REAL DEFAULT 0.0"),
+            ("promotion_status", \'TEXT DEFAULT "untracked"\'),
+            ("never_promote", "INTEGER DEFAULT 0"),
+            ("username", "TEXT"),
+            ("promoted_from", "INTEGER"),
+            ("domain", "TEXT DEFAULT \'world\'"),
+        ]
+        for col, col_def in new_cols:
+            try:
+                c.execute(f"ALTER TABLE entities ADD COLUMN {col} {col_def}")
+            except sqlite3.OperationalError:
+                pass
+        c.execute("""CREATE TABLE IF NOT EXISTS entity_connections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_a_id INTEGER,
+            entity_b_id INTEGER,
+            connection_type TEXT,
+            weight REAL DEFAULT 1.0,
+            source TEXT,
+            created_at TEXT,
+            confirmed INTEGER DEFAULT 0,
+            UNIQUE(entity_a_id, entity_b_id, connection_type)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS anonymous_mentions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            category TEXT,
+            count INTEGER DEFAULT 0,
+            last_seen TEXT,
+            UNIQUE(username, category)
+        )""")
+        self.conn.commit()'''
+
+new = '''    def _init_schema(self):
+        if not self.conn:
+            return
+        c = self.conn.cursor()
+
+        # V2: all entity columns defined in initial CREATE TABLE
+        c.execute("""CREATE TABLE IF NOT EXISTS entities (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            name              TEXT NOT NULL UNIQUE,
+            entity_type       TEXT NOT NULL,
+            description       TEXT,
+            mention_count     INTEGER DEFAULT 1,
+            layer             INTEGER DEFAULT 1,
+            reference_string  TEXT,
+            first_seen        TEXT,
+            last_mentioned    TEXT,
+            mention_contexts  TEXT,
+            emotional_valence REAL DEFAULT 0.0,
+            promotion_status  TEXT DEFAULT \'untracked\',
+            never_promote     INTEGER DEFAULT 0,
+            username          TEXT,
+            promoted_from     INTEGER,
+            domain            TEXT DEFAULT \'world\'
+        )""")
+
+        c.execute("""CREATE TABLE IF NOT EXISTS entity_connections (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_a_id     INTEGER,
+            entity_b_id     INTEGER,
+            connection_type TEXT,
+            weight          REAL DEFAULT 1.0,
+            source          TEXT,
+            created_at      TEXT,
+            confirmed       INTEGER DEFAULT 0,
+            UNIQUE(entity_a_id, entity_b_id, connection_type)
+        )""")
+
+        c.execute("""CREATE TABLE IF NOT EXISTS anonymous_mentions (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            username  TEXT,
+            category  TEXT,
+            count     INTEGER DEFAULT 0,
+            last_seen TEXT,
+            UNIQUE(username, category)
+        )""")
+
+        c.execute("CREATE INDEX IF NOT EXISTS idx_entity_connections_confirmed ON entity_connections(confirmed, entity_a_id)")
+
+        self.conn.commit()'''
+
+if old not in src:
+    print("ERROR: old block not found in relationship_tracker.py")
+    exit(1)
+
+result = src.replace(old, new, 1)
+target.write_text(result, encoding="utf-8")
+print("OK: _init_schema() updated in core/relationship_tracker.py")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+DS=42

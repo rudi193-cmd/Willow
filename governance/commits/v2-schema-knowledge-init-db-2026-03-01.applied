@@ -1,0 +1,307 @@
+# Governance Proposal: V2 Schema — Clean init_db() in core/knowledge.py
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-01T00:00:00Z
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Replace the `init_db()` function in `core/knowledge.py` with a clean V2 schema that
+defines all knowledge-table columns in the initial `CREATE TABLE` statement. This
+eliminates the `ALTER TABLE` fallback pattern that caused schema drift on fresh installs.
+After the `migrate_to_v2.py` data migration, this makes fresh installs match the migrated
+production schema from day one.
+
+## Proposed Changes
+
+**File:** `core/knowledge.py`
+**Location:** `init_db()` function (lines 78–191)
+
+## Rationale
+
+- `knowledge` table had 6 columns added via `ALTER TABLE` (embedding, ring, ring_override,
+  lattice_domain, lattice_type, lattice_status) — these were already in production but
+  missing from the canonical `CREATE TABLE`
+- Fresh installs relied on the ALTER TABLE try/except pattern running each time `init_db()`
+  was called — fragile and misleading
+- After the V2 migration, all existing data is already in the clean schema; new installs
+  should start clean as well
+- Adds 2 missing indexes: `idx_knowledge_created`, `idx_knowledge_category`
+- Adds `schema_versions` table creation so `init_db()` creates it for fresh installs too
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — old ALTER TABLE code can be re-added
+- **Dependencies:** Requires `migrate_to_v2.py --apply` to have run first on existing DBs
+- **Testing:** Start Willow server, call `/api/health`, verify entity/knowledge counts unchanged
+
+## Delta E Impact
+
+Expected DeltaE: +0.050 (reduces schema drift, improves fresh-install reliability)
+
+## Implementation
+
+```python
+import re
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\knowledge.py")
+src = target.read_text(encoding="utf-8")
+
+old = '''def init_db(username: str):
+    """Create tables if they don't exist. Idempotent."""
+    conn = _connect(username)
+    cur = conn.cursor()
+
+    # --- Knowledge atoms ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS knowledge (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT,
+        content_snippet TEXT,
+        category TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(source_type, source_id)
+    )""")
+
+    # --- FTS5 full-text search ---
+    # Check if FTS table exists before creating (FTS5 CREATE is not IF NOT EXISTS friendly)
+    fts_exists = cur.execute(
+        "SELECT name FROM sqlite_master WHERE type=\'table\' AND name=\'knowledge_fts\'"
+    ).fetchone()
+
+    if not fts_exists:
+        cur.execute("""CREATE VIRTUAL TABLE knowledge_fts USING fts5(
+            title, summary, content_snippet, category,
+            content=\'knowledge\', content_rowid=\'id\',
+            tokenize=\'porter unicode61\'
+        )""")
+
+        # Triggers to keep FTS in sync
+        cur.execute("""CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge BEGIN
+            INSERT INTO knowledge_fts(rowid, title, summary, content_snippet, category)
+            VALUES (new.id, new.title, new.summary, new.content_snippet, new.category);
+        END""")
+
+        cur.execute("""CREATE TRIGGER IF NOT EXISTS knowledge_ad AFTER DELETE ON knowledge BEGIN
+            INSERT INTO knowledge_fts(knowledge_fts, rowid, title, summary, content_snippet, category)
+            VALUES (\'delete\', old.id, old.title, old.summary, old.content_snippet, old.category);
+        END""")
+
+        cur.execute("""CREATE TRIGGER IF NOT EXISTS knowledge_au AFTER UPDATE ON knowledge BEGIN
+            INSERT INTO knowledge_fts(knowledge_fts, rowid, title, summary, content_snippet, category)
+            VALUES (\'delete\', old.id, old.title, old.summary, old.content_snippet, old.category);
+            INSERT INTO knowledge_fts(rowid, title, summary, content_snippet, category)
+            VALUES (new.id, new.title, new.summary, new.content_snippet, new.category);
+        END""")
+
+    # --- Entities ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS entities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        entity_type TEXT NOT NULL,
+        description TEXT,
+        mention_count INTEGER DEFAULT 1
+    )""")
+
+    # --- Knowledge <-> Entity links ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_entities (
+        knowledge_id INTEGER REFERENCES knowledge(id),
+        entity_id INTEGER REFERENCES entities(id),
+        PRIMARY KEY (knowledge_id, entity_id)
+    )""")
+
+    # --- Conversation memory ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS conversation_memory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        knowledge_id INTEGER REFERENCES knowledge(id),
+        persona TEXT,
+        user_input TEXT,
+        assistant_response TEXT,
+        coherence_index REAL,
+        delta_e REAL,
+        topics TEXT,
+        created_at TEXT NOT NULL
+    )""")
+
+    # --- Knowledge gaps (the loss function) ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_gaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query TEXT NOT NULL,
+        source TEXT NOT NULL,
+        gap_type TEXT NOT NULL,
+        entity_name TEXT,
+        times_hit INTEGER DEFAULT 1,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        resolved INTEGER DEFAULT 0,
+        resolved_by_knowledge_id INTEGER,
+        UNIQUE(query, source)
+    )""")
+
+    # --- Embedding column (added via ALTER for existing DBs) ---
+    try:
+        cur.execute("ALTER TABLE knowledge ADD COLUMN embedding BLOB")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # --- Ring column (Möbius topology) ---
+    try:
+        cur.execute("ALTER TABLE knowledge ADD COLUMN ring TEXT DEFAULT \'bridge\'")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_ring ON knowledge(ring)")
+
+    # --- Ring override (human-set, protected — Aios Addendum §4) ---
+    try:
+        cur.execute("ALTER TABLE knowledge ADD COLUMN ring_override TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    conn.commit()
+    conn.close()'''
+
+new = '''def init_db(username: str):
+    """Create tables if they don\'t exist. Idempotent. V2 clean schema."""
+    conn = _connect(username)
+    cur = conn.cursor()
+
+    # --- Schema version tracking ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS schema_versions (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        version     TEXT NOT NULL,
+        description TEXT,
+        applied_at  TEXT NOT NULL
+    )""")
+
+    # --- Knowledge atoms (V2: all columns in initial CREATE TABLE) ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS knowledge (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type     TEXT NOT NULL,
+        source_id       TEXT NOT NULL,
+        title           TEXT NOT NULL,
+        summary         TEXT,
+        content_snippet TEXT,
+        category        TEXT,
+        created_at      TEXT NOT NULL,
+        embedding       BLOB,
+        ring            TEXT DEFAULT \'bridge\',
+        ring_override   TEXT,
+        lattice_domain  TEXT,
+        lattice_type    TEXT,
+        lattice_status  TEXT,
+        UNIQUE(source_type, source_id)
+    )""")
+
+    # --- FTS5 full-text search ---
+    fts_exists = cur.execute(
+        "SELECT name FROM sqlite_master WHERE type=\'table\' AND name=\'knowledge_fts\'"
+    ).fetchone()
+
+    if not fts_exists:
+        cur.execute("""CREATE VIRTUAL TABLE knowledge_fts USING fts5(
+            title, summary, content_snippet, category,
+            content=\'knowledge\', content_rowid=\'id\',
+            tokenize=\'porter unicode61\'
+        )""")
+
+        cur.execute("""CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge BEGIN
+            INSERT INTO knowledge_fts(rowid, title, summary, content_snippet, category)
+            VALUES (new.id, new.title, new.summary, new.content_snippet, new.category);
+        END""")
+
+        cur.execute("""CREATE TRIGGER IF NOT EXISTS knowledge_ad AFTER DELETE ON knowledge BEGIN
+            INSERT INTO knowledge_fts(knowledge_fts, rowid, title, summary, content_snippet, category)
+            VALUES (\'delete\', old.id, old.title, old.summary, old.content_snippet, old.category);
+        END""")
+
+        cur.execute("""CREATE TRIGGER IF NOT EXISTS knowledge_au AFTER UPDATE ON knowledge BEGIN
+            INSERT INTO knowledge_fts(knowledge_fts, rowid, title, summary, content_snippet, category)
+            VALUES (\'delete\', old.id, old.title, old.summary, old.content_snippet, old.category);
+            INSERT INTO knowledge_fts(rowid, title, summary, content_snippet, category)
+            VALUES (new.id, new.title, new.summary, new.content_snippet, new.category);
+        END""")
+
+    # --- Entities (V2: all columns in initial CREATE TABLE) ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS entities (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        name              TEXT NOT NULL UNIQUE,
+        entity_type       TEXT NOT NULL,
+        description       TEXT,
+        mention_count     INTEGER DEFAULT 1,
+        layer             INTEGER DEFAULT 1,
+        reference_string  TEXT,
+        first_seen        TEXT,
+        last_mentioned    TEXT,
+        mention_contexts  TEXT,
+        emotional_valence REAL DEFAULT 0.0,
+        promotion_status  TEXT DEFAULT \'untracked\',
+        never_promote     INTEGER DEFAULT 0,
+        username          TEXT,
+        promoted_from     INTEGER,
+        domain            TEXT DEFAULT \'world\'
+    )""")
+
+    # --- Knowledge <-> Entity links ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_entities (
+        knowledge_id INTEGER REFERENCES knowledge(id),
+        entity_id    INTEGER REFERENCES entities(id),
+        PRIMARY KEY (knowledge_id, entity_id)
+    )""")
+
+    # --- Conversation memory ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS conversation_memory (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        knowledge_id       INTEGER REFERENCES knowledge(id),
+        persona            TEXT,
+        user_input         TEXT,
+        assistant_response TEXT,
+        coherence_index    REAL,
+        delta_e            REAL,
+        topics             TEXT,
+        created_at         TEXT NOT NULL
+    )""")
+
+    # --- Knowledge gaps (the loss function) ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_gaps (
+        id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+        query                    TEXT NOT NULL,
+        source                   TEXT NOT NULL,
+        gap_type                 TEXT NOT NULL,
+        entity_name              TEXT,
+        times_hit                INTEGER DEFAULT 1,
+        first_seen               TEXT NOT NULL,
+        last_seen                TEXT NOT NULL,
+        resolved                 INTEGER DEFAULT 0,
+        resolved_by_knowledge_id INTEGER,
+        UNIQUE(query, source)
+    )""")
+
+    # --- Indexes ---
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_ring ON knowledge(ring)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_created ON knowledge(created_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge(category)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_entities_username_domain ON entities(username, domain)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_entities_promotion ON entities(promotion_status)")
+
+    conn.commit()
+    conn.close()'''
+
+if old not in src:
+    print("ERROR: old block not found in knowledge.py")
+    exit(1)
+
+result = src.replace(old, new, 1)
+target.write_text(result, encoding="utf-8")
+print("OK: init_db() updated in core/knowledge.py")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+DS=42

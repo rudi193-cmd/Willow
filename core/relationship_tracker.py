@@ -40,43 +40,50 @@ class RelationshipTracker:
         if not self.conn:
             return
         c = self.conn.cursor()
-        new_cols = [
-            ("layer", "INTEGER DEFAULT 1"),
-            ("reference_string", "TEXT"),
-            ("first_seen", "TEXT"),
-            ("last_mentioned", "TEXT"),
-            ("mention_contexts", "TEXT"),
-            ("emotional_valence", "REAL DEFAULT 0.0"),
-            ("promotion_status", 'TEXT DEFAULT "untracked"'),
-            ("never_promote", "INTEGER DEFAULT 0"),
-            ("username", "TEXT"),
-            ("promoted_from", "INTEGER"),
-            ("domain", "TEXT DEFAULT 'world'"),
-        ]
-        for col, col_def in new_cols:
-            try:
-                c.execute(f"ALTER TABLE entities ADD COLUMN {col} {col_def}")
-            except sqlite3.OperationalError:
-                pass
+
+        # V2: all entity columns defined in initial CREATE TABLE
+        c.execute("""CREATE TABLE IF NOT EXISTS entities (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            name              TEXT NOT NULL UNIQUE,
+            entity_type       TEXT NOT NULL,
+            description       TEXT,
+            mention_count     INTEGER DEFAULT 1,
+            layer             INTEGER DEFAULT 1,
+            reference_string  TEXT,
+            first_seen        TEXT,
+            last_mentioned    TEXT,
+            mention_contexts  TEXT,
+            emotional_valence REAL DEFAULT 0.0,
+            promotion_status  TEXT DEFAULT 'untracked',
+            never_promote     INTEGER DEFAULT 0,
+            username          TEXT,
+            promoted_from     INTEGER,
+            domain            TEXT DEFAULT 'world'
+        )""")
+
         c.execute("""CREATE TABLE IF NOT EXISTS entity_connections (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            entity_a_id INTEGER,
-            entity_b_id INTEGER,
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_a_id     INTEGER,
+            entity_b_id     INTEGER,
             connection_type TEXT,
-            weight REAL DEFAULT 1.0,
-            source TEXT,
-            created_at TEXT,
-            confirmed INTEGER DEFAULT 0,
+            weight          REAL DEFAULT 1.0,
+            source          TEXT,
+            created_at      TEXT,
+            confirmed       INTEGER DEFAULT 0,
             UNIQUE(entity_a_id, entity_b_id, connection_type)
         )""")
+
         c.execute("""CREATE TABLE IF NOT EXISTS anonymous_mentions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            category TEXT,
-            count INTEGER DEFAULT 0,
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            username  TEXT,
+            category  TEXT,
+            count     INTEGER DEFAULT 0,
             last_seen TEXT,
             UNIQUE(username, category)
         )""")
+
+        c.execute("CREATE INDEX IF NOT EXISTS idx_entity_connections_confirmed ON entity_connections(confirmed, entity_a_id)")
+
         self.conn.commit()
 
     def record_anonymous_mention(self, context: str, category: str = "unknown") -> int:

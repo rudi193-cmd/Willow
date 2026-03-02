@@ -76,25 +76,38 @@ def _connect(username: str) -> sqlite3.Connection:
 
 
 def init_db(username: str):
-    """Create tables if they don't exist. Idempotent."""
+    """Create tables if they don't exist. Idempotent. V2 clean schema."""
     conn = _connect(username)
     cur = conn.cursor()
 
-    # --- Knowledge atoms ---
+    # --- Schema version tracking ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS schema_versions (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        version     TEXT NOT NULL,
+        description TEXT,
+        applied_at  TEXT NOT NULL
+    )""")
+
+    # --- Knowledge atoms (V2: all columns in initial CREATE TABLE) ---
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        source_type TEXT NOT NULL,
-        source_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        summary TEXT,
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type     TEXT NOT NULL,
+        source_id       TEXT NOT NULL,
+        title           TEXT NOT NULL,
+        summary         TEXT,
         content_snippet TEXT,
-        category TEXT,
-        created_at TEXT NOT NULL,
+        category        TEXT,
+        created_at      TEXT NOT NULL,
+        embedding       BLOB,
+        ring            TEXT DEFAULT 'bridge',
+        ring_override   TEXT,
+        lattice_domain  TEXT,
+        lattice_type    TEXT,
+        lattice_status  TEXT,
         UNIQUE(source_type, source_id)
     )""")
 
     # --- FTS5 full-text search ---
-    # Check if FTS table exists before creating (FTS5 CREATE is not IF NOT EXISTS friendly)
     fts_exists = cur.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_fts'"
     ).fetchone()
@@ -106,7 +119,6 @@ def init_db(username: str):
             tokenize='porter unicode61'
         )""")
 
-        # Triggers to keep FTS in sync
         cur.execute("""CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge BEGIN
             INSERT INTO knowledge_fts(rowid, title, summary, content_snippet, category)
             VALUES (new.id, new.title, new.summary, new.content_snippet, new.category);
@@ -124,68 +136,67 @@ def init_db(username: str):
             VALUES (new.id, new.title, new.summary, new.content_snippet, new.category);
         END""")
 
-    # --- Entities ---
+    # --- Entities (V2: all columns in initial CREATE TABLE) ---
     cur.execute("""CREATE TABLE IF NOT EXISTS entities (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
-        entity_type TEXT NOT NULL,
-        description TEXT,
-        mention_count INTEGER DEFAULT 1
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        name              TEXT NOT NULL UNIQUE,
+        entity_type       TEXT NOT NULL,
+        description       TEXT,
+        mention_count     INTEGER DEFAULT 1,
+        layer             INTEGER DEFAULT 1,
+        reference_string  TEXT,
+        first_seen        TEXT,
+        last_mentioned    TEXT,
+        mention_contexts  TEXT,
+        emotional_valence REAL DEFAULT 0.0,
+        promotion_status  TEXT DEFAULT 'untracked',
+        never_promote     INTEGER DEFAULT 0,
+        username          TEXT,
+        promoted_from     INTEGER,
+        domain            TEXT DEFAULT 'world'
     )""")
 
     # --- Knowledge <-> Entity links ---
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_entities (
         knowledge_id INTEGER REFERENCES knowledge(id),
-        entity_id INTEGER REFERENCES entities(id),
+        entity_id    INTEGER REFERENCES entities(id),
         PRIMARY KEY (knowledge_id, entity_id)
     )""")
 
     # --- Conversation memory ---
     cur.execute("""CREATE TABLE IF NOT EXISTS conversation_memory (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        knowledge_id INTEGER REFERENCES knowledge(id),
-        persona TEXT,
-        user_input TEXT,
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        knowledge_id       INTEGER REFERENCES knowledge(id),
+        persona            TEXT,
+        user_input         TEXT,
         assistant_response TEXT,
-        coherence_index REAL,
-        delta_e REAL,
-        topics TEXT,
-        created_at TEXT NOT NULL
+        coherence_index    REAL,
+        delta_e            REAL,
+        topics             TEXT,
+        created_at         TEXT NOT NULL
     )""")
 
     # --- Knowledge gaps (the loss function) ---
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_gaps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        query TEXT NOT NULL,
-        source TEXT NOT NULL,
-        gap_type TEXT NOT NULL,
-        entity_name TEXT,
-        times_hit INTEGER DEFAULT 1,
-        first_seen TEXT NOT NULL,
-        last_seen TEXT NOT NULL,
-        resolved INTEGER DEFAULT 0,
+        id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+        query                    TEXT NOT NULL,
+        source                   TEXT NOT NULL,
+        gap_type                 TEXT NOT NULL,
+        entity_name              TEXT,
+        times_hit                INTEGER DEFAULT 1,
+        first_seen               TEXT NOT NULL,
+        last_seen                TEXT NOT NULL,
+        resolved                 INTEGER DEFAULT 0,
         resolved_by_knowledge_id INTEGER,
         UNIQUE(query, source)
     )""")
 
-    # --- Embedding column (added via ALTER for existing DBs) ---
-    try:
-        cur.execute("ALTER TABLE knowledge ADD COLUMN embedding BLOB")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-
-    # --- Ring column (Möbius topology) ---
-    try:
-        cur.execute("ALTER TABLE knowledge ADD COLUMN ring TEXT DEFAULT 'bridge'")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    # --- Indexes ---
     cur.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_ring ON knowledge(ring)")
-
-    # --- Ring override (human-set, protected — Aios Addendum §4) ---
-    try:
-        cur.execute("ALTER TABLE knowledge ADD COLUMN ring_override TEXT")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_created ON knowledge(created_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge(category)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_entities_username_domain ON entities(username, domain)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_entities_promotion ON entities(promotion_status)")
 
     conn.commit()
     conn.close()
