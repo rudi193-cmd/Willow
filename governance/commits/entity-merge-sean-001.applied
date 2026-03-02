@@ -1,0 +1,232 @@
+# Governance Proposal: Entity Deduplication — Identity + Persona + Platform Clusters
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-04T00:00:00Z
+**Type:** Data Maintenance — Entity Consolidation (Comprehensive)
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+9 merge groups covering: Sean's identity cluster (all name/username variants),
+UTETY personas (Oakenscroll and Hanz name variants), and platform/business OCR
+artifacts (Trader Joe's, Google Drive, Die-Namic, Kartikeya, Kart tool names).
+Each group collapses into the highest-mention-count canonical entity. All
+knowledge_entities and entity_connections are redirected; self-loops and
+duplicates cleaned. Absorbed entities renamed with [ALIAS->ID] prefix.
+
+## Merge Groups
+
+### Group 1 — Sean Identity (survivor: [2] Sean, mc=537)
+All name variants, username fragments, OCR artifacts of Sean Campbell / Sweet-Pea-Rudi19
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 3668 | Sean Campbell | 56 | 93 |
+| 4317 | Sean Patrick Campbell | 4 | 17 |
+| 4637 | SEAN P. CAMPBELL | 1 | 11 |
+| 4722 | SEAN PATRICK CAMPBELL | 1 | 3 |
+| 4297 | Sean P. Campbell | 1 | 5 |
+| 3607 | Rudi193 | 8 | 33 |
+| 3648 | Sweet-Pea-Rudi19 | 6 | 26 |
+| 3846 | Sweet Pea | 2 | 9 |
+| 3646 | Rudi19 | 1 | 9 |
+| 2977 | J. Rudi193 | 1 | 11 |
+| 3161 | Rudi93 | 1 | 12 |
+| 4561 | rudi193-cmd | 2 | 9 |
+| 5097 | Rudi193-cmd | 2 | 0 |
+| 5815 | Sean Camp | 1 | 0 |
+| 3800 | Sweet-Pea-Rudil9 (OCR artifact) | 1 | 18 |
+
+### Group 2 — Professor Oakenscroll (survivor: [536] Professor Oakenscroll, mc=20)
+UTETY Dept. of Physics & Metaphysics — all name variants
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 2127 | Oakenscroll | 11 | 77 |
+| 2301 | Professor Archimedes Oakenscroll | 4 | 27 |
+| 2540 | Archimedes Oakenscroll | 3 | 11 |
+| 2816 | Prof. A. Oakenscroll | 2 | 15 |
+| 2177 | ProteseonOubenserotll (OCR artifact) | 1 | 20 |
+
+### Group 3 — Hanz (survivor: [1588] Hanz, mc=9)
+UTETY Dept. of Computer Science & Narrative Computing — Hanz Christian Anderthon variants
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 360 | Professor Hanz Christian Andert | 1 | 6 |
+| 5163 | Hanz Christain Anderthon | 1 | 0 |
+
+### Group 4 — Trader Joe's (survivor: [164] Trader Joe's, mc=7)
+Business name variants and OCR artifacts
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 4554 | Trader Joes | 1 | 4 |
+| 4676 | TRADER JOE'S | 1 | 2 |
+| 1516 | Traderjoe | 1 | 11 |
+| 1525 | Trader's | 1 | 11 |
+
+### Group 5 — Google Drive (survivor: [401] Google Drive, mc=11)
+Case variant only
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 4813 | Google drive | 2 | 0 |
+
+### Group 6 — Die-Namic (survivor: [3] Die-Namic, mc=107)
+OCR artifacts and truncated variants (die-namic-system repo kept separate)
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 3147 | Die-Namic Systems | 2 | 11 |
+| 4737 | Die-Namic System | 2 | 0 |
+| 1948 | die-namic-syste | 1 | 16 |
+| 2242 | die-namic-s | 1 | 36 |
+
+### Group 7 — Kartikeya (survivor: [1779] Kartikeya, mc=12)
+Parenthetical variant
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 3274 | Kartikeya (Kart) | 2 | 26 |
+
+### Group 8 — Kart-Llama (survivor: [1429] Kart-Llama, mc=12)
+OCR artifact
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 3201 | Kart-Liama | 2 | 18 |
+
+### Group 9 — Kart-Hugo (survivor: [1233] Kart-Hugo, mc=4)
+OCR artifact
+
+| ID | Name | ke | ec |
+|---|---|---|---|
+| 3159 | Kart-Huge | 2 | 19 |
+
+## Totals
+
+~131 knowledge_entities redirected, ~595 entity_connections redirected across 9 groups.
+
+## Excluded (intentionally separate entities)
+
+- Trader Joe's Company [2009], Trader Joe's Prime [2553] — legally/semantically distinct
+- die-namic-system [924] — the repo, distinct from the Die-Namic concept
+- SAFE OS [815], SAFE OS Framework [2965], etc. — genuinely distinct sub-entities
+- Google [200] from Google Drive [401] — different scope
+- Kart [109] from Kartikeya [1779] — project vs person
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — absorbed entities remain with [ALIAS->ID] prefix
+- **Dependencies:** None (independent of knowledge-merge-batch-002)
+- **Testing:** After apply, each absorbed ID should have ke=0 in knowledge_entities
+
+## ΔE Impact
+
+Expected ΔE: +0.087 (major graph consolidation; strengthens persona and entity
+centrality, eliminates OCR noise across 9 clusters)
+
+## Implementation
+
+```python
+import sqlite3, sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+from pathlib import Path
+
+DB = Path(r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db")
+conn = sqlite3.connect(str(DB), timeout=60)
+conn.execute("PRAGMA journal_mode=WAL")
+conn.execute("PRAGMA busy_timeout=60000")
+
+GROUPS = [
+    (2,    "Sean Identity",     [3668,4317,4637,4722,4297,3607,3648,3846,3646,2977,3161,4561,5097,5815,3800]),
+    (536,  "Prof. Oakenscroll", [2127,2301,2540,2816,2177]),
+    (1588, "Hanz",              [360,5163]),
+    (164,  "Trader Joe's",      [4554,4676,1516,1525]),
+    (401,  "Google Drive",      [4813]),
+    (3,    "Die-Namic",         [3147,4737,1948,2242]),
+    (1779, "Kartikeya",         [3274]),
+    (1429, "Kart-Llama",        [3201]),
+    (1233, "Kart-Hugo",         [3159]),
+]
+
+total_ke = 0
+total_ec = 0
+
+for survivor_id, group_name, absorbed_list in GROUPS:
+    print(f"\n[{group_name}] survivor={survivor_id}")
+    for absorbed_id in absorbed_list:
+        name_row = conn.execute("SELECT name FROM entities WHERE id=?", (absorbed_id,)).fetchone()
+        if not name_row:
+            print(f"  SKIP [{absorbed_id}]: not found")
+            continue
+        name = name_row[0]
+
+        # Redirect knowledge_entities
+        conn.execute(
+            "INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) "
+            "SELECT knowledge_id, ? FROM knowledge_entities WHERE entity_id=?",
+            (survivor_id, absorbed_id)
+        )
+        ke_deleted = conn.execute(
+            "DELETE FROM knowledge_entities WHERE entity_id=?", (absorbed_id,)
+        ).rowcount
+        total_ke += ke_deleted
+
+        # Redirect entity_connections entity_a_id (skip self-loops)
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_connections "
+            "(entity_a_id, entity_b_id, connection_type, strength, confirmed, created_at) "
+            "SELECT ?, entity_b_id, connection_type, strength, confirmed, created_at "
+            "FROM entity_connections WHERE entity_a_id=? AND entity_b_id != ?",
+            (survivor_id, absorbed_id, survivor_id)
+        )
+        conn.execute("DELETE FROM entity_connections WHERE entity_a_id=?", (absorbed_id,))
+
+        # Redirect entity_connections entity_b_id (skip self-loops)
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_connections "
+            "(entity_a_id, entity_b_id, connection_type, strength, confirmed, created_at) "
+            "SELECT entity_a_id, ?, connection_type, strength, confirmed, created_at "
+            "FROM entity_connections WHERE entity_b_id=? AND entity_a_id != ?",
+            (survivor_id, absorbed_id, survivor_id)
+        )
+        ec_deleted = conn.execute(
+            "DELETE FROM entity_connections WHERE entity_b_id=?", (absorbed_id,)
+        ).rowcount
+        total_ec += ec_deleted
+
+        # Clean up self-loops on survivor
+        conn.execute(
+            "DELETE FROM entity_connections WHERE entity_a_id=? AND entity_b_id=?",
+            (survivor_id, survivor_id)
+        )
+
+        # Mark absorbed entity as alias
+        conn.execute(
+            "UPDATE entities SET name=? WHERE id=?",
+            (f"[ALIAS->{survivor_id}] {name}", absorbed_id)
+        )
+        print(f"  merged [{absorbed_id}] {name} ke={ke_deleted}")
+
+conn.commit()
+
+print(f"\n=== DONE ===")
+print(f"Total ke redirected: {total_ke}")
+print(f"Total ec redirected: {total_ec}")
+
+for survivor_id, group_name, _ in GROUPS:
+    ke = conn.execute("SELECT COUNT(*) FROM knowledge_entities WHERE entity_id=?", (survivor_id,)).fetchone()[0]
+    ec = conn.execute("SELECT COUNT(*) FROM entity_connections WHERE entity_a_id=? OR entity_b_id=?", (survivor_id, survivor_id)).fetchone()[0]
+    print(f"  [{survivor_id}] {group_name}: ke={ke} ec={ec}")
+
+conn.close()
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

@@ -65,10 +65,12 @@ def _db_path(username: str) -> str:
     return os.path.join(base, "willow_knowledge.db")
 
 
-def _connect(username: str) -> sqlite3.Connection:
-    """Open knowledge DB with WAL mode."""
+def _connect(username: str):
+    """Open knowledge DB. Uses PostgreSQL pool when configured, else per-user SQLite."""
+    from core.db import get_connection as _gc, is_postgres
+    if is_postgres():
+        return _gc()
     path = _db_path(username)
-    from core.db import get_connection as _gc
     conn = _gc(path)
     conn.execute("PRAGMA journal_mode=WAL")
     return conn

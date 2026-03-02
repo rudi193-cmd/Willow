@@ -105,7 +105,7 @@ def _pid_alive(pid: Optional[int]) -> bool:
     try:
         os.kill(pid, 0)
         return True
-    except (ProcessLookupError, PermissionError):
+    except (ProcessLookupError, PermissionError, OSError):
         return False
 
 
@@ -118,6 +118,9 @@ def check_port(port: int, host: str = "127.0.0.1") -> str:
         return "free"
     if config.pid is not None and _pid_alive(config.pid):
         return "willow_running"
+    # Port in use but our PID is dead — ghost socket from os._exit; treat as stale
+    if config.pid is not None and not _pid_alive(config.pid):
+        return "stale_lock"
     return "conflict"
 
 

@@ -38,11 +38,16 @@ def get_nest_path(username: str) -> str:
 
 
 def _connect():
-    from core.db import get_connection as _gc
+    from core.db import get_connection as _gc, is_postgres
+    if is_postgres():
+        return _gc()
     return _gc(DB_PATH)
 
 
 def init_droppings_table():
+    from core.db import is_postgres
+    if is_postgres():
+        return  # tables created by pg_schema.sql
     conn = _connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS pigeon_droppings (
@@ -304,3 +309,70 @@ def scan_and_process(username: str) -> list:
                 new_droppings.append(result)
 
     return new_droppings
+
+
+# ── Bus Drop Intake ────────────────────────────────────────────────────────────────────────────
+
+def init_bus_drops_table():
+    """Create bus_drops table for audit logging of safe-app message drops."""
+    from core.db import is_postgres
+    if is_postgres():
+        return
+    conn = _connect()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bus_drops (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_app TEXT NOT NULL,
+            topic      TEXT NOT NULL,
+            session_id TEXT,
+            status     TEXT NOT NULL,
+            result     TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def receive_drop(dropping: dict) -> dict:
+    """Intake a bus drop from a safe-app. Validates schema, logs, routes to message bus.
+    
+    Pigeon is dumb — no business logic here. Just validate, log, hand off.
+    """
+    topic = dropping.get("topic") or dropping.get("type")
+    app_id = dropping.get("app_id", "unknown")
+    session_id = dropping.get("session_id", "")
+    payload = dropping.get("payload", {})
+
+    if not topic:
+        return {"ok": False, "error": "missing topic"}
+
+    init_bus_drops_table()
+
+    # Log the drop
+    try:
+        conn = _connect()
+        conn.execute(
+            "INSERT INTO bus_drops (source_app, topic, session_id, status, created_at) VALUES (?,?,?,?,?)",
+            (app_id, topic, session_id, "received", datetime.now(UTC).isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"PIGEON: bus_drops log failed: {e}")
+
+    logger.info(f"PIGEON: drop received from {app_id} topic={topic}")
+
+    # Hand to bus
+    try:
+        from core import message_bus
+        result = message_bus.route({
+            "topic": topic,
+            "app_id": app_id,
+            "session_id": session_id,
+            "payload": payload,
+        })
+        return result
+    except Exception as e:
+        logger.error(f"PIGEON: bus routing failed: {e}")
+        return {"ok": False, "topic": topic, "error": str(e)}

@@ -1,0 +1,136 @@
+# Governance Proposal: PostgreSQL Connection Pool in db.py
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02
+**Type:** Infrastructure Migration
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Replace SQLite backend with PostgreSQL connection pool in `core/db.py`.
+Adds `ThreadedConnectionPool` (min=2, max=20) to eliminate the recurring
+`database is locked` OperationalError caused by concurrent writers hitting
+SQLite's single-writer slot. Adds `is_postgres()` helper for callers that
+need to conditionally skip SQLite-only code (PRAGMAs, FTS5 queries).
+Falls back to SQLite unchanged if `WILLOW_DB_URL` is not set.
+
+## Rationale
+
+- `database is locked` has recurred through multiple fix sessions (hours of work)
+- SQLite WAL mode + busy_timeout cannot prevent contention between 4+ concurrent
+  async write paths (Pigeon, agent_auth, knowledge ingest, /api/knowledge/ingest)
+- PostgreSQL MVCC handles concurrent writes natively — no lock contention
+- Data has been migrated to PG 17 (localhost:5437, db=willow, user=willow)
+- `.env` now sets `WILLOW_DB_URL=postgresql://willow:willow@localhost:5437/willow`
+
+## Risk Assessment
+
+- **Risk Level:** MEDIUM
+- **Reversible:** YES — remove WILLOW_DB_URL from .env to fall back to SQLite
+- **Dependencies:** psycopg2, PostgreSQL 17 running on port 5437
+- **Testing:** Restart Willow server, hit /api/fleet/providers, /api/willow/connections/pending
+
+## ΔE Impact
+
+Expected ΔE: +0.045 (eliminates recurring error class; write contention resolved)
+
+## Implementation
+
+```python
+"""
+db.py -- Database connection abstraction for Willow.
+
+Reads WILLOW_DB_URL environment variable:
+  sqlite:///path     -> SQLite (dev / legacy)
+  postgresql://...   -> PostgreSQL (production)
+
+All code should call get_connection() instead of sqlite3.connect() directly.
+Auxiliary databases (health, patterns, costs) are exempt -- they always use SQLite.
+
+PostgreSQL uses a ThreadedConnectionPool (min=2, max=20) to eliminate the
+single-writer bottleneck that caused recurring 'database is locked' errors.
+"""
+import os
+import sqlite3
+import threading
+from pathlib import Path
+
+# Single source of truth for the main knowledge DB path
+_DEFAULT_SQLITE = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db"
+DB_PATH      = os.getenv("WILLOW_DB_PATH", _DEFAULT_SQLITE)
+DATABASE_URL = os.getenv("WILLOW_DB_URL", f"sqlite:///{DB_PATH}")
+
+# PostgreSQL connection pool (lazy init, thread-safe)
+_pg_pool      = None
+_pg_pool_lock = threading.Lock()
+
+
+def _get_pg_pool():
+    global _pg_pool
+    if _pg_pool is not None:
+        return _pg_pool
+    with _pg_pool_lock:
+        if _pg_pool is None:
+            try:
+                import psycopg2.pool
+                _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=2, maxconn=20, dsn=DATABASE_URL
+                )
+            except ImportError:
+                raise RuntimeError("psycopg2 not installed. Run: pip install psycopg2-binary")
+    return _pg_pool
+
+
+class _PgConn:
+    """Wraps a pooled psycopg2 connection so callers can use conn.close() naturally."""
+    def __init__(self, pool, conn):
+        self._pool = pool
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        self._pool.putconn(self._conn)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, *_):
+        if exc_type:
+            self._conn.rollback()
+        self._pool.putconn(self._conn)
+
+
+def get_connection(path: str = None):
+    """Return a DB connection. path overrides default for per-user DBs (SQLite only)."""
+    url = DATABASE_URL if path is None else f"sqlite:///{path}"
+
+    if url.startswith("sqlite"):
+        db   = url.replace("sqlite:///", "")
+        conn = sqlite3.connect(db, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
+
+    elif url.startswith("postgresql") or url.startswith("postgres"):
+        pool = _get_pg_pool()
+        conn = pool.getconn()
+        conn.autocommit = False
+        return _PgConn(pool, conn)
+
+    else:
+        raise ValueError(f"Unsupported WILLOW_DB_URL scheme: {url}")
+
+
+def is_postgres() -> bool:
+    """True when running against PostgreSQL."""
+    return DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

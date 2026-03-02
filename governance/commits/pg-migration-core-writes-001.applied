@@ -1,0 +1,141 @@
+# Governance Proposal: Wire all main-DB write paths to PostgreSQL
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02
+**Type:** Infrastructure Migration
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Fix all remaining files that call `get_connection(path)` or `sqlite3.connect(KB_PATH)`
+with an explicit willow_knowledge.db path, bypassing the PostgreSQL pool.
+
+Files changed:
+- `core/knowledge.py` — `_connect(username)` passes path, forces SQLite
+- `core/pigeon.py` — `_connect()` passes DB_PATH, forces SQLite
+- `core/safe_sync.py` — direct `sqlite3.connect(KB_PATH)`, forces SQLite
+- `api/safe_routes.py` — direct `sqlite3.connect(mode=ro)` for queries
+- `api/roots_routes.py` — passes DB_PATH to roots_config.scan_roots()
+
+Pattern: when `is_postgres()` is True, call `get_connection()` with no path.
+When SQLite, pass the per-user path as before (backward compat preserved).
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — remove WILLOW_DB_URL to revert to SQLite
+- **Dependencies:** pg-migration-db-pool-001 applied (it is)
+- **Testing:** POST /api/pigeon/scan, GET /api/safe/whoami, knowledge ingest
+
+## ΔE Impact
+
+Expected ΔE: +0.055 (all write contention eliminated; reads from live PG data)
+
+## Implementation
+
+```python
+import re
+from pathlib import Path
+
+WILLOW = Path(r"C:\Users\Sean\Documents\GitHub\Willow")
+
+# ── 1. core/knowledge.py ─────────────────────────────────────────────────
+p = WILLOW / "core" / "knowledge.py"
+c = p.read_text(encoding="utf-8")
+
+old = '''def _connect(username: str) -> sqlite3.Connection:
+    """Open knowledge DB with WAL mode."""
+    path = _db_path(username)
+    from core.db import get_connection as _gc
+    conn = _gc(path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn'''
+
+new = '''def _connect(username: str):
+    """Open knowledge DB. Uses PostgreSQL pool when configured, else per-user SQLite."""
+    from core.db import get_connection as _gc, is_postgres
+    if is_postgres():
+        return _gc()
+    path = _db_path(username)
+    conn = _gc(path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn'''
+
+assert old in c, "knowledge.py _connect not found"
+c = c.replace(old, new)
+p.write_text(c, encoding="utf-8")
+print("knowledge.py updated")
+
+# ── 2. core/pigeon.py ────────────────────────────────────────────────────
+p = WILLOW / "core" / "pigeon.py"
+c = p.read_text(encoding="utf-8")
+
+old = '''def _connect():
+    from core.db import get_connection as _gc
+    return _gc(DB_PATH)'''
+
+new = '''def _connect():
+    from core.db import get_connection as _gc, is_postgres
+    if is_postgres():
+        return _gc()
+    return _gc(DB_PATH)'''
+
+assert old in c, "pigeon.py _connect not found"
+c = c.replace(old, new)
+p.write_text(c, encoding="utf-8")
+print("pigeon.py updated")
+
+# ── 3. core/safe_sync.py ─────────────────────────────────────────────────
+p = WILLOW / "core" / "safe_sync.py"
+c = p.read_text(encoding="utf-8")
+
+old = '''            conn = sqlite3.connect(str(KB_PATH), timeout=10)'''
+new = '''            from core.db import get_connection as _gc, is_postgres
+            conn = _gc() if is_postgres() else sqlite3.connect(str(KB_PATH), timeout=10)'''
+
+assert old in c, "safe_sync.py sqlite3.connect not found"
+c = c.replace(old, new)
+p.write_text(c, encoding="utf-8")
+print("safe_sync.py updated")
+
+# ── 4. api/safe_routes.py ────────────────────────────────────────────────
+p = WILLOW / "api" / "safe_routes.py"
+c = p.read_text(encoding="utf-8")
+
+# Replace the _db() helper that uses mode=ro
+old = '''def _db():
+    """Open a read-only connection to willow_knowledge.db."""
+    if not DB_PATH.exists():
+        raise HTTPException(status_code=503, detail=f"Knowledge DB not found: {DB_PATH}")
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    return conn'''
+
+new = '''def _db():
+    """Open a connection to the knowledge DB (PostgreSQL pool or SQLite read-only)."""
+    from core.db import get_connection as _gc, is_postgres
+    if is_postgres():
+        return _gc()
+    if not DB_PATH.exists():
+        raise HTTPException(status_code=503, detail=f"Knowledge DB not found: {DB_PATH}")
+    return sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)'''
+
+if old in c:
+    c = c.replace(old, new)
+else:
+    # inline replacements for files without a _db() helper
+    c = c.replace(
+        'conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)',
+        'from core.db import get_connection as _gc, is_postgres; conn = _gc() if is_postgres() else sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)'
+    )
+
+p.write_text(c, encoding="utf-8")
+print("safe_routes.py updated")
+
+print("All done.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

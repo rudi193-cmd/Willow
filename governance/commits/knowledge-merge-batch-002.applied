@@ -1,0 +1,127 @@
+# Governance Proposal: Knowledge Merge Batch 002 — code/personal_document Duplicates
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-04T00:00:00Z
+**Type:** Data Maintenance
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+5 knowledge atoms in the `code` category are exact duplicates of atoms in
+`personal_document` — same filename, same content, 1.000 cosine similarity.
+These were the 2026-02-13 claude-code session export files that were ingested
+twice by different ingest passes. This batch absorbs the `code` duplicates
+into the `personal_document` originals using the same non-destructive merge
+pattern as batch 001: mark absorbed as `merged`, prefix title, redirect all
+edges and entity links to the survivor.
+
+## Merge Groups (5 atoms absorbed)
+
+| absorbed (code) | survivor (personal_document) | title |
+|---|---|---|
+| 707 | 299 | 20260213_153127_claude-code_APP_ECOSYSTEM_MAP.md |
+| 708 | 302 | 20260213_153127_claude-code_AUTONOMOUS_SESSION_SUMMARY.* |
+| 710 | 301 | 20260213_153127_claude-code_COMPLETE_ECOSYSTEM_ARCHITECT* |
+| 711 | 300 | 20260213_153127_claude-code_SPEC_COMPARISON_MAP.md |
+| 712 | 298 | 20260213_153127_claude-code_WELCOME_BACK.md |
+
+**Edge counts on absorbed atoms (to be redirected):**
+- 707: ke=9, edge_src=9, edge_tgt=316
+- 708: ke=4, edge_src=35, edge_tgt=298
+- 710: ke=7, edge_src=66, edge_tgt=310
+- 711: ke=5, edge_src=4, edge_tgt=308
+- 712: ke=20, edge_src=4, edge_tgt=300
+
+## Rationale
+
+- Same filenames, identical embeddings (1.0000 similarity) — definitively the
+  same document ingested twice
+- `personal_document` versions (lower IDs, earlier ingestion) are the canonical
+  originals; `code` versions are later duplicates from a second ingest pass
+- Survivors retain all data; absorbed atoms become audit trail records
+- Edge redirects preserve full graph connectivity
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — absorbed rows remain in DB with `category='merged'`;
+  backup exists at willow_knowledge.db.bak.20260301
+- **Dependencies:** knowledge-merge-batch-001 (applied)
+- **Testing:** Row counts in `merged` category should increase by 5; edge
+  counts on absorbed IDs should be 0 after redirect; survivor edge counts
+  increase accordingly
+
+## ΔE Impact
+
+Expected ΔE: +0.012 (minor graph consolidation; removes noise from duplicate nodes)
+
+## Implementation
+
+```python
+import sqlite3
+from pathlib import Path
+from datetime import datetime
+
+DB = Path(r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db")
+conn = sqlite3.connect(str(DB))
+conn.execute("PRAGMA journal_mode=WAL")
+conn.execute("PRAGMA busy_timeout=30000")
+
+MERGES = [
+    (707, 299),
+    (708, 302),
+    (710, 301),
+    (711, 300),
+    (712, 298),
+]
+
+applied = 0
+for absorbed_id, survivor_id in MERGES:
+    row = conn.execute("SELECT title FROM knowledge WHERE id=?", (absorbed_id,)).fetchone()
+    if not row:
+        print(f"  SKIP {absorbed_id}: not found")
+        continue
+    old_title = row[0]
+    new_title = f"[MERGED->{survivor_id}] {old_title}"
+
+    # Mark absorbed atom
+    conn.execute(
+        "UPDATE knowledge SET category='merged', title=? WHERE id=?",
+        (new_title, absorbed_id)
+    )
+
+    # Redirect knowledge_entities: INSERT missing ones, then delete duplicates
+    conn.execute(
+        "INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) "
+        "SELECT ?, entity_id FROM knowledge_entities WHERE knowledge_id=?",
+        (survivor_id, absorbed_id)
+    )
+    conn.execute("DELETE FROM knowledge_entities WHERE knowledge_id=?", (absorbed_id,))
+
+    # Redirect knowledge_edges: source_id
+    conn.execute(
+        "UPDATE OR IGNORE knowledge_edges SET source_id=? WHERE source_id=?",
+        (survivor_id, absorbed_id)
+    )
+    conn.execute("DELETE FROM knowledge_edges WHERE source_id=?", (absorbed_id,))
+
+    # Redirect knowledge_edges: target_id
+    conn.execute(
+        "UPDATE OR IGNORE knowledge_edges SET target_id=? WHERE target_id=?",
+        (survivor_id, absorbed_id)
+    )
+    conn.execute("DELETE FROM knowledge_edges WHERE target_id=?", (absorbed_id,))
+
+    applied += 1
+    print(f"  merged {absorbed_id} -> {survivor_id}: '{old_title[:50]}'")
+
+conn.commit()
+conn.close()
+print(f"\nDone. {applied}/5 atoms absorbed.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

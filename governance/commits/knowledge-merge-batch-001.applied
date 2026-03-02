@@ -1,0 +1,215 @@
+# Governance Proposal: Knowledge Atom Merge — Batch 001
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-03T00:00:00Z
+**Type:** Data Maintenance
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+First knowledge consolidation pass. 38 atoms identified as true duplicates
+(same content, same file ingested multiple times, or same claude-ai-export
+chunk appearing in multiple conversations). No records are deleted — absorbed
+atoms have their title prefixed with [MERGED→{survivor_id}] and category
+set to "merged". All knowledge_edges and knowledge_entities pointing to
+absorbed atoms are redirected to the survivor.
+
+## Merge Groups
+
+### Group 1: AIONIC continuity governance protocol (14→1)
+All 14 have identical first-200-char content snippets (same AIONIC protocol
+injected into every claude.ai context window). Survivor: 1902 (oldest).
+Absorbs: 1905, 1908, 1910, 1911, 1912, 1913, 1922, 1923, 1924, 1925, 1926, 1931, 1933
+
+### Group 2: AIONIC CONTINUITY session initialization (2→1)
+Survivor: 1901. Absorbs: 1903
+
+### Group 3: Continuing collaboration (3→1)
+Same title/source_type/category, same claude-ai-export batch.
+Survivor: 1955. Absorbs: 1956, 1961
+
+### Group 4: Governance commit file_location duplicates (15 pairs, 30→15)
+Same .commit files scanned twice by the file watcher.
+Lower ID is survivor in each pair:
+- 1613H.commit: survivor=129, absorb=141
+- 29HEH.commit: survivor=130, absorb=142
+- 4231d147.commit: survivor=131, absorb=143
+- 8N185.commit: survivor=132, absorb=144
+- E8L85.commit: survivor=133, absorb=145
+- K865L.commit: survivor=134, absorb=146
+- K91L8.commit: survivor=135, absorb=147
+- NAE70.commit: survivor=136, absorb=148
+- add-alex-to-default-agents.commit: survivor=138, absorb=149
+- afa382c8823c.commit: survivor=140, absorb=150
+- fix-agent-tool-paths.commit: survivor=151, absorb=159
+- fix-wsl-relay-bash.commit: survivor=152, absorb=161
+- kart_cascade_logging.commit: survivor=153, absorb=163
+- routing-ingest-integration.commit: survivor=155, absorb=165
+- test_2026-02-06_proposal.commit: survivor=156, absorb=166
+
+### Group 5: SAFE_OS_Application_NASA_Archive.PDF (3→1)
+Same PDF ingested via Drop (id=253), then by file watcher twice (705, 957).
+Survivor: 253. Absorbs: 705, 957
+
+### Group 6: SAFE_OS_Application_Genealogical_Memory.PDF (3→1)
+Same PDF, same pattern.
+Survivor: 252. Absorbs: 704, 986
+
+### Group 7: 2026-02-01.md (2→1)
+Same file, ingested twice by watcher.
+Survivor: 2453. Absorbs: 2532
+
+### Group 8: willow_knowledge.db file_location (3→1)
+Same DB file recorded 3 times.
+Survivor: 2. Absorbs: 3, 37
+
+## What Does NOT Get Merged
+
+- "Filing pattern: Willow" x44 — timeseries behavioral observations, each unique
+- "Filing pattern: safe-app-utety-chat" x5 — same
+- "Filing pattern: SAFE" x4 — same
+- "done" x31 — distinct conversation chunks with accidental title
+- "We've got a fan" x3 — file + analysis + export (complementary views, not dups)
+- "Time existing in multiple moments simultaneously" x3 — same
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — absorbed records are not deleted. Revert by removing the
+  [MERGED→] prefix from absorbed records' titles and resetting category.
+- **Dependencies:** Willow server should be running (for ecosystem stats update)
+  but does not need to be stopped.
+- **Testing:** After apply, verify:
+  SELECT COUNT(*) FROM knowledge WHERE category='merged'  → should return 38
+
+## ΔE Impact
+Expected ΔE: +0.020 (cleaner graph, fewer redundant nodes in knowledge_edges)
+
+## Implementation
+
+```python
+import sqlite3, sys, shutil
+from pathlib import Path
+from datetime import datetime
+
+DB = Path(r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db")
+
+# Backup first
+bak = DB.parent / f"willow_knowledge.db.bak.premrg.{datetime.now().strftime('%Y%m%d%H%M%S')}"
+shutil.copy2(str(DB), str(bak))
+print(f"Backup: {bak.name}")
+
+# Merge plan: (survivor_id, [absorbed_ids])
+MERGES = [
+    # Group 1: AIONIC continuity governance protocol
+    (1902, [1905, 1908, 1910, 1911, 1912, 1913, 1922, 1923, 1924, 1925, 1926, 1931, 1933]),
+    # Group 2: AIONIC session init
+    (1901, [1903]),
+    # Group 3: Continuing collaboration
+    (1955, [1956, 1961]),
+    # Group 4: commit file_location pairs
+    (129, [141]), (130, [142]), (131, [143]), (132, [144]), (133, [145]),
+    (134, [146]), (135, [147]), (136, [148]), (138, [149]), (140, [150]),
+    (151, [159]), (152, [161]), (153, [163]), (155, [165]), (156, [166]),
+    # Group 5: NASA Archive PDF
+    (253, [705, 957]),
+    # Group 6: Genealogical Memory PDF
+    (252, [704, 986]),
+    # Group 7: 2026-02-01.md
+    (2453, [2532]),
+    # Group 8: willow_knowledge.db file_location
+    (2, [3, 37]),
+]
+
+conn = sqlite3.connect(str(DB))
+conn.execute("PRAGMA journal_mode=WAL")
+conn.execute("PRAGMA busy_timeout=30000")
+
+total_absorbed = 0
+
+for survivor_id, absorbed_ids in MERGES:
+    # Verify survivor exists
+    surv = conn.execute("SELECT id, title, summary FROM knowledge WHERE id=?", (survivor_id,)).fetchone()
+    if not surv:
+        print(f"SKIP: survivor {survivor_id} not found")
+        continue
+
+    for absorbed_id in absorbed_ids:
+        abs_row = conn.execute("SELECT id, title, summary FROM knowledge WHERE id=?", (absorbed_id,)).fetchone()
+        if not abs_row:
+            print(f"SKIP: absorbed {absorbed_id} not found (already merged?)")
+            continue
+
+        # 1. Redirect knowledge_edges (source_id)
+        edges_src = conn.execute(
+            "SELECT id, target_id, edge_type, weight, canonical, created_at FROM knowledge_edges WHERE source_id=?",
+            (absorbed_id,)
+        ).fetchall()
+        for edge in edges_src:
+            eid, target, etype, weight, canonical, created = edge
+            existing = conn.execute(
+                "SELECT id FROM knowledge_edges WHERE source_id=? AND target_id=? AND edge_type=?",
+                (survivor_id, target, etype)
+            ).fetchone()
+            if existing:
+                conn.execute("DELETE FROM knowledge_edges WHERE id=?", (eid,))
+            else:
+                conn.execute("UPDATE knowledge_edges SET source_id=? WHERE id=?", (survivor_id, eid))
+
+        # 2. Redirect knowledge_edges (target_id)
+        edges_tgt = conn.execute(
+            "SELECT id, source_id, edge_type, weight, canonical, created_at FROM knowledge_edges WHERE target_id=?",
+            (absorbed_id,)
+        ).fetchall()
+        for edge in edges_tgt:
+            eid, src, etype, weight, canonical, created = edge
+            existing = conn.execute(
+                "SELECT id FROM knowledge_edges WHERE source_id=? AND target_id=? AND edge_type=?",
+                (src, survivor_id, etype)
+            ).fetchone()
+            if existing:
+                conn.execute("DELETE FROM knowledge_edges WHERE id=?", (eid,))
+            else:
+                conn.execute("UPDATE knowledge_edges SET target_id=? WHERE id=?", (survivor_id, eid))
+
+        # 3. Redirect knowledge_entities
+        ke_rows = conn.execute(
+            "SELECT entity_id FROM knowledge_entities WHERE knowledge_id=?", (absorbed_id,)
+        ).fetchall()
+        for (entity_id,) in ke_rows:
+            existing = conn.execute(
+                "SELECT 1 FROM knowledge_entities WHERE knowledge_id=? AND entity_id=?",
+                (survivor_id, entity_id)
+            ).fetchone()
+            if existing:
+                conn.execute("DELETE FROM knowledge_entities WHERE knowledge_id=? AND entity_id=?", (absorbed_id, entity_id))
+            else:
+                conn.execute("UPDATE knowledge_entities SET knowledge_id=? WHERE knowledge_id=? AND entity_id=?",
+                             (survivor_id, absorbed_id, entity_id))
+
+        # 4. Mark absorbed atom
+        orig_title = abs_row[1] or ""
+        conn.execute(
+            "UPDATE knowledge SET title=?, category='merged', ring='merged', summary=? WHERE id=?",
+            (f"[MERGED\u2192{survivor_id}] {orig_title}", f"Merged into knowledge atom {survivor_id}", absorbed_id)
+        )
+
+        print(f"  Merged {absorbed_id} ('{orig_title[:40]}') into {survivor_id}")
+        total_absorbed += 1
+
+conn.commit()
+conn.close()
+print(f"\nDone. {total_absorbed} atoms absorbed. Backup at: {bak.name}")
+
+# Verify
+conn2 = sqlite3.connect(str(DB))
+merged_count = conn2.execute("SELECT COUNT(*) FROM knowledge WHERE category='merged'").fetchone()[0]
+total = conn2.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+conn2.close()
+print(f"Verification: {merged_count} merged, {total} total atoms")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

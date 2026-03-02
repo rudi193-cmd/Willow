@@ -1,0 +1,184 @@
+# Governance Proposal: PostgreSQL compatibility shim in db.py
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02
+**Type:** Bug Fix / Infrastructure Migration
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`_PgConn` is missing sqlite3 compatibility methods that the codebase relies on:
+1. `conn.execute()` — sqlite3 shortcut; psycopg2 doesn't have it
+2. `?` parameter placeholders — sqlite3 style; psycopg2 requires `%s`
+3. `INSERT OR IGNORE` / `INSERT OR REPLACE` — SQLite syntax; PG uses ON CONFLICT
+4. `PRAGMA` statements — SQLite-only; need to no-op in PG
+5. `conn.row_factory` assignment — used in some places
+
+Add `_PgCursor` wrapper that translates all of the above transparently,
+so existing SQL code works without changes.
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — remove WILLOW_DB_URL to fall back to SQLite
+- **Dependencies:** pg-migration-db-pool-001 applied (it is)
+- **Testing:** Start Willow — pigeon_daemon should not crash on init_droppings_table
+
+## ΔE Impact
+
+Expected ΔE: +0.040 (server stays running; pigeon crash eliminated)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+p = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\db.py")
+content = p.read_text(encoding="utf-8")
+
+# Insert _sqlite_to_pg and _PgCursor before _PgConn class
+insert_before = "class _PgConn:"
+
+shim_code = '''import re as _re
+
+# Conflict targets for INSERT OR REPLACE upserts
+_PG_CONFLICT_TARGETS = {
+    "willow_state":   "(key) DO UPDATE SET value=EXCLUDED.value, set_at=EXCLUDED.set_at",
+    "agents":         "(name) DO UPDATE SET display_name=EXCLUDED.display_name, trust_level=EXCLUDED.trust_level, agent_type=EXCLUDED.agent_type, profile_path=EXCLUDED.profile_path, registered_at=EXCLUDED.registered_at, last_seen=EXCLUDED.last_seen",
+}
+
+
+def _sqlite_to_pg(sql: str) -> str:
+    """Translate SQLite SQL syntax to PostgreSQL."""
+    s = sql.strip()
+    # PRAGMA -> no-op
+    if _re.match(r"\\s*PRAGMA\\b", s, _re.IGNORECASE):
+        return "SELECT 1"
+    # INSERT OR IGNORE -> ON CONFLICT DO NOTHING
+    if _re.search(r"\\bINSERT\\s+OR\\s+IGNORE\\b", s, _re.IGNORECASE):
+        s = _re.sub(r"\\bINSERT\\s+OR\\s+IGNORE\\b", "INSERT", s, flags=_re.IGNORECASE)
+        s = s.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+    # INSERT OR REPLACE -> ON CONFLICT DO UPDATE
+    elif _re.search(r"\\bINSERT\\s+OR\\s+REPLACE\\b", s, _re.IGNORECASE):
+        s = _re.sub(r"\\bINSERT\\s+OR\\s+REPLACE\\b", "INSERT", s, flags=_re.IGNORECASE)
+        m = _re.search(r"\\bINSERT\\s+INTO\\s+[\\\"\\x27]?(\\w+)", s, _re.IGNORECASE)
+        table = m.group(1).lower() if m else ""
+        conflict = _PG_CONFLICT_TARGETS.get(table, "DO NOTHING")
+        s = s.rstrip().rstrip(";") + f" ON CONFLICT {conflict}"
+    # ? -> %s
+    s = s.replace("?", "%s")
+    return s
+
+
+class _PgCursor:
+    """Wraps psycopg2 cursor to provide sqlite3-compatible interface."""
+    def __init__(self, cur):
+        self._cur = cur
+        self.description = cur.description
+        self.rowcount    = cur.rowcount
+        self.lastrowid   = None
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+    def execute(self, sql, params=None):
+        pg_sql = _sqlite_to_pg(sql)
+        self._cur.execute(pg_sql, params)
+        self.description = self._cur.description
+        self.rowcount    = self._cur.rowcount
+        self.lastrowid   = self._cur.lastrowid if hasattr(self._cur, "lastrowid") else None
+        return self
+
+    def executemany(self, sql, seq):
+        import psycopg2.extras
+        pg_sql = _sqlite_to_pg(sql)
+        psycopg2.extras.execute_batch(self._cur, pg_sql, seq)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def fetchmany(self, n):
+        return self._cur.fetchmany(n)
+
+    def __iter__(self):
+        return iter(self._cur)
+
+
+'''
+
+assert insert_before in content, "_PgConn class not found"
+content = content.replace(insert_before, shim_code + insert_before)
+
+# Now update _PgConn to add execute(), cursor() and row_factory
+old_pgconn = """class _PgConn:
+    \\"\\"\\"Wraps a pooled psycopg2 connection so callers can use conn.close() naturally.\\"\\"\\"
+    def __init__(self, pool, conn):
+        self._pool = pool
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        self._pool.putconn(self._conn)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, *_):
+        if exc_type:
+            self._conn.rollback()
+        self._pool.putconn(self._conn)"""
+
+new_pgconn = """class _PgConn:
+    \\"\\"\\"Wraps a pooled psycopg2 connection with sqlite3-compatible interface.\\"\\"\\"
+    def __init__(self, pool, conn):
+        self._pool = pool
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    # sqlite3 compatibility
+    def cursor(self):
+        return _PgCursor(self._conn.cursor())
+
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    @property
+    def row_factory(self):
+        return None
+
+    @row_factory.setter
+    def row_factory(self, value):
+        pass  # no-op for PostgreSQL
+
+    def close(self):
+        self._pool.putconn(self._conn)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, *_):
+        if exc_type:
+            self._conn.rollback()
+        self._pool.putconn(self._conn)"""
+
+assert old_pgconn in content, "_PgConn body not found"
+content = content.replace(old_pgconn, new_pgconn)
+
+p.write_text(content, encoding="utf-8")
+print("db.py compat shim applied, lines:", len(content.splitlines()))
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

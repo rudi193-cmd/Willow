@@ -50,7 +50,7 @@ def _db():
     """Open a read-only connection to willow_knowledge.db."""
     if not DB_PATH.exists():
         raise HTTPException(status_code=503, detail=f"Knowledge DB not found: {DB_PATH}")
-    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    from core.db import get_connection as _gc, is_postgres; conn = _gc() if is_postgres() else sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -206,7 +206,7 @@ def safe_health():
     db_count = 0
     if db_ok:
         try:
-            conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+            from core.db import get_connection as _gc, is_postgres; conn = _gc() if is_postgres() else sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
             db_count = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
             conn.close()
         except Exception:
@@ -215,7 +215,7 @@ def safe_health():
     lattice_domains = {}
     if db_ok:
         try:
-            conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+            from core.db import get_connection as _gc, is_postgres; conn = _gc() if is_postgres() else sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
             for row in conn.execute(
                 "SELECT lattice_domain, COUNT(*) FROM knowledge WHERE lattice_domain IS NOT NULL GROUP BY lattice_domain ORDER BY 2 DESC"
             ):

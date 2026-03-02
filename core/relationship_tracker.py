@@ -23,8 +23,8 @@ class RelationshipTracker:
             fallback_db = base / FALLBACK_USER / "willow_knowledge.db"
             self.db_path = user_db if user_db.exists() else fallback_db
         try:
-            from core.db import get_connection as _gc
-            self.conn = _gc(str(self.db_path))
+            from core.db import get_connection as _gc, is_postgres
+            self.conn = _gc() if is_postgres() else _gc(str(self.db_path))
             self.conn.row_factory = sqlite3.Row
             self._init_schema()
         except Exception as e:
@@ -40,6 +40,9 @@ class RelationshipTracker:
     def _init_schema(self):
         if not self.conn:
             return
+        from core.db import is_postgres
+        if is_postgres():
+            return  # schema managed by pg_schema.sql
         c = self.conn.cursor()
 
         # V2: all entity columns defined in initial CREATE TABLE

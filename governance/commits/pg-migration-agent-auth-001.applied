@@ -1,0 +1,83 @@
+# Governance Proposal: agent_auth.py — use db.get_connection()
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02
+**Type:** Infrastructure Migration
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Replace the direct `sqlite3.connect()` call in `core/agent_auth.py` with
+`db.get_connection()` so agent checkin/validate uses the PostgreSQL pool
+instead of fighting for SQLite's single write slot. This was the exact
+call that appeared in the 'database is locked' traceback.
+
+`_fetch_pending()` reads `context_store.db` (auxiliary SQLite — exempt,
+unchanged). Only the main `_db()` function is updated.
+
+## Rationale
+
+`agent_auth._db()` hardcodes `sqlite3.connect(DB_PATH)` with its own
+`busy_timeout=30000`. Now that the main DB is PostgreSQL via `db.get_connection()`,
+this call still hits SQLite. Two separate connection paths to the same data
+would break everything. Must use the pool.
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — remove WILLOW_DB_URL from .env to revert to SQLite path
+- **Dependencies:** pg-migration-db-pool-001 must be applied first (it is)
+- **Testing:** POST /api/agents/checkin — should return token without 500
+
+## ΔE Impact
+
+Expected ΔE: +0.025 (agent checkin no longer contends for write slot)
+
+## Implementation
+
+```python
+import sys
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\agent_auth.py")
+content = target.read_text(encoding="utf-8")
+
+# Replace direct sqlite3 import usage with db.get_connection
+old = '''import sqlite3
+import uuid
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Optional
+
+DB_PATH = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "willow_knowledge.db"'''
+
+new = '''import uuid
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Optional
+
+from core.db import get_connection as _get_connection'''
+
+content = content.replace(old, new)
+
+# Replace the _db() function
+old2 = '''def _db() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn'''
+
+new2 = '''def _db():
+    return _get_connection()'''
+
+content = content.replace(old2, new2)
+
+target.write_text(content, encoding="utf-8")
+print("agent_auth.py updated")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

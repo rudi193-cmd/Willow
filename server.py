@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+try:
+    from dotenv import load_dotenv; load_dotenv()
+except ImportError:
+    pass
 """
 Willow UI Server — FastAPI wrapper around local_api.py
 
@@ -3463,6 +3467,16 @@ async def pigeon_sweep_all_route(username: str = 'Sweet-Pea-Rudi19'):
         from core import pigeon
         count = pigeon.sweep_all(username)
         return {'success': True, 'swept': count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post('/api/pigeon/drop')
+async def pigeon_drop(request: Request):
+    """Universal safe-app drop point. Routes by topic to the correct Willow agent."""
+    try:
+        dropping = await request.json()
+        from core import pigeon
+        return pigeon.receive_drop(dropping)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

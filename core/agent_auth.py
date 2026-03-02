@@ -20,13 +20,12 @@ Flow:
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "willow_knowledge.db"
+from core.db import get_connection as _get_connection
 TOKEN_FILE = Path.home() / ".willow" / "agent_tokens.json"
 TOKEN_TTL_HOURS = 24
 CONTEXT_STORE_DB = Path.home() / ".claude" / "context_store.db"
@@ -64,11 +63,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), timeout=30)
-    conn.execute("PRAGMA busy_timeout=30000")
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+def _db():
+    return _get_connection()
 
 
 def checkin(agent_name: str) -> dict:
