@@ -1,0 +1,88 @@
+# Governance Proposal: llm_router.ask() task_type override parameter
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-03T00:00:00Z
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Add optional `task_type` parameter to `llm_router.ask()` so callers can explicitly
+declare the task category instead of relying on keyword inference from the prompt.
+This lets the router's learned-pattern boosting (which promotes the best historical
+provider for a given task) work correctly for prompts whose content doesn't naturally
+contain the inference keywords (e.g. "Extract a SESSION_HANDOFF" → currently
+classified as `general_completion`, missing the Groq/summarization boost).
+
+## Proposed Changes
+**File:** `core/llm_router.py`
+**Location:** `ask()` function signature + first line of body
+
+## Rationale
+- `_infer_task_type()` uses keyword matching ("summarize", "summary") — misses synonyms
+- Session extraction prompt starts with "Extract a SESSION_HANDOFF" → inferred as `general_completion`
+- `general_completion` has no learned-pattern boost → random provider selection
+- With `task_type="text_summarization"` passed explicitly, the router boosts the
+  provider with the best historical success rate for summarization (Groq in practice)
+- Backwards-compatible: default `None` preserves existing inference behaviour
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — adding a defaulted parameter
+- **Dependencies:** None — existing `_infer_task_type()` unchanged
+- **Testing:** `llm_router.ask(prompt, task_type="text_summarization")` should log "Boosting [provider] to front"
+
+## ΔE Impact
+Expected ΔE: +0.015 (better provider selection for summarization tasks)
+
+## Implementation
+
+```python
+import sys
+from pathlib import Path
+
+path = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\llm_router.py")
+src = path.read_text(encoding="utf-8")
+
+old = '''def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True) -> Optional[RouterResponse]:
+    """
+    Route the prompt to a provider.
+
+    Args:
+        prompt: The prompt to send
+        preferred_tier: "free", "cheap", or "paid"
+        use_round_robin: If True, rotates through providers to distribute load
+
+    Returns:
+        RouterResponse or None if all providers fail
+    """
+    # Infer task type from original prompt (before enhancement)
+    task_type = _infer_task_type(prompt)'''
+
+new = '''def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True, task_type: str = None) -> Optional[RouterResponse]:
+    """
+    Route the prompt to a provider.
+
+    Args:
+        prompt: The prompt to send
+        preferred_tier: "free", "cheap", or "paid"
+        use_round_robin: If True, rotates through providers to distribute load
+        task_type: Optional explicit task category override (e.g. "text_summarization").
+                   If None, inferred automatically from prompt content.
+
+    Returns:
+        RouterResponse or None if all providers fail
+    """
+    # Infer task type from original prompt (before enhancement), or use explicit override
+    task_type = task_type or _infer_task_type(prompt)'''
+
+assert old in src, "Pattern not found — check llm_router.py has not changed"
+path.write_text(src.replace(old, new, 1), encoding="utf-8")
+print("llm_router.py patched OK")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

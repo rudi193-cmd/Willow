@@ -267,7 +267,7 @@ def get_provider_count() -> Dict[str, int]:
         "total": sum(len(v) for v in avail.values())
     }
 
-def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True) -> Optional[RouterResponse]:
+def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True, task_type: str = None) -> Optional[RouterResponse]:
     """
     Route the prompt to a provider.
 
@@ -275,12 +275,14 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True)
         prompt: The prompt to send
         preferred_tier: "free", "cheap", or "paid"
         use_round_robin: If True, rotates through providers to distribute load
+        task_type: Optional explicit task category override (e.g. "text_summarization").
+                   If None, inferred automatically from prompt content.
 
     Returns:
         RouterResponse or None if all providers fail
     """
-    # Infer task type from original prompt (before enhancement)
-    task_type = _infer_task_type(prompt)
+    # Infer task type from original prompt (before enhancement), or use explicit override
+    task_type = task_type or _infer_task_type(prompt)
 
     # Enhance prompt with learned corrections from past feedback
     try:
