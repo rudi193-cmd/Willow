@@ -965,6 +965,7 @@ async def ingest(file: UploadFile = File(...)):
 @app.post("/api/knowledge/ingest")
 async def knowledge_ingest_json(request: Request):
     """Ingest knowledge directly from JSON (no file upload needed).
+    Returns 202 immediately — ingestion runs in background (fleet calls take 30-60s).
     Body: {username, filename, content_text, category, provider, file_hash (optional)}
     Used by: session-extract hook, agents, external tools."""
     try:
@@ -977,16 +978,24 @@ async def knowledge_ingest_json(request: Request):
         file_hash  = body.get("file_hash", "") or hashlib.md5(content.encode()).hexdigest()
         if not content:
             raise HTTPException(status_code=400, detail="content_text required")
-        knowledge.ingest_file_knowledge(
-            username=username,
-            filename=filename,
-            file_hash=file_hash,
-            category=category,
-            content_text=content[:4000],
-            provider=provider,
-        )
-        asyncio.create_task(_ecosystem_refresh())
-        return {"status": "ingested", "filename": filename, "category": category}
+
+        async def _do_ingest():
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, lambda: knowledge.ingest_file_knowledge(
+                    username=username,
+                    filename=filename,
+                    file_hash=file_hash,
+                    category=category,
+                    content_text=content[:4000],
+                    provider=provider,
+                ))
+                await _ecosystem_refresh()
+            except Exception:
+                pass
+
+        asyncio.create_task(_do_ingest())
+        return {"status": "accepted", "filename": filename, "category": category}
     except HTTPException:
         raise
     except Exception as e:

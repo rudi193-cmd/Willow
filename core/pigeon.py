@@ -231,6 +231,9 @@ def _process_one(item: Path, username: str, file_hash: str = None):
         snippet = _read_snippet(str(item))
         result = classify_file(item.name, snippet)
         filed_to = None
+        dropping_id = None
+        # _DB_LOCK: only covers file-move + pigeon DB write (fast).
+        # ingest_file_knowledge runs OUTSIDE the lock — it manages its own connection.
         with _DB_LOCK:
             filed_to = route_file(str(item), result["category"], username, result.get("subcategory", "general"))
             try:
@@ -246,12 +249,13 @@ def _process_one(item: Path, username: str, file_hash: str = None):
                 except Exception as rb_err:
                     logger.error(f"PIGEON: rollback failed for {item.name}: {rb_err}")
                 raise db_err
-            try:
-                import knowledge as kmod
-                kmod.ingest_file_knowledge(username=username, filename=item.name, file_hash=file_hash or "",
-                                           category=result["category"], content_text=snippet, provider="pigeon")
-            except Exception as ke:
-                logger.warning(f"PIGEON: knowledge ingest failed for {item.name}: {ke}")
+        # Knowledge ingest runs outside _DB_LOCK — uses get_connection() with busy_timeout
+        try:
+            import knowledge as kmod
+            kmod.ingest_file_knowledge(username=username, filename=item.name, file_hash=file_hash or "",
+                                       category=result["category"], content_text=snippet, provider="pigeon")
+        except Exception as ke:
+            logger.warning(f"PIGEON: knowledge ingest failed for {item.name}: {ke}")
         logger.info(f"PIGEON: filed {item.name} -> {result['category']}/")
         return {"id": dropping_id, "filename": item.name,
                 "category": result["category"], "summary": result["summary"], "filed_to": filed_to}
