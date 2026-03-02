@@ -24,6 +24,8 @@ def init_user_knowledge_db(username: str) -> None:
     """Create willow_knowledge.db with the production schema (lattice columns included)."""
     db_path = WILLOW_ROOT / "artifacts" / username / "willow_knowledge.db"
     conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA busy_timeout=10000")
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS knowledge (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -65,7 +65,10 @@ def _now() -> str:
 
 
 def _db() -> sqlite3.Connection:
-    return sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("PRAGMA busy_timeout=10000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
 def checkin(agent_name: str) -> dict:

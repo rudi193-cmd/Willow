@@ -47,6 +47,8 @@ def _get_connection(username: str) -> sqlite3.Connection:
     _ensure_db_dir()
     db_path = _get_db_path(username)
     conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA busy_timeout=10000")
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn
 

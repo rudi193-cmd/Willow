@@ -1,0 +1,101 @@
+# Governance Proposal: Bulk fix — add busy_timeout to all raw sqlite3.connect() calls
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+24 raw `sqlite3.connect()` calls across core/ bypass `db.get_connection()` and have
+no `PRAGMA busy_timeout`. The ones writing to `willow_knowledge.db` cause "database is
+locked" errors. Fix: add `conn.execute("PRAGMA busy_timeout=10000")` after each raw
+connect. Surgical — no refactoring, no import changes, just one line per call site.
+
+Files writing to willow_knowledge.db (confirmed lock sources):
+- `agent_auth.py` line 68 — DB_PATH = willow_knowledge.db, called on every checkin
+- `user_registration.py` line 26 — willow_knowledge.db
+- `user_lattice.py` line 49 — willow_knowledge.db via _get_db_path()
+- `atom_extractor.py` line 18 — knowledge.db (per-user, included for safety)
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL — additive only, no logic changes
+- **Reversible:** YES
+- **Testing:** Trigger agent checkin + Pigeon simultaneously, verify no lock errors
+
+## Delta E Impact
+
+Expected DeltaE: +0.060 (closes remaining raw-connect lock sources)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+# ── agent_auth.py ─────────────────────────────────────────────────────────────
+f = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\agent_auth.py")
+src = f.read_text(encoding="utf-8")
+# Fix line 68: the willow_knowledge.db connection
+old = "    return sqlite3.connect(str(DB_PATH))"
+new = (
+    "    conn = sqlite3.connect(str(DB_PATH))\n"
+    "    conn.execute(\"PRAGMA busy_timeout=10000\")\n"
+    "    conn.execute(\"PRAGMA journal_mode=WAL\")\n"
+    "    return conn"
+)
+if old not in src:
+    print("ERROR: agent_auth.py target not found"); exit(1)
+f.write_text(src.replace(old, new, 1), encoding="utf-8")
+print("OK: agent_auth.py")
+
+# ── user_registration.py ──────────────────────────────────────────────────────
+f = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\user_registration.py")
+src = f.read_text(encoding="utf-8")
+old = "    conn = sqlite3.connect(str(db_path))"
+new = (
+    "    conn = sqlite3.connect(str(db_path))\n"
+    "    conn.execute(\"PRAGMA busy_timeout=10000\")\n"
+    "    conn.execute(\"PRAGMA journal_mode=WAL\")"
+)
+if old not in src:
+    print("ERROR: user_registration.py target not found"); exit(1)
+f.write_text(src.replace(old, new, 1), encoding="utf-8")
+print("OK: user_registration.py")
+
+# ── user_lattice.py ───────────────────────────────────────────────────────────
+f = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\user_lattice.py")
+src = f.read_text(encoding="utf-8")
+old = "    conn = sqlite3.connect(db_path)"
+new = (
+    "    conn = sqlite3.connect(db_path)\n"
+    "    conn.execute(\"PRAGMA busy_timeout=10000\")\n"
+    "    conn.execute(\"PRAGMA journal_mode=WAL\")"
+)
+if old not in src:
+    print("ERROR: user_lattice.py target not found"); exit(1)
+f.write_text(src.replace(old, new, 1), encoding="utf-8")
+print("OK: user_lattice.py")
+
+# ── atom_extractor.py ─────────────────────────────────────────────────────────
+f = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\atom_extractor.py")
+src = f.read_text(encoding="utf-8")
+old = "    conn = sqlite3.connect(str(db_path))"
+new = (
+    "    conn = sqlite3.connect(str(db_path))\n"
+    "    conn.execute(\"PRAGMA busy_timeout=10000\")\n"
+    "    conn.execute(\"PRAGMA journal_mode=WAL\")"
+)
+if old not in src:
+    print("ERROR: atom_extractor.py target not found"); exit(1)
+f.write_text(src.replace(old, new, 1), encoding="utf-8")
+print("OK: atom_extractor.py")
+
+print("All done.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+DS=42

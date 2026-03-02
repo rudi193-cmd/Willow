@@ -16,6 +16,8 @@ DOMAIN_LIST = ", ".join(DOMAINS)
 def get_db(username):
     db_path = WILLOW_ROOT / "artifacts" / username / "knowledge.db"
     conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA busy_timeout=10000")
+    conn.execute("PRAGMA journal_mode=WAL")
     _migrate(conn)
     return conn
 
