@@ -1,0 +1,138 @@
+# Governance Proposal: Compute embedding before opening DB in ingest_file_knowledge
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-03T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`embeddings.is_available()` triggers lazy-loading of the all-MiniLM-L6-v2 sentence
+transformer model (~80MB, up to 30s on first call). This currently happens INSIDE
+the open DB write transaction in `ingest_file_knowledge`, holding the SQLite write
+lock while the model loads. All other writers (pigeon's `create_dropping`, agent
+`checkin`, etc.) hit busy_timeout and fail.
+
+Fix: compute the embedding vector (including the lazy model load) BEFORE opening
+the DB connection, in the existing "outside DB" section. The DB transaction then
+only executes fast writes.
+
+## Proposed Changes
+**File:** `core/knowledge.py`
+**Location:** `ingest_file_knowledge()` — just before "DB transaction" comment
+
+## Rationale
+- Model loads take 10-30s on first call, 0ms thereafter
+- DB write lock held during model load = all other writers time out (busy_timeout=10s)
+- Pre-computing outside DB: no behavior change, no lock held during slow I/O
+- After model loads once, subsequent calls are instant — no future impact
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** None — same embeddings.py API used, just called earlier
+- **Testing:** Start server, drop a file in Nest, confirm no "database is locked" after server restart
+
+## ΔE Impact
+Expected ΔE: +0.025 (eliminates primary cause of persistent DB lock errors)
+
+## Implementation
+
+```python
+import sys
+from pathlib import Path
+
+path = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\knowledge.py")
+src = path.read_text(encoding="utf-8")
+
+old = '''    # --- DB transaction: fast writes only, no fleet calls inside ---
+    conn = _connect(username)
+    cur = conn.cursor()
+
+    # Skip if already ingested
+    existing = cur.execute(
+        "SELECT id FROM knowledge WHERE source_type='file' AND source_id=?",
+        (file_hash,)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    ring = get_ring(category, "file", filename)
+    cur.execute(
+        """INSERT OR IGNORE INTO knowledge
+           (source_type, source_id, title, summary, content_snippet, category, ring, created_at)
+           VALUES ('file', ?, ?, ?, ?, ?, ?, ?)""",
+        (file_hash, filename, summary, snippet, category, ring, now)
+    )
+    knowledge_id = cur.lastrowid
+
+    if knowledge_id:
+        _upsert_entities(conn, knowledge_id, entities)
+
+        # Compute embedding (best-effort, fast local op)
+        try:
+            from core import embeddings
+            if embeddings.is_available():
+                embed_text = f"{filename} {snippet}"[:512]
+                vec = embeddings.embed(embed_text)
+                if vec:
+                    conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (vec, knowledge_id))
+        except Exception:
+            pass
+
+    conn.commit()
+    conn.close()'''
+
+new = '''    # Pre-compute embedding BEFORE opening DB (lazy model load can take 10-30s on first call)
+    embed_vec = None
+    try:
+        from core import embeddings
+        if embeddings.is_available():
+            embed_text = f"{filename} {snippet}"[:512]
+            embed_vec = embeddings.embed(embed_text)
+    except Exception:
+        pass
+
+    # --- DB transaction: fast writes only, no slow I/O inside ---
+    conn = _connect(username)
+    cur = conn.cursor()
+
+    # Skip if already ingested
+    existing = cur.execute(
+        "SELECT id FROM knowledge WHERE source_type='file' AND source_id=?",
+        (file_hash,)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    ring = get_ring(category, "file", filename)
+    cur.execute(
+        """INSERT OR IGNORE INTO knowledge
+           (source_type, source_id, title, summary, content_snippet, category, ring, created_at)
+           VALUES ('file', ?, ?, ?, ?, ?, ?, ?)""",
+        (file_hash, filename, summary, snippet, category, ring, now)
+    )
+    knowledge_id = cur.lastrowid
+
+    if knowledge_id:
+        _upsert_entities(conn, knowledge_id, entities)
+        if embed_vec:
+            conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (embed_vec, knowledge_id))
+
+    conn.commit()
+    conn.close()'''
+
+assert old in src, f"Pattern not found in knowledge.py — check manually"
+path.write_text(src.replace(old, new, 1), encoding="utf-8")
+print("knowledge.py patched OK")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

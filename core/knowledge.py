@@ -375,7 +375,17 @@ def ingest_file_knowledge(
             entities.append(le)
             seen_names.add(le["name"].lower())
 
-    # --- DB transaction: fast writes only, no fleet calls inside ---
+    # Pre-compute embedding BEFORE opening DB (lazy model load can take 10-30s on first call)
+    embed_vec = None
+    try:
+        from core import embeddings
+        if embeddings.is_available():
+            embed_text = f"{filename} {snippet}"[:512]
+            embed_vec = embeddings.embed(embed_text)
+    except Exception:
+        pass
+
+    # --- DB transaction: fast writes only, no slow I/O inside ---
     conn = _connect(username)
     cur = conn.cursor()
 
@@ -400,17 +410,8 @@ def ingest_file_knowledge(
 
     if knowledge_id:
         _upsert_entities(conn, knowledge_id, entities)
-
-        # Compute embedding (best-effort, fast local op)
-        try:
-            from core import embeddings
-            if embeddings.is_available():
-                embed_text = f"{filename} {snippet}"[:512]
-                vec = embeddings.embed(embed_text)
-                if vec:
-                    conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (vec, knowledge_id))
-        except Exception:
-            pass
+        if embed_vec:
+            conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (embed_vec, knowledge_id))
 
     conn.commit()
     conn.close()
