@@ -1,0 +1,77 @@
+# Governance Proposal: Fix RelationshipTracker connection — use db.get_connection()
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`RelationshipTracker.__init__` calls `sqlite3.connect()` directly, bypassing
+`db.get_connection()`. This means it connects with no `busy_timeout` and no WAL
+mode — it can hold an exclusive write lock on startup, which is what's blocking
+Pigeon's DB writes at the same time. Fix: use `db.get_connection()` so
+RelationshipTracker gets WAL + busy_timeout=10000 like everything else.
+
+## Proposed Changes
+
+**File:** `core/relationship_tracker.py`
+**Location:** `RelationshipTracker.__init__` — line 26
+
+## Rationale
+
+- `db.get_connection()` now sets `PRAGMA journal_mode=WAL` + `PRAGMA busy_timeout=10000`
+- RelationshipTracker was the last holdout using raw `sqlite3.connect()`
+- On server startup, RT's raw connection takes an exclusive lock → blocks Pigeon
+- One-line fix: replace raw connect with `get_connection(str(self.db_path))`
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** core/db.py (already fixed)
+- **Testing:** Restart server, drop files to Nest, verify no lock errors in Pigeon log
+
+## Delta E Impact
+
+Expected DeltaE: +0.025 (eliminates remaining startup lock contention)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\relationship_tracker.py")
+src = target.read_text(encoding="utf-8")
+
+old = '''        try:
+            self.conn = sqlite3.connect(str(self.db_path))
+            self.conn.row_factory = sqlite3.Row
+            self._init_schema()
+        except Exception as e:
+            print(f"[RelationshipTracker] DB connect error: {e}", file=sys.stderr)
+            self.conn = None'''
+
+new = '''        try:
+            from core.db import get_connection as _gc
+            self.conn = _gc(str(self.db_path))
+            self.conn.row_factory = sqlite3.Row
+            self._init_schema()
+        except Exception as e:
+            print(f"[RelationshipTracker] DB connect error: {e}", file=sys.stderr)
+            self.conn = None'''
+
+if old not in src:
+    print("ERROR: old block not found in relationship_tracker.py")
+    exit(1)
+
+result = src.replace(old, new, 1)
+target.write_text(result, encoding="utf-8")
+print("OK: RelationshipTracker now uses db.get_connection()")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+DS=42

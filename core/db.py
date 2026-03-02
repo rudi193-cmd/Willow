@@ -25,6 +25,7 @@ def get_connection(path: str = None):
         db = url.replace("sqlite:///", "")
         conn = sqlite3.connect(db, timeout=30)
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
     elif url.startswith("postgresql") or url.startswith("postgres"):

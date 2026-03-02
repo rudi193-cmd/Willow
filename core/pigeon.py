@@ -261,7 +261,7 @@ def _process_one(item: Path, username: str, file_hash: str = None):
         return None
 
 
-PIGEON_WORKERS = 8  # concurrent fleet calls
+PIGEON_WORKERS = 2  # concurrent fleet calls (DB write bottleneck, not fleet)
 _DB_LOCK = threading.Lock()  # serialize SQLite writes
 
 

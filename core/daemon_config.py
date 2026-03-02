@@ -11,6 +11,7 @@ Slot assignments:
 
 POLL_INTERVALS = [3, 3, 4, 4, 3]   # seconds per slot
 STARTUP_OFFSET = 7                   # seconds between daemon starts
+BASE_DELAY     = 12                  # minimum startup wait (lets server finish init)
 
 
 def get_poll_interval(slot: int) -> int:
@@ -18,4 +19,4 @@ def get_poll_interval(slot: int) -> int:
 
 
 def get_startup_delay(slot: int) -> int:
-    return slot * STARTUP_OFFSET
+    return BASE_DELAY + slot * STARTUP_OFFSET

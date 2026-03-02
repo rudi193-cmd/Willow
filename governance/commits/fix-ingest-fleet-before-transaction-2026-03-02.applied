@@ -1,0 +1,214 @@
+# Governance Proposal: Fix ingest_file_knowledge — fleet calls before DB transaction
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`ingest_file_knowledge()` holds the SQLite write lock during LLM fleet calls.
+The INSERT at line 380 opens a transaction (auto-BEGIN), then `_extract_entities_llm()`
+calls the fleet (30-60 seconds), then `conn.commit()` finally releases the lock.
+Every other writer in the system (Pigeon create_dropping, scan_connections, etc.)
+is blocked for the duration of those fleet calls. This is the root cause of all
+"database is locked" errors.
+
+Fix: move all fleet calls (summary generation + entity extraction) to BEFORE
+the DB connection is opened. The transaction then only wraps fast DB writes.
+
+## Proposed Changes
+
+**File:** `core/knowledge.py`
+**Location:** `ingest_file_knowledge()` — restructure fleet-then-write ordering
+
+## Rationale
+
+- Fleet calls (summary + entity LLM) can take 30-60 seconds each
+- After `INSERT OR IGNORE`, Python sqlite3 holds the write lock until `commit()`
+- Moving fleet calls before `_connect()` means the transaction only runs fast
+  INSERT/UPDATE operations — sub-second, no contention
+- This is the correct pattern: compute everything first, write atomically
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — revert to original ordering
+- **Dependencies:** None (fleet calls are independent of DB state at this stage)
+- **Testing:** Drop file to Nest, verify it processes cleanly with no lock errors
+
+## Delta E Impact
+
+Expected DeltaE: +0.080 (eliminates the actual root cause of all lock contention)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\knowledge.py")
+src = target.read_text(encoding="utf-8")
+
+old = '''    init_db(username)
+    conn = _connect(username)
+    cur = conn.cursor()
+
+    # Skip if already ingested
+    existing = cur.execute(
+        "SELECT id FROM knowledge WHERE source_type=\'file\' AND source_id=?",
+        (file_hash,)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return
+
+    # Content snippet (first 1000 chars, strip IMAGE:/TEXT: prefixes)
+    snippet = content_text
+    for prefix in ("IMAGE: ", "TEXT: "):
+        if snippet.startswith(prefix):
+            snippet = snippet[len(prefix):]
+    snippet = snippet[:1000]
+
+    # Generate summary via free fleet (best-effort)
+    summary = None
+    try:
+        summary_prompt = (
+            f"Summarize this document in 2-3 sentences. Focus on what it IS and what it\'s about.\\n\\n"
+            f"Title: {filename}\\nCategory: {category}\\n\\n"
+            f"Content:\\n{snippet}\\n\\nSummary:"
+        )
+        resp = llm_router.ask(summary_prompt, preferred_tier="free")
+        if resp and resp.content:
+            summary = resp.content.strip()[:500]
+    except Exception as e:
+        logging.debug(f"KNOWLEDGE: Summary generation failed for {filename}: {e}")
+
+    # Insert knowledge atom
+    now = datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')
+    ring = get_ring(category, "file", filename)
+    cur.execute(
+        """INSERT OR IGNORE INTO knowledge
+           (source_type, source_id, title, summary, content_snippet, category, ring, created_at)
+           VALUES (\'file\', ?, ?, ?, ?, ?, ?, ?)""",
+        (file_hash, filename, summary, snippet, category, ring, now)
+    )
+    knowledge_id = cur.lastrowid
+
+    if knowledge_id:
+        # Entity extraction — Tier 1 (regex) always, Tier 2 (LLM) best-effort
+        entities = _extract_entities_regex(f"{filename} {snippet}")
+        llm_entities = _extract_entities_llm(snippet)
+        # Merge: regex entities + LLM entities (dedupe by name)
+        seen_names = {e["name"].lower() for e in entities}
+        for le in llm_entities:
+            if le["name"].lower() not in seen_names:
+                entities.append(le)
+                seen_names.add(le["name"].lower())
+
+        _upsert_entities(conn, knowledge_id, entities)
+
+        # Compute embedding (best-effort)
+        try:
+            from core import embeddings
+            if embeddings.is_available():
+                embed_text = f"{filename} {snippet}"[:512]
+                vec = embeddings.embed(embed_text)
+                if vec:
+                    conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (vec, knowledge_id))
+        except Exception:
+            pass
+
+    conn.commit()
+    conn.close()
+    logging.info(f"KNOWLEDGE: Ingested file \'{filename}\' (summary={\'yes\' if summary else \'backfill\'})")'''
+
+new = '''    init_db(username)
+
+    # --- All fleet calls BEFORE opening the DB connection ---
+    # This ensures the write transaction is never held open during slow I/O.
+
+    # Content snippet (first 1000 chars, strip IMAGE:/TEXT: prefixes)
+    snippet = content_text
+    for prefix in ("IMAGE: ", "TEXT: "):
+        if snippet.startswith(prefix):
+            snippet = snippet[len(prefix):]
+    snippet = snippet[:1000]
+
+    # Generate summary via free fleet (best-effort, no DB connection open)
+    summary = None
+    try:
+        summary_prompt = (
+            f"Summarize this document in 2-3 sentences. Focus on what it IS and what it\'s about.\\n\\n"
+            f"Title: {filename}\\nCategory: {category}\\n\\n"
+            f"Content:\\n{snippet}\\n\\nSummary:"
+        )
+        resp = llm_router.ask(summary_prompt, preferred_tier="free")
+        if resp and resp.content:
+            summary = resp.content.strip()[:500]
+    except Exception as e:
+        logging.debug(f"KNOWLEDGE: Summary generation failed for {filename}: {e}")
+
+    # Entity extraction via fleet (best-effort, no DB connection open)
+    entities = _extract_entities_regex(f"{filename} {snippet}")
+    llm_entities = _extract_entities_llm(snippet)
+    seen_names = {e["name"].lower() for e in entities}
+    for le in llm_entities:
+        if le["name"].lower() not in seen_names:
+            entities.append(le)
+            seen_names.add(le["name"].lower())
+
+    # --- DB transaction: fast writes only, no fleet calls inside ---
+    conn = _connect(username)
+    cur = conn.cursor()
+
+    # Skip if already ingested
+    existing = cur.execute(
+        "SELECT id FROM knowledge WHERE source_type=\'file\' AND source_id=?",
+        (file_hash,)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return
+
+    now = datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')
+    ring = get_ring(category, "file", filename)
+    cur.execute(
+        """INSERT OR IGNORE INTO knowledge
+           (source_type, source_id, title, summary, content_snippet, category, ring, created_at)
+           VALUES (\'file\', ?, ?, ?, ?, ?, ?, ?)""",
+        (file_hash, filename, summary, snippet, category, ring, now)
+    )
+    knowledge_id = cur.lastrowid
+
+    if knowledge_id:
+        _upsert_entities(conn, knowledge_id, entities)
+
+        # Compute embedding (best-effort, fast local op)
+        try:
+            from core import embeddings
+            if embeddings.is_available():
+                embed_text = f"{filename} {snippet}"[:512]
+                vec = embeddings.embed(embed_text)
+                if vec:
+                    conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (vec, knowledge_id))
+        except Exception:
+            pass
+
+    conn.commit()
+    conn.close()
+    logging.info(f"KNOWLEDGE: Ingested file \'{filename}\' (summary={\'yes\' if summary else \'backfill\'})")'''
+
+if old not in src:
+    print("ERROR: old block not found in knowledge.py")
+    exit(1)
+
+result = src.replace(old, new, 1)
+target.write_text(result, encoding="utf-8")
+print("OK: ingest_file_knowledge — fleet calls moved before DB transaction")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+DS=42

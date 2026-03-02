@@ -1,0 +1,72 @@
+# Governance Proposal: Add PRAGMA busy_timeout to db.get_connection()
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Pigeon is bouncing files back to Nest with "database is locked" errors because
+`db.get_connection()` sets Python-level `timeout=30` but never sets
+`PRAGMA busy_timeout`. Without it, SQLite doesn't retry internally — it raises
+`OperationalError: database is locked` immediately when it can't get the write lock.
+One line fix: `PRAGMA busy_timeout=10000` (10 seconds of SQLite-level retry).
+
+## Proposed Changes
+
+**File:** `core/db.py`
+**Location:** `get_connection()` — after `PRAGMA journal_mode=WAL`
+
+## Rationale
+
+- `timeout=30` in `sqlite3.connect()` is the Python-level wait before raising
+- `PRAGMA busy_timeout=10000` tells SQLite itself to keep retrying for 10 seconds
+- WAL mode without busy_timeout means concurrent writers fight and lose immediately
+- Pigeon runs 8 workers simultaneously — they all hammer the DB at once
+- This is a standard SQLite best practice for WAL mode in multi-writer scenarios
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove the PRAGMA line
+- **Dependencies:** None
+- **Testing:** Run Pigeon with multiple files simultaneously, verify no lock errors
+
+## Delta E Impact
+
+Expected DeltaE: +0.030 (eliminates Pigeon file processing failures)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\db.py")
+src = target.read_text(encoding="utf-8")
+
+old = '''        conn = sqlite3.connect(db, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn'''
+
+new = '''        conn = sqlite3.connect(db, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn'''
+
+if old not in src:
+    print("ERROR: old block not found in db.py")
+    exit(1)
+
+result = src.replace(old, new, 1)
+target.write_text(result, encoding="utf-8")
+print("OK: PRAGMA busy_timeout=10000 added to db.get_connection()")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+DS=42

@@ -1,0 +1,98 @@
+# Governance Proposal: Pigeon — workers=2 + 12s startup delay
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Two targeted fixes to stop Pigeon from hammering the DB at startup:
+
+1. `core/pigeon.py` — PIGEON_WORKERS 8 → 2. Fleet calls are still concurrent;
+   DB writes are serialized by `_DB_LOCK` anyway, so 8 workers just means 6 idle
+   threads waiting for the lock while generating contention.
+
+2. `core/daemon_config.py` — Add BASE_DELAY=12. All daemons wait at least 12 seconds
+   after process start before first scan. Gives the server time to finish init_db,
+   boot.py, relationship_tracker init, etc. before Pigeon fires.
+   New delays: Pigeon=12s, watcher=19s, OCR=26s.
+
+## Proposed Changes
+
+**Files:** `core/pigeon.py`, `core/daemon_config.py`
+
+## Rationale
+
+- 8 workers × 2 connections each (pigeon + RelationshipTracker) = 16 concurrent
+  SQLite write attempts at startup → thundering herd
+- Slot 0 = 0s delay means Pigeon fires the instant the server starts,
+  before init_db/boot/scan-connections finish their own writes
+- 2 workers is sufficient: fleet summarization is I/O-bound, not CPU-bound
+- 12s base delay costs nothing — files sit in Nest for 12 extra seconds,
+  then process cleanly
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — revert both constants
+- **Dependencies:** None
+- **Testing:** Restart server with files in Nest, verify clean processing after 12s
+
+## Delta E Impact
+
+Expected DeltaE: +0.040 (eliminates startup lock contention entirely)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+# Fix 1: pigeon.py workers
+pigeon = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\pigeon.py")
+src = pigeon.read_text(encoding="utf-8")
+old = "PIGEON_WORKERS = 8  # concurrent fleet calls"
+new = "PIGEON_WORKERS = 2  # concurrent fleet calls (DB write bottleneck, not fleet)"
+if old not in src:
+    print("ERROR: PIGEON_WORKERS not found")
+    exit(1)
+pigeon.write_text(src.replace(old, new, 1), encoding="utf-8")
+print("OK: PIGEON_WORKERS 8 -> 2")
+
+# Fix 2: daemon_config.py base delay
+cfg = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\daemon_config.py")
+src = cfg.read_text(encoding="utf-8")
+old = '''POLL_INTERVALS = [3, 3, 4, 4, 3]   # seconds per slot
+STARTUP_OFFSET = 7                   # seconds between daemon starts
+
+
+def get_poll_interval(slot: int) -> int:
+    return POLL_INTERVALS[slot % len(POLL_INTERVALS)]
+
+
+def get_startup_delay(slot: int) -> int:
+    return slot * STARTUP_OFFSET'''
+new = '''POLL_INTERVALS = [3, 3, 4, 4, 3]   # seconds per slot
+STARTUP_OFFSET = 7                   # seconds between daemon starts
+BASE_DELAY     = 12                  # minimum startup wait (lets server finish init)
+
+
+def get_poll_interval(slot: int) -> int:
+    return POLL_INTERVALS[slot % len(POLL_INTERVALS)]
+
+
+def get_startup_delay(slot: int) -> int:
+    return BASE_DELAY + slot * STARTUP_OFFSET'''
+if old not in src:
+    print("ERROR: daemon_config block not found")
+    exit(1)
+cfg.write_text(src.replace(old, new, 1), encoding="utf-8")
+print("OK: BASE_DELAY=12 added to daemon_config.py")
+print("New delays: Pigeon=12s, watcher=19s, OCR=26s")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+DS=42

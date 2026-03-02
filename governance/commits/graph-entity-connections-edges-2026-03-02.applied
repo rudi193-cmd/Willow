@@ -1,0 +1,115 @@
+# Governance Proposal: Wire entity_connections into /api/knowledge/graph
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T00:00:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+The `/api/knowledge/graph` endpoint only pulls edges from `knowledge_edges` (semantic
+similarity edges). The 21,166 entity connections in `entity_connections` (confirmed=1)
+are completely invisible to the graph visualizer. This proposal wires entity_connections
+in as a second edge source so the full relationship graph — including person↔project,
+person↔concept, tool↔concept connections — is visible.
+
+Also raises the server-side edge LIMIT from 25,000 to 75,000 to handle the larger
+combined dataset.
+
+## Proposed Changes
+
+**File:** `server.py`
+**Location:** `knowledge_graph()` function — after `knowledge_edges` query, add
+`entity_connections` query and merge.
+
+## Rationale
+
+- 21,166 confirmed entity_connections are the rich semantic graph we just built
+  (pairs, triads, quints, septuplets from co-occurrence mining)
+- graph.html requests max_nodes=600&max_edges_per_node=20 but only sees ~4,512 edges
+  because only knowledge_edges are queried
+- entity_connections use entity_a_id/entity_b_id which are the same entity IDs as
+  knowledge_edges source_id/target_id — direct merge is trivial
+- Combined: up to 75k edges available, graph shows much richer topology
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — can revert to knowledge_edges-only query
+- **Dependencies:** entity_connections must have confirmed=1 (already the case)
+- **Testing:** Load /graph, verify edge count increases substantially
+
+## Delta E Impact
+
+Expected DeltaE: +0.080 (graph becomes the actual knowledge graph, not a subset)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+src = target.read_text(encoding="utf-8")
+
+old = '''        id_placeholders = ",".join("?" * len(entity_ids))
+        id_list = list(entity_ids)
+        cur.execute(
+            f"SELECT source_id, target_id, edge_type, weight, canonical FROM knowledge_edges "
+            f"WHERE source_id IN ({id_placeholders}) AND target_id IN ({id_placeholders}) "
+            f"ORDER BY weight DESC LIMIT 25000",
+            id_list + id_list
+        )
+
+        # Deduplicate bidirectional edges
+        all_edges, seen = [], set()
+        for src, tgt, etype, weight, canonical in cur.fetchall():
+            key = (min(src, tgt), max(src, tgt), etype)
+            if key in seen:
+                continue
+            seen.add(key)
+            all_edges.append((src, tgt, etype, float(weight), bool(canonical)))'''
+
+new = '''        id_placeholders = ",".join("?" * len(entity_ids))
+        id_list = list(entity_ids)
+
+        # knowledge_edges (semantic similarity)
+        cur.execute(
+            f"SELECT source_id, target_id, edge_type, weight, canonical FROM knowledge_edges "
+            f"WHERE source_id IN ({id_placeholders}) AND target_id IN ({id_placeholders}) "
+            f"ORDER BY weight DESC LIMIT 75000",
+            id_list + id_list
+        )
+        raw_edges = list(cur.fetchall())
+
+        # entity_connections (named relationships — pairs/triads/quints/septuplets)
+        cur.execute(
+            f"SELECT entity_a_id, entity_b_id, connection_type, weight, 0 FROM entity_connections "
+            f"WHERE confirmed=1 "
+            f"AND entity_a_id IN ({id_placeholders}) AND entity_b_id IN ({id_placeholders})",
+            id_list + id_list
+        )
+        raw_edges.extend(cur.fetchall())
+
+        # Deduplicate bidirectional edges
+        all_edges, seen = [], set()
+        for src, tgt, etype, weight, canonical in raw_edges:
+            key = (min(src, tgt), max(src, tgt), etype)
+            if key in seen:
+                continue
+            seen.add(key)
+            all_edges.append((src, tgt, etype, float(weight), bool(canonical)))'''
+
+if old not in src:
+    print("ERROR: old block not found in server.py")
+    exit(1)
+
+result = src.replace(old, new, 1)
+target.write_text(result, encoding="utf-8")
+print("OK: entity_connections wired into /api/knowledge/graph")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+DS=42

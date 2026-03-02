@@ -1,0 +1,124 @@
+# Governance Proposal: Ecosystem Write Endpoints
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-02
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`ecosystem_writer.py` exists with full read/write functionality but nothing in server.py
+calls it. Willow is supposed to maintain ECOSYSTEM.md as her living self-model — but she
+has no API surface to do so. This adds three thin endpoints so Willow can write to herself
+from any event: knowledge ingest, connection approval, or an explicit decision record.
+
+## Proposed Changes
+
+**File:** `server.py`
+**Location:** After `/api/reload` block (~line 3120)
+
+## Rationale
+
+- ECOSYSTEM.md is Willow's self-model, injected at every Claude Code session start
+- Stale since 2026-02-28 — stats were updated manually this session
+- After this: connection approvals, knowledge ingests, and Ganesha Stop hook all update stats live
+- Three endpoints: read (GET), stats refresh (POST), decision append (POST)
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — endpoints can be removed, ECOSYSTEM.md has atomic writes (tmp→rename)
+- **Dependencies:** `core/ecosystem_writer.py` (already exists)
+- **Testing:** `curl http://localhost:8420/api/ecosystem` should return ECOSYSTEM.md content
+
+## ΔE Impact
+
+Expected ΔE: +0.041 (Willow gains live self-awareness of her own state)
+
+## Implementation
+
+```python
+import sys as _sys
+_willow_path = str(Path(__file__).parent)
+if _willow_path not in _sys.path:
+    _sys.path.insert(0, _willow_path)
+
+target = open("server.py", "r", encoding="utf-8").read()
+
+insertion_point = "\n@app.post(\"/api/reload/all\")"
+
+new_block = '''
+@app.get("/api/ecosystem")
+def ecosystem_read():
+    """Return current ECOSYSTEM.md content (Willow self-model)."""
+    try:
+        from core import ecosystem_writer as ew
+        return {"content": ew._read(), "path": str(ew.ECOSYSTEM_PATH)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ecosystem/update-stats")
+async def ecosystem_update_stats():
+    """Refresh the Architecture section of ECOSYSTEM.md with live DB stats.
+    Call after knowledge ingest, connection approval, or any significant state change."""
+    try:
+        import sqlite3 as _sq, re as _re
+        from core import ecosystem_writer as ew
+        from core import db as _db
+        db_path = knowledge._db_path(USERNAME)
+        conn = _sq.connect(db_path)
+        k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+        ec = conn.execute("SELECT COUNT(*) FROM entity_connections WHERE confirmed=1").fetchone()[0]
+        ke = conn.execute("SELECT COUNT(*) FROM knowledge_edges").fetchone()[0]
+        conn.close()
+        arch = ew.get_section("Architecture")
+        arch = _re.sub(
+            r"\\*\\*Knowledge graph:\\*\\*[^\\n]+",
+            f"**Knowledge graph:** {ke:,} canonical edges / {e:,} entities / {k:,} knowledge atoms",
+            arch
+        )
+        arch = _re.sub(
+            r"\\*\\*Entity connections:\\*\\*[^\\n]+",
+            f"**Entity connections:** {ec:,} confirmed",
+            arch
+        )
+        ew.update_section("Architecture", arch)
+        return {"updated": True, "knowledge": k, "entities": e, "edges": ke, "connections": ec}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ecosystem/decision")
+async def ecosystem_append_decision(request: Request):
+    """Append a timestamped entry to the Design Decisions section of ECOSYSTEM.md."""
+    try:
+        from core import ecosystem_writer as ew
+        body = await request.json()
+        decision = body.get("decision", "").strip()
+        if not decision:
+            raise HTTPException(status_code=400, detail="decision field required")
+        result = ew.append_decision(decision)
+        return {"appended": result, "decision": decision}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+'''
+
+if "/api/ecosystem" not in target:
+    patched = target.replace(insertion_point, new_block + insertion_point)
+    open("server.py", "w", encoding="utf-8").write(patched)
+    print("ecosystem endpoints written")
+else:
+    print("already present — skipping")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

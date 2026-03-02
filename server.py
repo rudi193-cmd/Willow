@@ -607,16 +607,28 @@ def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_n
 
         id_placeholders = ",".join("?" * len(entity_ids))
         id_list = list(entity_ids)
+
+        # knowledge_edges (semantic similarity)
         cur.execute(
             f"SELECT source_id, target_id, edge_type, weight, canonical FROM knowledge_edges "
             f"WHERE source_id IN ({id_placeholders}) AND target_id IN ({id_placeholders}) "
-            f"ORDER BY weight DESC LIMIT 25000",
+            f"ORDER BY weight DESC LIMIT 75000",
             id_list + id_list
         )
+        raw_edges = list(cur.fetchall())
+
+        # entity_connections (named relationships — pairs/triads/quints/septuplets)
+        cur.execute(
+            f"SELECT entity_a_id, entity_b_id, connection_type, weight, 0 FROM entity_connections "
+            f"WHERE confirmed=1 "
+            f"AND entity_a_id IN ({id_placeholders}) AND entity_b_id IN ({id_placeholders})",
+            id_list + id_list
+        )
+        raw_edges.extend(cur.fetchall())
 
         # Deduplicate bidirectional edges
         all_edges, seen = [], set()
-        for src, tgt, etype, weight, canonical in cur.fetchall():
+        for src, tgt, etype, weight, canonical in raw_edges:
             key = (min(src, tgt), max(src, tgt), etype)
             if key in seen:
                 continue
@@ -869,6 +881,7 @@ async def ingest(file: UploadFile = File(...)):
             provider="willow_ui",
         )
 
+        asyncio.create_task(_ecosystem_refresh())
         return {
             "status": "ingested",
             "filename": file.filename,
@@ -947,6 +960,37 @@ async def ingest(file: UploadFile = File(...)):
         "type": "unknown",
         "message": f"File indexed as binary/unknown type. Extension: {suffix or 'none'}"
     }
+
+
+@app.post("/api/knowledge/ingest")
+async def knowledge_ingest_json(request: Request):
+    """Ingest knowledge directly from JSON (no file upload needed).
+    Body: {username, filename, content_text, category, provider, file_hash (optional)}
+    Used by: session-extract hook, agents, external tools."""
+    try:
+        body = await request.json()
+        username   = body.get("username", USERNAME)
+        filename   = body.get("filename", "unknown")
+        content    = body.get("content_text", "")
+        category   = body.get("category", "reference")
+        provider   = body.get("provider", "api")
+        file_hash  = body.get("file_hash", "") or hashlib.md5(content.encode()).hexdigest()
+        if not content:
+            raise HTTPException(status_code=400, detail="content_text required")
+        knowledge.ingest_file_knowledge(
+            username=username,
+            filename=filename,
+            file_hash=file_hash,
+            category=category,
+            content_text=content[:4000],
+            provider=provider,
+        )
+        asyncio.create_task(_ecosystem_refresh())
+        return {"status": "ingested", "filename": filename, "category": category}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/upload/screenshot")
@@ -2746,12 +2790,13 @@ def willow_connections_pending(username: str = "Sweet-Pea-Rudi19", limit: int = 
 async def willow_connection_approve(connection_id: int, username: str = "Sweet-Pea-Rudi19"):
     """Approve a pending connection — sets confirmed=1."""
     try:
-        from core.relationship_tracker import RelationshipTracker
-        rt = RelationshipTracker(username)
-        if not rt.conn:
-            return {"success": False, "error": "DB unavailable"}
-        rt.conn.execute("UPDATE entity_connections SET confirmed=1 WHERE id=?", (connection_id,))
-        rt.conn.commit()
+        from core.db import get_connection as _gc
+        db_path = str(Path("artifacts") / username / "willow_knowledge.db")
+        conn = _gc(db_path)
+        conn.execute("UPDATE entity_connections SET confirmed=1 WHERE id=?", (connection_id,))
+        conn.commit()
+        conn.close()
+        asyncio.create_task(_ecosystem_refresh())
         return {"success": True, "id": connection_id, "action": "approved"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -2761,12 +2806,13 @@ async def willow_connection_approve(connection_id: int, username: str = "Sweet-P
 async def willow_connection_deny(connection_id: int, username: str = "Sweet-Pea-Rudi19"):
     """Deny a pending connection — removes it."""
     try:
-        from core.relationship_tracker import RelationshipTracker
-        rt = RelationshipTracker(username)
-        if not rt.conn:
-            return {"success": False, "error": "DB unavailable"}
-        rt.conn.execute("DELETE FROM entity_connections WHERE id=?", (connection_id,))
-        rt.conn.commit()
+        from core.db import get_connection as _gc
+        db_path = str(Path("artifacts") / username / "willow_knowledge.db")
+        conn = _gc(db_path)
+        conn.execute("DELETE FROM entity_connections WHERE id=?", (connection_id,))
+        conn.commit()
+        conn.close()
+        asyncio.create_task(_ecosystem_refresh())
         return {"success": True, "id": connection_id, "action": "denied"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -3105,6 +3151,87 @@ def reload_module(module: str):
         return {"reloaded": f"core.{module}", "status": "ok"}
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/api/ecosystem")
+def ecosystem_read():
+    """Return current ECOSYSTEM.md content (Willow self-model)."""
+    try:
+        from core import ecosystem_writer as ew
+        return {"content": ew._read(), "path": str(ew.ECOSYSTEM_PATH)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ecosystem/update-stats")
+async def ecosystem_update_stats():
+    """Refresh the Architecture section of ECOSYSTEM.md with live DB stats.
+    Call after knowledge ingest, connection approval, or any significant state change."""
+    try:
+        import sqlite3 as _sq, re as _re
+        from core import ecosystem_writer as ew
+        db_path = knowledge._db_path(USERNAME)
+        conn = _sq.connect(db_path)
+        k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+        ec = conn.execute("SELECT COUNT(*) FROM entity_connections WHERE confirmed=1").fetchone()[0]
+        ke = conn.execute("SELECT COUNT(*) FROM knowledge_edges").fetchone()[0]
+        conn.close()
+        arch = ew.get_section("Architecture")
+        arch = _re.sub(
+            r"\*\*Knowledge graph:\*\*[^\n]+",
+            f"**Knowledge graph:** {ke:,} canonical edges / {e:,} entities / {k:,} knowledge atoms",
+            arch
+        )
+        arch = _re.sub(
+            r"\*\*Entity connections:\*\*[^\n]+",
+            f"**Entity connections:** {ec:,} confirmed",
+            arch
+        )
+        ew.update_section("Architecture", arch)
+        return {"updated": True, "knowledge": k, "entities": e, "edges": ke, "connections": ec}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ecosystem/decision")
+async def ecosystem_append_decision(request: Request):
+    """Append a timestamped entry to the Design Decisions section of ECOSYSTEM.md."""
+    try:
+        from core import ecosystem_writer as ew
+        body = await request.json()
+        decision = body.get("decision", "").strip()
+        if not decision:
+            raise HTTPException(status_code=400, detail="decision field required")
+        result = ew.append_decision(decision)
+        return {"appended": result, "decision": decision}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+async def _ecosystem_refresh():
+    """Background task: refresh ECOSYSTEM.md Architecture stats from live DB."""
+    try:
+        import sqlite3 as _sq, re as _re
+        from core import ecosystem_writer as _ew
+        db_path = knowledge._db_path(USERNAME)
+        conn = _sq.connect(db_path)
+        k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+        ec = conn.execute("SELECT COUNT(*) FROM entity_connections WHERE confirmed=1").fetchone()[0]
+        ke = conn.execute("SELECT COUNT(*) FROM knowledge_edges").fetchone()[0]
+        conn.close()
+        arch = _ew.get_section("Architecture")
+        arch = _re.sub(r"\*\*Knowledge graph:\*\*[^\n]+",
+            f"**Knowledge graph:** {ke:,} canonical edges / {e:,} entities / {k:,} knowledge atoms", arch)
+        arch = _re.sub(r"\*\*Entity connections:\*\*[^\n]+",
+            f"**Entity connections:** {ec:,} confirmed", arch)
+        _ew.update_section("Architecture", arch)
+    except Exception:
+        pass
 
 
 @app.post("/api/reload/all")

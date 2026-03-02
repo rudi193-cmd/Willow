@@ -341,17 +341,9 @@ def ingest_file_knowledge(
     - Idempotent on (source_type, source_id) = ('file', file_hash)
     """
     init_db(username)
-    conn = _connect(username)
-    cur = conn.cursor()
 
-    # Skip if already ingested
-    existing = cur.execute(
-        "SELECT id FROM knowledge WHERE source_type='file' AND source_id=?",
-        (file_hash,)
-    ).fetchone()
-    if existing:
-        conn.close()
-        return
+    # --- All fleet calls BEFORE opening the DB connection ---
+    # This ensures the write transaction is never held open during slow I/O.
 
     # Content snippet (first 1000 chars, strip IMAGE:/TEXT: prefixes)
     snippet = content_text
@@ -360,7 +352,7 @@ def ingest_file_knowledge(
             snippet = snippet[len(prefix):]
     snippet = snippet[:1000]
 
-    # Generate summary via free fleet (best-effort)
+    # Generate summary via free fleet (best-effort, no DB connection open)
     summary = None
     try:
         summary_prompt = (
@@ -374,7 +366,28 @@ def ingest_file_knowledge(
     except Exception as e:
         logging.debug(f"KNOWLEDGE: Summary generation failed for {filename}: {e}")
 
-    # Insert knowledge atom
+    # Entity extraction via fleet (best-effort, no DB connection open)
+    entities = _extract_entities_regex(f"{filename} {snippet}")
+    llm_entities = _extract_entities_llm(snippet)
+    seen_names = {e["name"].lower() for e in entities}
+    for le in llm_entities:
+        if le["name"].lower() not in seen_names:
+            entities.append(le)
+            seen_names.add(le["name"].lower())
+
+    # --- DB transaction: fast writes only, no fleet calls inside ---
+    conn = _connect(username)
+    cur = conn.cursor()
+
+    # Skip if already ingested
+    existing = cur.execute(
+        "SELECT id FROM knowledge WHERE source_type='file' AND source_id=?",
+        (file_hash,)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return
+
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     ring = get_ring(category, "file", filename)
     cur.execute(
@@ -386,19 +399,9 @@ def ingest_file_knowledge(
     knowledge_id = cur.lastrowid
 
     if knowledge_id:
-        # Entity extraction — Tier 1 (regex) always, Tier 2 (LLM) best-effort
-        entities = _extract_entities_regex(f"{filename} {snippet}")
-        llm_entities = _extract_entities_llm(snippet)
-        # Merge: regex entities + LLM entities (dedupe by name)
-        seen_names = {e["name"].lower() for e in entities}
-        for le in llm_entities:
-            if le["name"].lower() not in seen_names:
-                entities.append(le)
-                seen_names.add(le["name"].lower())
-
         _upsert_entities(conn, knowledge_id, entities)
 
-        # Compute embedding (best-effort)
+        # Compute embedding (best-effort, fast local op)
         try:
             from core import embeddings
             if embeddings.is_available():

@@ -23,7 +23,8 @@ class RelationshipTracker:
             fallback_db = base / FALLBACK_USER / "willow_knowledge.db"
             self.db_path = user_db if user_db.exists() else fallback_db
         try:
-            self.conn = sqlite3.connect(str(self.db_path))
+            from core.db import get_connection as _gc
+            self.conn = _gc(str(self.db_path))
             self.conn.row_factory = sqlite3.Row
             self._init_schema()
         except Exception as e:
