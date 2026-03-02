@@ -71,7 +71,6 @@ def _connect(username: str) -> sqlite3.Connection:
     from core.db import get_connection as _gc
     conn = _gc(path)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -705,19 +704,20 @@ def backfill_summaries(username: str, batch_size: int = 5):
     Non-blocking — processes batch_size rows per call.
     """
     init_db(username)
-    conn = _connect(username)
-    cur = conn.cursor()
 
-    rows = cur.execute(
+    # Read rows — short-lived connection, close BEFORE fleet calls
+    conn = _connect(username)
+    rows = conn.execute(
         "SELECT id, title, content_snippet, category FROM knowledge WHERE summary IS NULL LIMIT ?",
         (batch_size,)
     ).fetchall()
+    conn.close()
 
     if not rows:
-        conn.close()
         return
 
-    filled = 0
+    # Fleet calls outside DB connection (each takes 10-60s)
+    updates = []
     for row_id, title, snippet, category in rows:
         if not snippet:
             continue
@@ -729,17 +729,18 @@ def backfill_summaries(username: str, batch_size: int = 5):
             )
             resp = llm_router.ask(prompt, preferred_tier="free")
             if resp and resp.content:
-                summary = resp.content.strip()[:500]
-                cur.execute("UPDATE knowledge SET summary=? WHERE id=?", (summary, row_id))
-                filled += 1
+                updates.append((resp.content.strip()[:500], row_id))
         except Exception as e:
             logging.debug(f"KNOWLEDGE: Backfill failed for id={row_id}: {e}")
             break  # Stop batch on failure (likely rate-limited)
 
-    conn.commit()
-    conn.close()
-    if filled:
-        logging.info(f"KNOWLEDGE: Backfilled {filled}/{len(rows)} summaries for {username}")
+    # Fast batch write — no slow I/O inside
+    if updates:
+        conn = _connect(username)
+        conn.executemany("UPDATE knowledge SET summary=? WHERE id=?", updates)
+        conn.commit()
+        conn.close()
+        logging.info(f"KNOWLEDGE: Backfilled {len(updates)}/{len(rows)} summaries for {username}")
 
 
 # =========================================================================
@@ -865,25 +866,30 @@ def backfill_embeddings(username: str, batch_size: int = 20):
         return
 
     init_db(username)
+
+    # Read rows — short-lived connection, close BEFORE embedding
     conn = _connect(username)
     rows = conn.execute(
         "SELECT id, title, content_snippet FROM knowledge WHERE embedding IS NULL LIMIT ?",
         (batch_size,)
     ).fetchall()
+    conn.close()
 
     if not rows:
-        conn.close()
         return
 
-    filled = 0
+    # Compute embeddings outside DB (model load may take 10-30s on first call)
+    updates = []
     for row_id, title, snippet in rows:
         text = f"{title or ''} {snippet or ''}"[:512]
         vec = embeddings.embed(text)
         if vec:
-            conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (vec, row_id))
-            filled += 1
+            updates.append((vec, row_id))
 
-    conn.commit()
-    conn.close()
-    if filled:
-        logging.info(f"KNOWLEDGE: Backfilled {filled}/{len(rows)} embeddings for {username}")
+    # Fast batch write — no slow I/O inside
+    if updates:
+        conn = _connect(username)
+        conn.executemany("UPDATE knowledge SET embedding=? WHERE id=?", updates)
+        conn.commit()
+        conn.close()
+        logging.info(f"KNOWLEDGE: Backfilled {len(updates)}/{len(rows)} embeddings for {username}")

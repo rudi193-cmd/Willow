@@ -1,0 +1,247 @@
+# Governance Proposal: Comprehensive DB Lock Fix — knowledge.py + agent_auth.py
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-03T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Full audit of SQLite write-lock sources. Three remaining lock-inducers after
+knowledge-embed-before-db-001:
+
+**1. `backfill_summaries()` (knowledge.py L708)**
+Opens DB connection, then loops over 5 rows making fleet calls (30-60s each).
+Holds SQLite write lock for up to 5 minutes. Called on a polling interval by
+aios_loop.py — fires regularly, creates recurring lock windows.
+
+**2. `backfill_embeddings()` (knowledge.py L868)**
+Opens DB connection, then calls `embeddings.embed()` in a loop over 20 rows.
+If model is warm this is fast, but on first call after restart it cold-starts
+the 80MB model while holding the write lock (same bug as the embedding fix
+for ingest_file_knowledge).
+
+**3. `knowledge._connect()` (knowledge.py L68)**
+Calls `_gc()` which sets busy_timeout=10000, then immediately overrides it
+DOWN to busy_timeout=5000. Actively reduces the retry window below what
+db.py intended.
+
+**4. `agent_auth._db()` (agent_auth.py L68)**
+`sqlite3.connect(str(DB_PATH))` with no `timeout=` parameter. Python default
+is 5 seconds. PRAGMA busy_timeout=10000 follows but the Python-level handler
+may fire first on some write contention patterns.
+
+## Fix Pattern
+
+Read rows with short-lived read connection, CLOSE it, do all slow I/O
+(fleet calls, embedding compute) outside any open connection, re-open
+for fast batch write, commit, close. Same pattern as knowledge-embed-before-db-001.
+
+## Proposed Changes
+- `core/knowledge.py` — fix backfill_summaries, backfill_embeddings, remove _connect busy_timeout override
+- `core/agent_auth.py` — add timeout=30, raise busy_timeout to 30000
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES
+- **Dependencies:** None — same logic, same API, only connection lifecycle changes
+- **Testing:** Restart server, drop 3+ files in Nest, confirm no "database is locked" errors
+
+## ΔE Impact
+Expected ΔE: +0.035 (eliminates all recurring lock sources)
+
+## Implementation
+
+```python
+import sys
+from pathlib import Path
+
+# ── Fix 1: knowledge.py ────────────────────────────────────────────────────
+
+kpath = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\knowledge.py")
+src = kpath.read_text(encoding="utf-8")
+
+# 1a. Remove busy_timeout=5000 override in _connect() — keep db.py's 10000
+old1 = (
+    '    conn = _gc(path)\n'
+    '    conn.execute("PRAGMA journal_mode=WAL")\n'
+    '    conn.execute("PRAGMA busy_timeout=5000")\n'
+    '    return conn'
+)
+new1 = (
+    '    conn = _gc(path)\n'
+    '    conn.execute("PRAGMA journal_mode=WAL")\n'
+    '    return conn'
+)
+assert old1 in src, "Pattern 1a not found in knowledge.py"
+src = src.replace(old1, new1, 1)
+
+# 1b. Fix backfill_summaries
+old2 = (
+    '    init_db(username)\n'
+    '    conn = _connect(username)\n'
+    '    cur = conn.cursor()\n'
+    '\n'
+    '    rows = cur.execute(\n'
+    '        "SELECT id, title, content_snippet, category FROM knowledge WHERE summary IS NULL LIMIT ?",\n'
+    '        (batch_size,)\n'
+    '    ).fetchall()\n'
+    '\n'
+    '    if not rows:\n'
+    '        conn.close()\n'
+    '        return\n'
+    '\n'
+    '    filled = 0\n'
+    '    for row_id, title, snippet, category in rows:\n'
+    '        if not snippet:\n'
+    '            continue\n'
+    '        try:\n'
+    '            prompt = (\n'
+    '                f"Summarize this document in 2-3 sentences.\\n\\n"\n'
+    '                f"Title: {title}\\nCategory: {category}\\n\\n"\n'
+    '                f"Content:\\n{snippet}\\n\\nSummary:"\n'
+    '            )\n'
+    '            resp = llm_router.ask(prompt, preferred_tier="free")\n'
+    '            if resp and resp.content:\n'
+    '                summary = resp.content.strip()[:500]\n'
+    '                cur.execute("UPDATE knowledge SET summary=? WHERE id=?", (summary, row_id))\n'
+    '                filled += 1\n'
+    '        except Exception as e:\n'
+    '            logging.debug(f"KNOWLEDGE: Backfill failed for id={row_id}: {e}")\n'
+    '            break  # Stop batch on failure (likely rate-limited)\n'
+    '\n'
+    '    conn.commit()\n'
+    '    conn.close()\n'
+    '    if filled:\n'
+    '        logging.info(f"KNOWLEDGE: Backfilled {filled}/{len(rows)} summaries for {username}")'
+)
+new2 = (
+    '    init_db(username)\n'
+    '\n'
+    '    # Read rows — short-lived connection, close BEFORE fleet calls\n'
+    '    conn = _connect(username)\n'
+    '    rows = conn.execute(\n'
+    '        "SELECT id, title, content_snippet, category FROM knowledge WHERE summary IS NULL LIMIT ?",\n'
+    '        (batch_size,)\n'
+    '    ).fetchall()\n'
+    '    conn.close()\n'
+    '\n'
+    '    if not rows:\n'
+    '        return\n'
+    '\n'
+    '    # Fleet calls outside DB connection (each takes 10-60s)\n'
+    '    updates = []\n'
+    '    for row_id, title, snippet, category in rows:\n'
+    '        if not snippet:\n'
+    '            continue\n'
+    '        try:\n'
+    '            prompt = (\n'
+    '                f"Summarize this document in 2-3 sentences.\\n\\n"\n'
+    '                f"Title: {title}\\nCategory: {category}\\n\\n"\n'
+    '                f"Content:\\n{snippet}\\n\\nSummary:"\n'
+    '            )\n'
+    '            resp = llm_router.ask(prompt, preferred_tier="free")\n'
+    '            if resp and resp.content:\n'
+    '                updates.append((resp.content.strip()[:500], row_id))\n'
+    '        except Exception as e:\n'
+    '            logging.debug(f"KNOWLEDGE: Backfill failed for id={row_id}: {e}")\n'
+    '            break  # Stop batch on failure (likely rate-limited)\n'
+    '\n'
+    '    # Fast batch write — no slow I/O inside\n'
+    '    if updates:\n'
+    '        conn = _connect(username)\n'
+    '        conn.executemany("UPDATE knowledge SET summary=? WHERE id=?", updates)\n'
+    '        conn.commit()\n'
+    '        conn.close()\n'
+    '        logging.info(f"KNOWLEDGE: Backfilled {len(updates)}/{len(rows)} summaries for {username}")'
+)
+assert old2 in src, "Pattern 1b not found in knowledge.py"
+src = src.replace(old2, new2, 1)
+
+# 1c. Fix backfill_embeddings
+old3 = (
+    '    init_db(username)\n'
+    '    conn = _connect(username)\n'
+    '    rows = conn.execute(\n'
+    '        "SELECT id, title, content_snippet FROM knowledge WHERE embedding IS NULL LIMIT ?",\n'
+    '        (batch_size,)\n'
+    '    ).fetchall()\n'
+    '\n'
+    '    if not rows:\n'
+    '        conn.close()\n'
+    '        return\n'
+    '\n'
+    '    filled = 0\n'
+    '    for row_id, title, snippet in rows:\n'
+    '        text = f"{title or \'\'} {snippet or \'\'}"[:512]\n'
+    '        vec = embeddings.embed(text)\n'
+    '        if vec:\n'
+    '            conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (vec, row_id))\n'
+    '            filled += 1\n'
+    '\n'
+    '    conn.commit()\n'
+    '    conn.close()\n'
+    '    if filled:\n'
+    '        logging.info(f"KNOWLEDGE: Backfilled {filled}/{len(rows)} embeddings for {username}")'
+)
+new3 = (
+    '    init_db(username)\n'
+    '\n'
+    '    # Read rows — short-lived connection, close BEFORE embedding\n'
+    '    conn = _connect(username)\n'
+    '    rows = conn.execute(\n'
+    '        "SELECT id, title, content_snippet FROM knowledge WHERE embedding IS NULL LIMIT ?",\n'
+    '        (batch_size,)\n'
+    '    ).fetchall()\n'
+    '    conn.close()\n'
+    '\n'
+    '    if not rows:\n'
+    '        return\n'
+    '\n'
+    '    # Compute embeddings outside DB (model load may take 10-30s on first call)\n'
+    '    updates = []\n'
+    '    for row_id, title, snippet in rows:\n'
+    '        text = f"{title or \'\'} {snippet or \'\'}"[:512]\n'
+    '        vec = embeddings.embed(text)\n'
+    '        if vec:\n'
+    '            updates.append((vec, row_id))\n'
+    '\n'
+    '    # Fast batch write — no slow I/O inside\n'
+    '    if updates:\n'
+    '        conn = _connect(username)\n'
+    '        conn.executemany("UPDATE knowledge SET embedding=? WHERE id=?", updates)\n'
+    '        conn.commit()\n'
+    '        conn.close()\n'
+    '        logging.info(f"KNOWLEDGE: Backfilled {len(updates)}/{len(rows)} embeddings for {username}")'
+)
+assert old3 in src, "Pattern 1c not found in knowledge.py"
+src = src.replace(old3, new3, 1)
+
+kpath.write_text(src, encoding="utf-8")
+print("knowledge.py: 3 patterns patched OK")
+
+# ── Fix 2: agent_auth.py ───────────────────────────────────────────────────
+
+apath = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\agent_auth.py")
+src2 = apath.read_text(encoding="utf-8")
+
+old4 = (
+    '    conn = sqlite3.connect(str(DB_PATH))\n'
+    '    conn.execute("PRAGMA busy_timeout=10000")'
+)
+new4 = (
+    '    conn = sqlite3.connect(str(DB_PATH), timeout=30)\n'
+    '    conn.execute("PRAGMA busy_timeout=30000")'
+)
+assert old4 in src2, "Pattern 2 not found in agent_auth.py"
+src2 = src2.replace(old4, new4, 1)
+
+apath.write_text(src2, encoding="utf-8")
+print("agent_auth.py: timeout patched OK")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

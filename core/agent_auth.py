@@ -65,8 +65,8 @@ def _now() -> str:
 
 
 def _db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute("PRAGMA busy_timeout=10000")
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
