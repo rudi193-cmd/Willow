@@ -1,0 +1,129 @@
+GOVERNANCE PROPOSAL
+ID: fix-rings-interpret-context-injection-2026-03-03
+Date: 2026-03-03
+Author: Shiva (Claude Code)
+Status: PENDING
+
+## Summary
+
+Fix Kart's broken context retrieval by replacing a hardcoded query string
+with a live semantic interpretation of the user's actual message.
+
+## Problem
+
+`context_injector.py` line 49 calls `loam.build_knowledge_context()` with:
+
+    query="system state current tasks"
+
+This string is hardcoded regardless of what the user is asking. Kart always
+retrieves context about "system state" even when the user is asking about
+something entirely different. This is the root cause of Kart's irrelevant
+context injection.
+
+## Changes
+
+### 1. core/rings.py — add `interpret(message)` function
+
+Add a self-contained function that extracts a semantic query string from a
+live user message. Uses topic-signal regex patterns first, falls back to
+keyword extraction (stop-word filtered, max 6 words). No LLM, no latency.
+
+```python
+_STOP_WORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "need", "dare", "ought",
+    "used", "to", "of", "in", "on", "at", "by", "for", "with", "about",
+    "from", "into", "through", "during", "before", "after", "above",
+    "below", "between", "out", "off", "over", "under", "again", "then",
+    "once", "and", "or", "but", "if", "while", "that", "this", "these",
+    "those", "it", "its", "what", "which", "who", "whom", "how", "when",
+    "where", "why", "i", "you", "he", "she", "we", "they", "me", "him",
+    "her", "us", "them", "my", "your", "his", "our", "their", "so",
+    "just", "also", "not", "no", "yes", "up", "as",
+}
+
+_TOPIC_RE = [
+    re.compile(r'\b(?:about|regarding|concerning|on the topic of)\s+(.+?)(?:\?|$)', re.I),
+    re.compile(r'\bwhat (?:is|are|was|were)\s+(.+?)(?:\?|$)', re.I),
+    re.compile(r'\btell me (?:about\s+)?(.+?)(?:\?|$)', re.I),
+    re.compile(r'\bhow (?:does|do|did|to)\s+(.+?)(?:\?|$)', re.I),
+    re.compile(r'\bwhy (?:is|are|was|were|did|does)\s+(.+?)(?:\?|$)', re.I),
+    re.compile(r'\bexplain\s+(.+?)(?:\?|$)', re.I),
+    re.compile(r'\bsummar(?:ize|ise)\s+(.+?)(?:\?|$)', re.I),
+    re.compile(r'\bfind\s+(.+?)(?:\?|$)', re.I),
+    re.compile(r'\bshow me\s+(.+?)(?:\?|$)', re.I),
+]
+
+def interpret(message: str) -> str:
+    """
+    Extract a semantic query string from a user message.
+    Used to replace hardcoded query strings in context injection.
+    Returns a short keyword phrase (max 6 words), never empty.
+    """
+    if not message or not message.strip():
+        return "system state current tasks"
+
+    # Try topic-signal patterns first
+    for pat in _TOPIC_RE:
+        m = pat.search(message)
+        if m:
+            phrase = m.group(1).strip().rstrip("?. ")
+            words = phrase.split()[:6]
+            return " ".join(words)
+
+    # Fall back to keyword extraction
+    words = re.findall(r'\b[a-zA-Z]{3,}\b', message.lower())
+    keywords = [w for w in words if w not in _STOP_WORDS][:6]
+    if keywords:
+        return " ".join(keywords)
+
+    return message.strip()[:80]
+```
+
+### 2. core/context_injector.py — use interpret() for Kart query
+
+- Add `import re` to top-level imports (already present implicitly, but explicit)
+- Change `build_context_header` signature to accept optional `user_message`
+- Replace hardcoded query with `rings.interpret(user_message)`
+
+```python
+# Before:
+from core import loam
+
+def build_context_header(username, agent_name="shiva") -> str:
+    ...
+    if agent_name == "kart":
+        try:
+            k_context = loam.build_knowledge_context(username, query="system state current tasks", max_chars=800)
+
+# After:
+from core import loam, rings
+
+def build_context_header(username, agent_name="shiva", user_message=None) -> str:
+    ...
+    if agent_name == "kart":
+        try:
+            query = rings.interpret(user_message) if user_message else "system state current tasks"
+            k_context = loam.build_knowledge_context(username, query=query, max_chars=800)
+```
+
+## Rationale
+
+- Root cause confirmed: hardcoded string returns wrong context 100% of the time
+- `interpret()` is pure Python, no LLM call, adds <1ms
+- Backward compatible: falls back to old string if `user_message` is None
+- Callers that don't pass `user_message` are unaffected
+
+## Risk Assessment
+
+- **Risk:** LOW
+- `interpret()` has a safe fallback — returns old hardcoded string if message absent
+- No schema changes, no DB changes
+- No other callers of `build_context_header` are broken (signature is additive)
+- `rings.py` additions are additive only — existing functions unchanged
+
+## Files Modified
+
+- `core/rings.py` — add `_STOP_WORDS`, `_TOPIC_RE`, `interpret()`
+- `core/context_injector.py` — add `user_message` param, use `rings.interpret()`
