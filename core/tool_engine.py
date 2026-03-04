@@ -202,7 +202,7 @@ def _tool_read_file(file_path: str, agent: str, username: str) -> Dict[str, Any]
 
         # Log access
         try:
-            knowledge.log_file_access(username, agent, str(path), "read")
+            loam.log_file_access(username, agent, str(path), "read")
         except:
             pass  # Non-fatal if logging fails
 
@@ -261,7 +261,7 @@ def _tool_write_file(file_path: str, content: str, agent: str, username: str) ->
 
         # Log access
         try:
-            knowledge.log_file_access(username, agent, file_path, "write")
+            loam.log_file_access(username, agent, file_path, "write")
         except:
             pass
 
@@ -330,7 +330,7 @@ def _tool_edit_file(file_path: str, old_text: str, new_text: str, agent: str, us
 
         # Log
         try:
-            knowledge.log_file_access(username, agent, file_path, "edit")
+            loam.log_file_access(username, agent, file_path, "edit")
         except:
             pass
 
@@ -508,7 +508,7 @@ def _tool_task_create(subject: str, description: str, agent: str, username: str)
     """Create a new task."""
     # Import task module
     try:
-        from core import kart_tasks
+        from core import graft
     except ImportError:
         return {
             "success": False,
@@ -533,7 +533,7 @@ def _tool_task_create(subject: str, description: str, agent: str, username: str)
 
     # Execute
     try:
-        task_id = kart_tasks.create_task(username, subject, description, agent)
+        task_id = graft.create_task(username, subject, description, agent)
         return {
             "success": True,
             "result": {
@@ -552,7 +552,7 @@ def _tool_task_create(subject: str, description: str, agent: str, username: str)
 def _tool_task_update(task_id: str, status: str, agent: str, username: str) -> Dict[str, Any]:
     """Update task status."""
     try:
-        from core import kart_tasks
+        from core import graft
     except ImportError:
         return {
             "success": False,
@@ -577,7 +577,7 @@ def _tool_task_update(task_id: str, status: str, agent: str, username: str) -> D
 
     # Execute
     try:
-        success = kart_tasks.update_task(username, task_id, status, agent)
+        success = graft.update_task(username, task_id, status, agent)
         return {
             "success": success,
             "result": {
@@ -596,7 +596,7 @@ def _tool_task_update(task_id: str, status: str, agent: str, username: str) -> D
 def _tool_task_list(agent: str, username: str) -> Dict[str, Any]:
     """List all tasks."""
     try:
-        from core import kart_tasks
+        from core import graft
     except ImportError:
         return {
             "success": False,
@@ -621,7 +621,7 @@ def _tool_task_list(agent: str, username: str) -> Dict[str, Any]:
 
     # Execute
     try:
-        tasks = kart_tasks.list_tasks(username, agent)
+        tasks = graft.list_tasks(username, agent)
         return {
             "success": True,
             "result": {
@@ -644,11 +644,11 @@ def _tool_delegate_to_agent(target_agent: str, task: str, agent: str, username: 
     This enables any LLM to offload work to specialized agents:
     - Claude Code → Kart (code analysis, file operations)
     - Willow → Kart (complex routing decisions)
-    - Any agent → Jane (SAFE-compliant responses)
+    - Any agent → Shiva (SAFE-compliant responses)
     - Cross-agent collaboration patterns
 
     Args:
-        target_agent: Agent to delegate to (kart, willow, jane, etc.)
+        target_agent: Agent to delegate to (kart, willow, shiva, etc.)
         task: Task description to send to target agent
         agent: Requesting agent name
         username: User name
@@ -664,7 +664,7 @@ def _tool_delegate_to_agent(target_agent: str, task: str, agent: str, username: 
     if not target_info:
         return {
             "success": False,
-            "error": f"Target agent '{target_agent}' not found. Available agents: willow, kart, jane, riggs, ada, gerald, steve"
+            "error": f"Target agent '{target_agent}' not found. Available agents: willow, kart, shiva, riggs, ada, gerald, steve"
         }
 
     # Call target agent via chat API
@@ -680,7 +680,7 @@ def _tool_delegate_to_agent(target_agent: str, task: str, agent: str, username: 
 
             # Log the delegation
             try:
-                knowledge.log_observation(
+                loam.log_observation(
                     username=username,
                     agent=agent,
                     observation_type="delegation",
@@ -753,8 +753,8 @@ def _tool_delegate_to_agent(target_agent: str, task: str, agent: str, username: 
 def _tool_search_knowledge(query: str, max_results: int = 10, agent: str = None, username: str = None) -> dict:
     """Search knowledge base across all indexed files and sessions."""
     try:
-        results = knowledge.search(username or "kart", query, int(max_results))
-        context = knowledge.build_knowledge_context(username or "kart", query, max_chars=2000)
+        results = loam.search(username or "kart", query, int(max_results))
+        context = loam.build_knowledge_context(username or "kart", query, max_chars=2000)
         return {
             "success": True,
             "query": query,
@@ -825,7 +825,7 @@ def init_tools():
 
     register_tool(ToolDefinition(
         name="delegate_to_agent",
-        description="Delegate a task to another agent. Use this to offload work to specialized agents (kart for file ops, jane for SAFE responses, etc.)",
+        description="Delegate a task to another agent. Use this to offload work to specialized agents (kart for file ops, shiva for SAFE responses, etc.)",
         parameters={"target_agent": "string", "task": "string"},
         required_trust="WORKER",
         governance_type="state",

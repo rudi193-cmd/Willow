@@ -17,11 +17,21 @@ import httpx
 import psutil
 import queue
 import threading
+import logging
 from datetime import datetime
 import asyncio
 from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+
+# Wire all module loggers to the console so pigeon/kart/knowledge output is visible
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+    force=True,
+)
+logger = logging.getLogger("willow.server")
 
 from fastapi import FastAPI, Request, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +42,7 @@ from fastapi.staticfiles import StaticFiles
 sys.path.insert(0, str(Path(__file__).parent))
 
 import local_api
-from core import knowledge
+from core import loam
 from core import ocr_consumer
 from core import file_organizer
 
@@ -49,7 +59,7 @@ except Exception:
 from core.coherence import get_coherence_report, check_intervention
 from core import topology
 from core import agent_registry
-from core import tool_engine, kart_orchestrator, kart_tasks
+from core import tool_engine, rings, graft
 from core.awareness import on_scan_complete, on_organize_complete, on_coherence_update, on_topology_update, say as willow_say
 from apps.pa import drive_scan, drive_organize
 from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes, auth_routes
@@ -58,14 +68,44 @@ app = FastAPI(title="Willow", docs_url=None, redoc_url=None)
 
 # -- Launch Pigeon daemon subprocess ---
 import subprocess as _subprocess
+import threading as _threading
+
+
+def _forward_daemon_output(pipe, logger_name: str) -> None:
+    """Read lines from a daemon pipe and forward to server logger. Runs in daemon thread."""
+    _log = logging.getLogger(logger_name)
+    try:
+        for raw in iter(pipe.readline, b""):
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            if line:
+                _log.info(line)
+    except Exception:
+        pass
+
+
 _pigeon_daemon = _subprocess.Popen(
     [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
+    stdout=_subprocess.PIPE,
+    stderr=_subprocess.STDOUT,
     creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
 )
+_threading.Thread(
+    target=_forward_daemon_output,
+    args=(_pigeon_daemon.stdout, "pigeon_daemon"),
+    daemon=True,
+).start()
+
 _ocr_consumer_daemon = _subprocess.Popen(
     [sys.executable, str(Path(__file__).parent / "core" / "ocr_consumer_daemon.py")],
+    stdout=_subprocess.PIPE,
+    stderr=_subprocess.STDOUT,
     creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
 )
+_threading.Thread(
+    target=_forward_daemon_output,
+    args=(_ocr_consumer_daemon.stdout, "ocr_daemon"),
+    daemon=True,
+).start()
 
 # Track server start time for uptime
 SERVER_START_TIME = datetime.now()
@@ -92,7 +132,7 @@ app.include_router(utety_routes.router)    # UTETY chat + professors + sessions
 app.include_router(vision_routes.router)   # Vision board image classification
 app.include_router(dating_routes.router)   # Dating wellbeing red flag analysis
 app.include_router(die_namic_routes.router) # Die-namic system state (read-only)
-app.include_router(journal_routes.router)   # Journal sessions + events (Jane's pipeline)
+app.include_router(journal_routes.router)   # Journal sessions + events (Shiva's pipeline)
 app.include_router(auth_routes.router)     # Local-first auth — login/verify/logout
 # Governance endpoints already defined in server.py (lines 1023-1155)
 
@@ -202,7 +242,7 @@ async def system_status():
         status["kart"]["available_tools"] = len(tools)
 
         # Get task stats
-        task_stats = kart_tasks.get_stats("Sweet-Pea-Rudi19", "kart")
+        task_stats = graft.get_stats("Sweet-Pea-Rudi19", "kart")
         status["kart"]["task_stats"] = task_stats
     except:
         pass
@@ -221,7 +261,7 @@ def status():
     stats = {"atoms": 0, "conversations": 0, "entities": 0, "gaps": 0}
     try:
         import sqlite3
-        db_path = knowledge._db_path(USERNAME)
+        db_path = loam._db_path(USERNAME)
         if Path(db_path).exists():
             conn = sqlite3.connect(db_path)
             cur = conn.cursor()
@@ -385,7 +425,7 @@ async def chat_multi(request: Request):
 def knowledge_search(q: str = "", limit: int = 5):
     if not q:
         return {"results": [], "query": q}
-    results = knowledge.search(USERNAME, q, max_results=limit)
+    results = loam.search(USERNAME, q, max_results=limit)
     return {"results": results, "query": q}
 
 
@@ -393,33 +433,44 @@ def knowledge_search(q: str = "", limit: int = 5):
 def knowledge_semantic_search(q: str = "", limit: int = 5, username: str = USERNAME):
     if not q:
         return {"results": [], "query": q}
-    results = knowledge.semantic_search(username, q, max_results=limit)
+    results = loam.semantic_search(username, q, max_results=limit)
     return {"results": results, "query": q, "count": len(results)}
 
 
 @app.get("/api/knowledge/gaps")
 def knowledge_gaps(limit: int = 10):
-    gaps = knowledge.get_top_gaps(USERNAME, limit=limit)
+    gaps = loam.get_top_gaps(USERNAME, limit=limit)
     return {"gaps": gaps}
 
 
 @app.get("/api/knowledge/stats")
 def knowledge_stats():
-    import sqlite3
+    from core.db import get_connection as _gc, is_postgres
     stats = {}
     try:
-        db_path = knowledge._db_path(USERNAME)
-        if Path(db_path).exists():
-            conn = sqlite3.connect(db_path)
-            cur = conn.cursor()
+        if is_postgres():
+            conn = _gc()
             for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
                 try:
-                    cur.execute(f"SELECT COUNT(*) FROM {table}")
-                    stats[table] = cur.fetchone()[0]
-                except:
+                    row = conn.execute(f"SELECT COUNT(*) AS cnt FROM {table}").fetchone()
+                    stats[table] = row["cnt"] if row else 0
+                except Exception:
                     stats[table] = 0
             conn.close()
-    except:
+        else:
+            import sqlite3
+            db_path = loam._db_path(USERNAME)
+            if Path(db_path).exists():
+                conn = sqlite3.connect(db_path)
+                cur = conn.cursor()
+                for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
+                    try:
+                        cur.execute(f"SELECT COUNT(*) FROM {table}")
+                        stats[table] = cur.fetchone()[0]
+                    except Exception:
+                        stats[table] = 0
+                conn.close()
+    except Exception:
         pass
     return stats
 
@@ -438,13 +489,14 @@ def safe_whoami():
 @app.get("/api/knowledge/entities")
 def knowledge_entities_list(min_mentions: int = 1, username: str = USERNAME):
     """Return all known entities with source atom count — for user-facing 'What Willow Knows' dashboard."""
-    import sqlite3
+    from core.db import get_connection as _gc, is_postgres
     resolved = username or USERNAME
     try:
-        db_path = knowledge._db_path(resolved)
-        if not Path(db_path).exists():
-            return {"entities": [], "username": resolved}
-        conn = sqlite3.connect(db_path)
+        if not is_postgres():
+            db_path = loam._db_path(resolved)
+            if not Path(db_path).exists():
+                return {"entities": [], "username": resolved}
+        conn = _gc() if is_postgres() else _gc(loam._db_path(resolved))
         cur = conn.cursor()
         cur.execute(
             "SELECT e.id, e.name, e.entity_type, e.mention_count, e.description, "
@@ -470,11 +522,10 @@ def knowledge_entities_list(min_mentions: int = 1, username: str = USERNAME):
 @app.get("/api/knowledge/entities/{entity_id}/sources")
 def knowledge_entity_sources(entity_id: int, username: str = USERNAME):
     """Return knowledge atoms that reference this entity — explains why Willow knows about them."""
-    import sqlite3
+    from core.db import get_connection as _gc, is_postgres
     resolved = username or USERNAME
     try:
-        db_path = knowledge._db_path(resolved)
-        conn = sqlite3.connect(db_path)
+        conn = _gc() if is_postgres() else _gc(loam._db_path(resolved))
         cur = conn.cursor()
         cur.execute(
             "SELECT k.id, k.title, k.source_type, k.source_id, k.summary, k.created_at "
@@ -498,11 +549,10 @@ def knowledge_entity_sources(entity_id: int, username: str = USERNAME):
 @app.delete("/api/knowledge/entities/{entity_id}")
 def knowledge_entity_delete(entity_id: int, username: str = USERNAME):
     """Delete an entity and its edges. User-initiated correction — user is the authority on their own data."""
-    import sqlite3
+    from core.db import get_connection as _gc, is_postgres
     resolved = username or USERNAME
     try:
-        db_path = knowledge._db_path(resolved)
-        conn = sqlite3.connect(db_path)
+        conn = _gc() if is_postgres() else _gc(loam._db_path(resolved))
         cur = conn.cursor()
         cur.execute("DELETE FROM knowledge_edges WHERE source_id = ? OR target_id = ?", (entity_id, entity_id))
         edges_deleted = cur.rowcount
@@ -519,7 +569,6 @@ def knowledge_entity_delete(entity_id: int, username: str = USERNAME):
 @app.patch("/api/knowledge/entities/{entity_id}")
 async def knowledge_entity_rename(entity_id: int, request: Request):
     """Rename or correct an entity. Creates an audit trail in the entity record."""
-    import sqlite3
     body = await request.json()
     new_name = (body.get("name") or "").strip()
     new_description = body.get("description")
@@ -529,8 +578,8 @@ async def knowledge_entity_rename(entity_id: int, request: Request):
 
     def _do_rename():
         try:
-            db_path = knowledge._db_path(username)
-            conn = sqlite3.connect(db_path)
+            from core.db import get_connection as _gc, is_postgres
+            conn = _gc() if is_postgres() else _gc(loam._db_path(username))
             cur = conn.cursor()
             if new_description is not None:
                 cur.execute("UPDATE entities SET name = ?, description = ? WHERE id = ?",
@@ -548,19 +597,88 @@ async def knowledge_entity_rename(entity_id: int, request: Request):
     return await loop.run_in_executor(None, _do_rename)
 
 
+@app.get("/api/knowledge/entities/verify-feed")
+def knowledge_entities_verify_feed(limit: int = 100, skip_oral_history: bool = True):
+    """Return unverified entities for Jeles to process (verified=FALSE or NULL).
+    skip_oral_history=True (default) excludes oral_history_consented entities
+    (private persons, file-path noise) that are correctly unverifiable."""
+    from core.db import get_connection as _gc, is_postgres
+    try:
+        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+        cur = conn.cursor()
+        ph = "%s" if is_postgres() else "?"
+        oral_filter = "AND (source_type IS NULL OR source_type != 'oral_history_consented') " if skip_oral_history else ""
+        cur.execute(
+            "SELECT id, name, entity_type, description, mention_count FROM entities "
+            f"WHERE (verified = FALSE OR verified IS NULL) AND never_promote != 1 "
+            f"{oral_filter}"
+            f"ORDER BY mention_count DESC LIMIT {ph}",
+            (limit,)
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return {"entities": [
+            {"id": r[0], "name": r[1], "type": r[2], "description": r[3] or "", "mentions": r[4]}
+            for r in rows
+        ], "count": len(rows)}
+    except Exception as e:
+        return {"entities": [], "error": str(e)}
+
+
+@app.patch("/api/knowledge/entities/{entity_id}/verify")
+async def knowledge_entity_verify(entity_id: int, request: Request):
+    """Jeles writes verification results for an entity back to Willow."""
+    import json as _json
+    import datetime as _dt
+    body = await request.json()
+    verified = body.get("verified", False)
+    confidence = body.get("confidence", "low")
+    source_type = body.get("source_type", "oral_history_consented")
+    sources = body.get("sources", [])
+    corrections = body.get("corrections", [])
+    if isinstance(sources, list):
+        sources = _json.dumps(sources)
+    if isinstance(corrections, list):
+        corrections = _json.dumps(corrections)
+    verified_at = _dt.datetime.utcnow().isoformat()
+
+    def _do_verify():
+        try:
+            from core.db import get_connection as _gc, is_postgres
+            conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE entities SET verified=?, confidence=?, source_type=?, "
+                "sources=?, corrections=?, verified_at=?, verified_by='jeles' WHERE id=?",
+                (verified, confidence, source_type, sources, corrections, verified_at, entity_id)
+            )
+            updated = cur.rowcount
+            conn.commit()
+            conn.close()
+            return {"success": bool(updated), "entity_id": entity_id,
+                    "verified": verified, "confidence": confidence}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _do_verify)
+
+
 @app.get("/api/knowledge/graph")
 def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_node: int = 6):
-    import sqlite3
+    from core.db import get_connection as _gc, is_postgres
     from collections import defaultdict
     TYPE_COLORS = {
         "person": "#4a90d9", "project": "#2d6a4f", "concept": "#9b59b6",
         "tool": "#d4860a", "location": "#c0392b", "event": "#8b4513",
     }
+    logger.info("[knowledge-graph] Building: min_mentions=%d, max_nodes=%d", min_mentions, max_nodes)
     try:
-        db_path = knowledge._db_path(USERNAME)
-        if not Path(db_path).exists():
-            return {"nodes": [], "edges": []}
-        conn = sqlite3.connect(db_path)
+        if not is_postgres():
+            db_path = loam._db_path(USERNAME)
+            if not Path(db_path).exists():
+                return {"nodes": [], "edges": []}
+        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
         cur = conn.cursor()
 
         # Fix 3: exclude noise entities (file paths, extensions, directories)
@@ -654,9 +772,11 @@ def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_n
                                "weight": weight, "canonical": canonical,
                                "width": max(1, min(5, int(weight * 3)))})
 
+        logger.info("[knowledge-graph] Done: %d nodes, %d edges", len(nodes), len(edges))
         conn.close()
         return {"nodes": nodes, "edges": edges}
     except Exception as e:
+        logger.error("[knowledge-graph] Error: %s", e)
         return {"error": str(e), "nodes": [], "edges": []}
 
 
@@ -756,7 +876,7 @@ def _check_service(url: str) -> bool:
 @app.get("/api/skills/query")
 def skills_query(q: str, limit: int = 10):
     """Query knowledge base."""
-    results = knowledge.search(USERNAME, q, limit)
+    results = loam.search(USERNAME, q, limit)
     return {"query": q, "results": results, "count": len(results)}
 
 
@@ -809,7 +929,7 @@ async def skills_persona(request: Request):
         personas = {
             "PA": "You are PA (Personal Assistant), helpful and proactive.",
             "Analyst": "You are Analyst, data-driven. Find patterns and insights.",
-            "Archivist": "You are Archivist, organizing and preserving knowledge.",
+            "Archivist": "You are Archivist, organizing and preserving loam.",
             "Poet": "You are Poet, a creative writing agent.",
             "Debugger": "You are Debugger, finding and fixing bugs."
         }
@@ -876,7 +996,7 @@ async def ingest(file: UploadFile = File(...)):
         # Determine category
         category = "code" if suffix in code_ext else "ui_drop"
 
-        knowledge.ingest_file_knowledge(
+        loam.ingest_file_knowledge(
             username=USERNAME,
             filename=file.filename,
             file_hash=file_hash,
@@ -904,7 +1024,7 @@ async def ingest(file: UploadFile = File(...)):
         }
 
         # Store reference in knowledge DB
-        knowledge.ingest_file_knowledge(
+        loam.ingest_file_knowledge(
             username=USERNAME,
             filename=file.filename,
             file_hash=file_hash,
@@ -923,7 +1043,7 @@ async def ingest(file: UploadFile = File(...)):
 
     # Handle archives - store reference
     if suffix in archive_ext:
-        knowledge.ingest_file_knowledge(
+        loam.ingest_file_knowledge(
             username=USERNAME,
             filename=file.filename,
             file_hash=file_hash,
@@ -948,7 +1068,7 @@ async def ingest(file: UploadFile = File(...)):
         }
 
     # Unknown file type - still try to index it
-    knowledge.ingest_file_knowledge(
+    loam.ingest_file_knowledge(
         username=USERNAME,
         filename=file.filename,
         file_hash=file_hash,
@@ -986,7 +1106,7 @@ async def knowledge_ingest_json(request: Request):
         async def _do_ingest():
             try:
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, lambda: knowledge.ingest_file_knowledge(
+                await loop.run_in_executor(None, lambda: loam.ingest_file_knowledge(
                     username=username,
                     filename=filename,
                     file_hash=file_hash,
@@ -1292,7 +1412,7 @@ def files_tag(filename: str, folder: str, ring: str = None, category: str = None
         if ring and ring in ("source", "bridge", "continuity"):
             import hashlib
             fhash = hashlib.md5(f"{folder}/{filename}".encode()).hexdigest()
-            conn = knowledge._connect(USERNAME)
+            conn = loam._connect(USERNAME)
             conn.execute("UPDATE knowledge SET ring=?, ring_override=? WHERE source_id=?",
                         (ring, ring, fhash))
             conn.commit()
@@ -2352,7 +2472,7 @@ async def create_node_db(request: Request):
     Body: {"node_name": "some_node"}
     """
     try:
-        from core import knowledge
+        from core import loam
         body = await request.json()
         node_name = body.get("node_name")
 
@@ -2365,7 +2485,7 @@ async def create_node_db(request: Request):
             return {"error": "Invalid node_name. Use only letters, numbers, underscores, and hyphens."}
 
         # Create database
-        knowledge.init_db(node_name)
+        loam.init_db(node_name)
 
         return {
             "success": True,
@@ -2706,7 +2826,7 @@ def serve_pocket():
 def binder_entities(username: str = "Sweet-Pea-Rudi19", layer: int = None, entity_type: str = None):
     """List tracked entities (L1=anonymous, L2=recognized, L3=named)."""
     try:
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         rt = RelationshipTracker(username)
         return {"entities": rt.list_entities(username=username, layer=layer, entity_type=entity_type)}
     except Exception as e:
@@ -2716,7 +2836,7 @@ def binder_entities(username: str = "Sweet-Pea-Rudi19", layer: int = None, entit
 def binder_connections(entity_id: int, username: str = "Sweet-Pea-Rudi19", min_weight: float = 0.3):
     """Get connections for an entity."""
     try:
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         rt = RelationshipTracker(username)
         return {"connections": rt.get_connections(entity_id, min_weight=min_weight)}
     except Exception as e:
@@ -2726,7 +2846,7 @@ def binder_connections(entity_id: int, username: str = "Sweet-Pea-Rudi19", min_w
 def binder_suggest_connections(body: dict):
     """Suggest connections from knowledge atom IDs."""
     try:
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         username = body.get("username", "Sweet-Pea-Rudi19")
         knowledge_ids = body.get("knowledge_ids", [])
         rt = RelationshipTracker(username)
@@ -2738,7 +2858,7 @@ def binder_suggest_connections(body: dict):
 def binder_eligible(username: str = "Sweet-Pea-Rudi19", min_mentions: int = 5):
     """Get L2 entities eligible for promotion to L3."""
     try:
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         rt = RelationshipTracker(username)
         return {"eligible": rt.get_eligible_for_promotion(username=username, min_mentions=min_mentions)}
     except Exception as e:
@@ -2748,7 +2868,7 @@ def binder_eligible(username: str = "Sweet-Pea-Rudi19", min_mentions: int = 5):
 def binder_promote(body: dict):
     """Promote an L2 entity to L3 (named/confirmed)."""
     try:
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         username = body.get("username", "Sweet-Pea-Rudi19")
         rt = RelationshipTracker(username)
         result = rt.promote_to_named(
@@ -2765,7 +2885,7 @@ def binder_promote(body: dict):
 def binder_dismiss(body: dict):
     """Dismiss a promotion prompt (optionally permanently)."""
     try:
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         username = body.get("username", "Sweet-Pea-Rudi19")
         rt = RelationshipTracker(username)
         ok = rt.dismiss_promotion(body["reference_id"], never=body.get("never", False))
@@ -2779,7 +2899,7 @@ def binder_dismiss(body: dict):
 def willow_connections_pending(username: str = "Sweet-Pea-Rudi19", limit: int = 20):
     """Unconfirmed connections Willow proposed — awaiting user approve/deny/edit."""
     try:
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         rt = RelationshipTracker(username)
         if not rt.conn:
             return {"connections": [], "error": "DB unavailable"}
@@ -2803,9 +2923,8 @@ def willow_connections_pending(username: str = "Sweet-Pea-Rudi19", limit: int = 
 async def willow_connection_approve(connection_id: int, username: str = "Sweet-Pea-Rudi19"):
     """Approve a pending connection — sets confirmed=1."""
     try:
-        from core.db import get_connection as _gc
-        db_path = str(Path("artifacts") / username / "willow_knowledge.db")
-        conn = _gc(db_path)
+        from core.db import get_connection as _gc, is_postgres
+        conn = _gc() if is_postgres() else _gc(str(Path("artifacts") / username / "willow_knowledge.db"))
         conn.execute("UPDATE entity_connections SET confirmed=1 WHERE id=?", (connection_id,))
         conn.commit()
         conn.close()
@@ -2817,12 +2936,14 @@ async def willow_connection_approve(connection_id: int, username: str = "Sweet-P
 
 @app.post("/api/willow/connections/{connection_id}/deny")
 async def willow_connection_deny(connection_id: int, username: str = "Sweet-Pea-Rudi19"):
-    """Deny a pending connection — removes it."""
+    """Deny a pending connection — confirmed=-1 tombstone.
+    The UNIQUE(entity_a_id, entity_b_id, connection_type) constraint means
+    INSERT OR IGNORE in scan-connections will skip this pair forever.
+    No means no unless the user explicitly clears it."""
     try:
-        from core.db import get_connection as _gc
-        db_path = str(Path("artifacts") / username / "willow_knowledge.db")
-        conn = _gc(db_path)
-        conn.execute("DELETE FROM entity_connections WHERE id=?", (connection_id,))
+        from core.db import get_connection as _gc, is_postgres
+        conn = _gc() if is_postgres() else _gc(str(Path("artifacts") / username / "willow_knowledge.db"))
+        conn.execute("UPDATE entity_connections SET confirmed=-1 WHERE id=?", (connection_id,))
         conn.commit()
         conn.close()
         asyncio.create_task(_ecosystem_refresh())
@@ -2836,7 +2957,7 @@ async def willow_connection_edit(connection_id: int, request: Request, username:
     """Edit a pending connection's type or weight, then auto-approve it."""
     try:
         body = await request.json()
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         rt = RelationshipTracker(username)
         if not rt.conn:
             return {"success": False, "error": "DB unavailable"}
@@ -2859,7 +2980,7 @@ async def willow_connection_edit(connection_id: int, request: Request, username:
 def _willow_scan_connections_internal(username: str = "Sweet-Pea-Rudi19") -> dict:
     """Core scan logic — reusable by route and auto-triggers."""
     try:
-        from core.relationship_tracker import RelationshipTracker
+        from core.vine import RelationshipTracker
         rt = RelationshipTracker(username)
         if not rt.conn:
             return {"status": "error", "error": "DB unavailable"}
@@ -2868,20 +2989,24 @@ def _willow_scan_connections_internal(username: str = "Sweet-Pea-Rudi19") -> dic
         knowledge_ids = [r["id"] for r in rows]
         if not knowledge_ids:
             return {"status": "ok", "new_proposals": 0, "total_suggestions": 0}
+        logger.info("[scan-connections] Scanning %d atoms for %s", len(knowledge_ids), username)
         suggestions = rt.suggest_connections(knowledge_ids)
+        logger.info("[scan-connections] %d suggestions found", len(suggestions))
         new_count = 0
         for s in suggestions:
             result = rt.record_connection(
                 entity_a_id=s["entity_a"]["id"],
                 entity_b_id=s["entity_b"]["id"],
-                connection_type=s.get("connection_type", "co-mention"),
+                connection_type=s.get("suggested_type", "co-mention"),
                 weight=s.get("confidence", 0.5),
                 source="willow-auto-scan",
             )
             if result:
                 new_count += 1
+        logger.info("[scan-connections] Done: %d new proposals recorded", new_count)
         return {"status": "scanned", "new_proposals": new_count, "total_suggestions": len(suggestions)}
     except Exception as e:
+        logger.error("[scan-connections] Error: %s", e)
         return {"status": "error", "error": str(e)}
 
 
@@ -2903,7 +3028,7 @@ def serve_binder():
     return FileResponse(BINDER_HTML, media_type="text/html; charset=utf-8")
 
 
-# --- Jane GM Game Routes ---
+# --- Shiva GM Game Routes ---
 
 GAME_HTML = Path(__file__).parent / "game.html"
 
@@ -3006,7 +3131,7 @@ def game_roll_history(session_id: str, limit: int = 20):
 
 @app.post("/api/game/narrate")
 async def game_narrate(request: Request):
-    """Jane narrates — builds GM prompt and calls the fleet."""
+    """Shiva narrates — builds GM prompt and calls the fleet."""
     try:
         import game_engine as ge
         body = await request.json()
@@ -3023,7 +3148,7 @@ async def game_narrate(request: Request):
             return {"success": False, "error": "Fleet unavailable — all providers failed"}
 
         narration = response.content.strip()
-        ge.add_history(session_id, "jane", narration)
+        ge.add_history(session_id, "shiva", narration)
 
         return {
             "success": True,
@@ -3183,7 +3308,7 @@ async def ecosystem_update_stats():
     try:
         import sqlite3 as _sq, re as _re
         from core import ecosystem_writer as ew
-        db_path = knowledge._db_path(USERNAME)
+        db_path = loam._db_path(USERNAME)
         conn = _sq.connect(db_path)
         k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
         e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
@@ -3230,7 +3355,7 @@ async def _ecosystem_refresh():
     try:
         import sqlite3 as _sq, re as _re
         from core import ecosystem_writer as _ew
-        db_path = knowledge._db_path(USERNAME)
+        db_path = loam._db_path(USERNAME)
         conn = _sq.connect(db_path)
         k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
         e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
@@ -3330,7 +3455,7 @@ def _learn_infer_cat(path: Path, default: str) -> str:
 def _learn_worker(username: str):
     """Run bulk ingest inside the server process."""
     import hashlib
-    from core.knowledge import init_db, _connect, _extract_entities_regex
+    from core.loam import init_db, _connect, _extract_entities_regex
     _learn_status["running"] = True
     _learn_status["ingested"] = 0
     _learn_status["skipped"] = 0
@@ -3486,10 +3611,48 @@ async def pigeon_scan(username: str = 'Sweet-Pea-Rudi19'):
         trigger = Path(f'artifacts/{username}/.pigeon_trigger')
         trigger.parent.mkdir(parents=True, exist_ok=True)
         trigger.touch()
-        new_droppings = []  # pigeon_daemon handles the actual scan
         return {'success': True, 'new_droppings': 0, 'droppings': [], 'status': 'triggered'}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# User schema initialization
+# ─────────────────────────────────────────────────────────────────────────────
+@app.post("/api/user/init")
+async def user_schema_init(username: str = "Sweet-Pea-Rudi19"):
+    """Initialize PostgreSQL schema for this user.
+    Creates private schema, moves user tables from public, registers in schema_registry.
+    Safe to call multiple times -- idempotent.
+    On SQLite: no-op, returns safe schema name only."""
+    try:
+        from core.db import init_user_schema, _safe_schema_name, is_postgres
+        safe = init_user_schema(username)
+        detail = {}
+        if is_postgres():
+            # Register in schema_registry
+            import datetime
+            from core.db import get_connection as _gc
+            conn = _gc()
+            now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_registry (username, schema_name, created_at) "
+                "VALUES (?, ?, ?)",
+                (username, safe, now),
+            )
+            conn.commit()
+            conn.close()
+            detail["registered"] = True
+        return {
+            "success": True,
+            "username": username,
+            "schema": safe,
+            "postgres": is_postgres(),
+            **detail,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
@@ -3743,7 +3906,7 @@ def _ingest_pickup_for_gazelle(username: str) -> dict:
         try:
             content = f.read_text(encoding="utf-8", errors="replace")
             file_hash = __import__("hashlib").md5(content.encode()).hexdigest()
-            knowledge.ingest_file_knowledge(
+            loam.ingest_file_knowledge(
                 username=username,
                 filename=f.name,
                 file_hash=file_hash,
@@ -3762,7 +3925,7 @@ def _ingest_pickup_for_gazelle(username: str) -> dict:
 def _get_willow_context(username: str) -> dict:
     """Pull relevant context from the knowledge graph for Gazelle pre-population."""
     legal_terms = "legal court bankruptcy debt financial dispute rights claim"
-    results = knowledge.search(username, legal_terms, max_results=8)
+    results = loam.search(username, legal_terms, max_results=8)
 
     facts = []
     source_files = []

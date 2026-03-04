@@ -33,7 +33,7 @@ class AgentEngine:
     """
     Conversational AI agent with tool access and governance.
 
-    Works for any agent: Willow, Kart, Jane, Riggs, etc.
+    Works for any agent: Willow, Kart, Shiva, Riggs, etc.
     Each agent has its own personality, tools, and constraints.
     """
 
@@ -43,7 +43,7 @@ class AgentEngine:
 
         Args:
             username: User name
-            agent_name: Agent name (willow, kart, jane, etc.)
+            agent_name: Agent name (willow, kart, shiva, etc.)
         """
         self.username = username
         self.agent_name = agent_name
@@ -180,7 +180,7 @@ class AgentEngine:
         # Add system prompt if not present
         if not self.context or self.context[0].get("role") != "system":
             system_content = self.system_prompt
-            if self.agent_name in ("jane", "kart", "sean"):
+            if self.agent_name in ("shiva", "kart", "sean"):
                 memory_header = context_injector.build_context_header(self.username, self.agent_name)
                 system_content = memory_header + "\n\n" + system_content
             self.context.insert(0, {
@@ -240,7 +240,7 @@ class AgentEngine:
             if stream:
                 return self._chat_streaming()
             result = self._chat_blocking()
-            if self.agent_name in ("jane", "kart", "sean"):
+            if self.agent_name in ("shiva", "kart", "sean"):
                 context_injector.extract_and_store(
                     self.username, user_message, result.get("response", "")
                 )
@@ -476,7 +476,7 @@ def chat(
 
     Args:
         username: User name
-        agent_name: Agent name (willow, kart, jane, etc.)
+        agent_name: Agent name (willow, kart, shiva, etc.)
         message: User message
         conversation_history: Optional conversation context
         stream: Enable streaming response

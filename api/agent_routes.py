@@ -84,7 +84,7 @@ async def chat_with_agent(req: ChatRequest, agent_name: Optional[str] = None):
         if not agent_info:
             raise HTTPException(
                 status_code=404,
-                detail=f"Agent '{agent}' not found. Available agents: willow, kart, jane, riggs, ada, gerald, steve"
+                detail=f"Agent '{agent}' not found. Available agents: willow, kart, shiva, riggs, ada, gerald, steve"
             )
 
         # Chat with agent
@@ -98,8 +98,8 @@ async def chat_with_agent(req: ChatRequest, agent_name: Optional[str] = None):
         # Route to appropriate handler
         if agent == "kart":
             # Kart uses orchestrator directly (bypasses LLM tool parsing issues)
-            from core import kart_orchestrator
-            orchestrator_result = kart_orchestrator.execute_task(
+            from core import rings
+            orchestrator_result = rings.execute_task(
                 username=USERNAME,
                 user_request=req.message,
                 agent_name="kart"
@@ -109,7 +109,7 @@ async def chat_with_agent(req: ChatRequest, agent_name: Optional[str] = None):
             result = {
                 "response": orchestrator_result.get("result", "Task completed"),
                 "tool_calls": orchestrator_result.get("steps", []),
-                "provider": "kart_orchestrator",
+                "provider": "rings",
                 "tier": "direct"
             }
         else:
@@ -185,8 +185,8 @@ async def get_agent_profile(agent_name: str):
 
     Returns:
         {
-            "name": "jane",
-            "display_name": "Jane",
+            "name": "shiva",
+            "display_name": "Shiva",
             "trust_level": "WORKER",
             "agent_type": "persona",
             "profile": "Full profile markdown content",

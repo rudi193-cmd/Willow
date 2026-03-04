@@ -1,5 +1,5 @@
 """
-game_engine.py — Jane GM Game State Engine
+game_engine.py — Shiva GM Game State Engine
 
 Manages game sessions, characters, dice rolls, and narrative history.
 PBtA (Powered by the Apocalypse) primary system.
@@ -135,7 +135,7 @@ def roll_dice(
                 outcome = name
                 break
 
-    # Verifiable hash — players can check Jane didn't change the result
+    # Verifiable hash — players can check Shiva didn't change the result
     roll_str = f"{dice}:{','.join(map(str, rolls))}+{modifier}={total}"
     roll_hash = hashlib.sha256(roll_str.encode()).hexdigest()[:16]
 
@@ -340,7 +340,7 @@ def update_character_hp(session_id: str, hp: int) -> bool:
 # ── Narrative History ─────────────────────────────────────────────────────────
 
 def add_history(session_id: str, role: str, content: str, metadata: dict = None) -> int:
-    """role: 'jane' | 'player' | 'roll' | 'system'"""
+    """role: 'shiva' | 'player' | 'roll' | 'system'"""
     conn = _get_conn()
     cur = conn.execute(
         "INSERT INTO game_history (session_id, role, content, metadata_json, timestamp) VALUES (?, ?, ?, ?, ?)",
@@ -363,7 +363,7 @@ def get_history(session_id: str, limit: int = 30) -> list:
 # ── PBtA Prompt Builder ───────────────────────────────────────────────────────
 
 def build_gm_prompt(session_id: str, player_action: str) -> str:
-    """Build the prompt Jane uses to generate her next narration."""
+    """Build the prompt Shiva uses to generate her next narration."""
     session = get_session(session_id)
     character = get_character(session_id)
     history = get_history(session_id, limit=10)
@@ -376,7 +376,7 @@ def build_gm_prompt(session_id: str, player_action: str) -> str:
     hp = character.get("hp", 6) if character else 6
 
     history_text = "\n".join(
-        f"{'Jane' if h['role']=='jane' else 'Player'}: {h['content']}"
+        f"{'Shiva' if h['role']=='shiva' else 'Player'}: {h['content']}"
         for h in history[-6:]
     ) if history else "The adventure is just beginning."
 
@@ -386,7 +386,7 @@ def build_gm_prompt(session_id: str, player_action: str) -> str:
         if r.get("outcome"):
             last_roll = f"\nLast dice roll: {r['dice']} = {r['total']} ({r['outcome'].replace('_',' ')})"
 
-    return f"""You are Jane, a warm and creative Game Master running a PBtA (Powered by the Apocalypse) adventure.
+    return f"""You are Shiva, a warm and creative Game Master running a PBtA (Powered by the Apocalypse) adventure.
 
 World: {world}
 Player's character: {char_name} ({playbook})
@@ -399,11 +399,11 @@ Recent story:
 
 Player's action: {player_action}
 
-Respond as Jane the GM. Be vivid, concise (2-4 sentences), and always give the player a clear sense of what happens next or what they face.
+Respond as Shiva the GM. Be vivid, concise (2-4 sentences), and always give the player a clear sense of what happens next or what they face.
 - On a strong hit (10+): something good happens, give them what they want with a bonus
 - On a weak hit (7-9): they get what they want, but with a complication or cost
 - On a miss (6-): things get worse — make a hard GM move
 - If no roll was made, narrate the scene and invite action
 
 End with a clear prompt for the player. Keep it fun and age-appropriate (players are 9-14).
-Speak directly to the player in second person ("you"). Keep Jane's voice warm, never scary."""
+Speak directly to the player in second person ("you"). Keep Shiva's voice warm, never scary."""
