@@ -1,0 +1,75 @@
+# Governance Proposal: Add The Squirrel to SAFE REGISTRY.yaml
+
+**Proposer:** Ganesha (Claude Code / Sonnet 4.6)
+**Date:** 2026-03-03
+**Type:** Feature — SAFE App Registry
+**Trust Level:** ENGINEER (3)
+**Risk Tier:** T1 (SAFE/apps/ — Dual Commit required)
+
+## Summary
+
+Adds `the-squirrel` to the SAFE community app registry. The Squirrel is a genealogy
+companion with a sense of humor — it helps users find, collect, and reconnect branches
+of their family tree, including the ones that got quietly lost along the way.
+
+Repo seeded at `safe-app-the-squirrel`. Scopes registered. README written.
+
+## Rationale
+
+- App scaffolded and seeded this session
+- Tagline: *"We're not calling your family nuts... but."*
+- Natural fit for the Willow ecosystem — lives in the tree, deposits to The Binder
+- Fills a gap in the lineup: no genealogy/family history app exists yet
+- Local-first, privacy-appropriate for sensitive family data
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove the YAML block
+- **Dependencies:** None — community entry only, no code changes
+- **Testing:** Verify `grep the-squirrel SAFE/apps/REGISTRY.yaml` returns the entry
+
+## ΔE Impact
+
+Expected ΔE: +0.040 (new app registered, no functional change)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+REGISTRY = Path(r"C:\Users\Sean\Documents\GitHub\SAFE\apps\REGISTRY.yaml")
+content = REGISTRY.read_text(encoding="utf-8")
+
+NEW_ENTRY = '''  - app_id: the-squirrel
+    name: The Squirrel
+    repository: https://github.com/seancampbell3161/safe-app-the-squirrel
+    author: Sean Campbell
+    status: community
+    privacy_tier: mixed
+    local_processing: 0.90
+    description: >
+      We're not calling your family nuts... but. Genealogy companion with a sense of humor.
+      Helps you find, collect, and reconnect the branches of your family tree — even the ones
+      everyone forgot about on purpose. Deposits verified findings to The Binder.
+    tags:
+      - genealogy
+      - family
+      - history
+      - humor
+      - utety
+      - binder
+'''
+
+# Insert after ask-jeles entry (last community app before deprecated section)
+ANCHOR = "# Deprecated Apps (no longer maintained)"
+content = content.replace(ANCHOR, NEW_ENTRY + ANCHOR)
+REGISTRY.write_text(content, encoding="utf-8")
+print("Added: the-squirrel to REGISTRY.yaml")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

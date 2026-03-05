@@ -1,0 +1,54 @@
+GOVERNANCE PROPOSAL
+ID: fix-agent-engine-pass-user-message-2026-03-03
+Date: 2026-03-03
+Author: Shiva (Claude Code)
+Status: PENDING
+
+## Summary
+
+Complete the rings.interpret() fix by passing user_message through
+at the call site in agent_engine.py.
+
+## Problem
+
+The previous commit (fix-rings-interpret-context-injection-2026-03-03)
+updated context_injector.build_context_header() to accept user_message
+and use rings.interpret() for Kart's knowledge query — but agent_engine.py
+still calls it without the message:
+
+    # agent_engine.py:184 (current)
+    memory_header = context_injector.build_context_header(self.username, self.agent_name)
+
+user_message=None triggers the fallback, so Kart still gets
+"system state current tasks" every time. The fix is inert until
+this call site passes the message.
+
+## Change
+
+### core/agent_engine.py — line 184
+
+```python
+# Before
+memory_header = context_injector.build_context_header(self.username, self.agent_name)
+
+# After
+memory_header = context_injector.build_context_header(
+    self.username, self.agent_name, user_message=user_message
+)
+```
+
+user_message is already a parameter of this function (visible at line 194
+where it's appended to context). No other changes needed.
+
+## Risk Assessment
+
+- **Risk:** MINIMAL
+- user_message is already in scope at the call site
+- The only behavioral change: Kart gets context matched to the actual
+  user query instead of "system state current tasks"
+- All other agents (shiva, sean) are unaffected — the interpret() path
+  only runs inside the `if agent_name == "kart"` block
+
+## Files Modified
+
+- `core/agent_engine.py` — one line, pass user_message to build_context_header

@@ -1,0 +1,162 @@
+# Governance Proposal: Schema Type Alignment — Fix All 4 DB Issues
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-02T20:25:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Full schema audit (March 2, 2026) found exactly ONE real type conflict between
+SQLite and PostgreSQL, plus 3 latent bugs. This proposal fixes all four.
+Previous proposal `fix-layer-text-type-pg-001` was going the wrong direction
+(patching Python to use strings) — it has been rejected. The correct fix is to
+align the PG schema with the unanimous Python/SQLite definition.
+
+## The Bugs
+
+### Bug 1 — entities.layer: PG schema outlier (ACTIVE)
+Every Python file and the live SQLite DB defines `layer INTEGER DEFAULT 1`.
+The pg_schema.sql defines it as `TEXT DEFAULT '1'`. Fix: ALTER the PG column
+to INTEGER and update pg_schema.sql. No Python code changes needed.
+
+### Bug 2 — sqlite3.IntegrityError catch doesn't fire on PG (LATENT)
+`relationship_tracker.py:271` catches `sqlite3.IntegrityError` for the
+duplicate-connection upsert. PostgreSQL raises `psycopg2.errors.UniqueViolation`
+instead. On PG, the duplicate-key error propagates uncaught, crashing
+`record_connection()`. Fix: catch a broader exception and check type.
+
+### Bug 3 — atom_extractor.py wrong column names (ACTIVE on both backends)
+`atom_extractor.py:120` inserts into `entities (name, type, mention_count,
+first_seen, last_seen)`. The table uses `entity_type` and `last_mentioned`.
+Also line 118 updates `last_seen` which doesn't exist. Fix: correct column
+names in both INSERT and UPDATE.
+
+### Bug 4 — _PG_CONFLICT_TARGETS incomplete (LATENT)
+`db.py:41` maps `INSERT OR REPLACE` → `INSERT ... ON CONFLICT ...` for PG.
+Only `willow_state` and `agents` are listed. Any INSERT OR REPLACE into
+`entities` or `knowledge` silently becomes `ON CONFLICT DO NOTHING`, dropping
+the update entirely. Fix: add conflict targets for `entities` and `knowledge`.
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES (all string replacements; ALTER COLUMN USING is safe for
+  '1'/'2'/'3' → 1/2/3 conversion; no data loss)
+- **Dependencies:** None
+- **Testing:**
+  1. `GET /api/binder/entities?layer=3` → returns data, no errors
+  2. `GET /api/binder/eligible` → returns eligible entities
+  3. Ingest content → entity created with correct column values
+  4. Record duplicate connection → no crash, upsert succeeds
+
+## ΔE Impact
+
+Expected ΔE: +0.022 (eliminates all known schema-related failure modes on PG)
+
+## Implementation
+
+```python
+import sys
+from pathlib import Path
+
+WILLOW = Path(r"C:\Users\Sean\Documents\GitHub\Willow")
+
+# ── Bug 1: Fix pg_schema.sql ─────────────────────────────────────────────────
+pg_schema = WILLOW / "tools" / "pg_schema.sql"
+src = pg_schema.read_text(encoding="utf-8")
+old = "    layer             TEXT DEFAULT '1',"
+new = "    layer             INTEGER DEFAULT 1,"
+if old in src:
+    pg_schema.write_text(src.replace(old, new, 1), encoding="utf-8")
+    print("Bug 1a: pg_schema.sql layer column fixed")
+else:
+    print("Bug 1a: SKIP (already fixed or not found)")
+
+# Also run the ALTER on the live PG DB if connected
+# (apply_commits.py can't run this directly, so we emit the SQL to stdout
+#  for Sean to run manually if the PG column already has TEXT data)
+print("")
+print("Bug 1b: If PG DB already has entities data, run this migration manually:")
+print("  ALTER TABLE entities ALTER COLUMN layer TYPE INTEGER USING layer::integer;")
+print("  (Safe: values '1','2','3' cast cleanly to 1,2,3)")
+print("")
+
+# ── Bug 2: Fix sqlite3.IntegrityError catch in relationship_tracker.py ────────
+rt = WILLOW / "core" / "relationship_tracker.py"
+src = rt.read_text(encoding="utf-8")
+
+old2 = "            except sqlite3.IntegrityError:"
+new2 = "            except (sqlite3.IntegrityError, Exception) as _dup_err:\n                if _dup_err.__class__.__name__ not in ('IntegrityError', 'UniqueViolation'):\n                    raise"
+if old2 in src:
+    src = src.replace(old2, new2, 1)
+    rt.write_text(src, encoding="utf-8")
+    print("Bug 2: relationship_tracker IntegrityError catch broadened")
+else:
+    print("Bug 2: SKIP (already fixed or not found)")
+
+# ── Bug 3: Fix atom_extractor.py wrong column names ──────────────────────────
+ae = WILLOW / "core" / "atom_extractor.py"
+src = ae.read_text(encoding="utf-8")
+
+old3a = 'cur.execute("UPDATE entities SET mention_count=?,last_seen=? WHERE id=?",'
+new3a = 'cur.execute("UPDATE entities SET mention_count=?,last_mentioned=? WHERE id=?",'
+
+old3b = 'cur.execute("INSERT INTO entities (name,type,mention_count,first_seen,last_seen) VALUES(?,?,?,?,?)",'
+new3b = 'cur.execute("INSERT INTO entities (name,entity_type,mention_count,first_seen,last_mentioned) VALUES(?,?,?,?,?)",'
+
+changed = 0
+if old3a in src:
+    src = src.replace(old3a, new3a, 1)
+    changed += 1
+if old3b in src:
+    src = src.replace(old3b, new3b, 1)
+    changed += 1
+if changed:
+    ae.write_text(src, encoding="utf-8")
+    print(f"Bug 3: atom_extractor.py column names fixed ({changed}/2)")
+else:
+    print("Bug 3: SKIP (already fixed or not found)")
+
+# ── Bug 4: Add conflict targets to db.py _PG_CONFLICT_TARGETS ────────────────
+db = WILLOW / "core" / "db.py"
+src = db.read_text(encoding="utf-8")
+
+old4 = '''_PG_CONFLICT_TARGETS = {
+    "willow_state": "(key) DO UPDATE SET value=EXCLUDED.value, set_at=EXCLUDED.set_at",
+    "agents":       "(name) DO UPDATE SET display_name=EXCLUDED.display_name, "
+                    "trust_level=EXCLUDED.trust_level, agent_type=EXCLUDED.agent_type, "
+                    "profile_path=EXCLUDED.profile_path, registered_at=EXCLUDED.registered_at, "
+                    "last_seen=EXCLUDED.last_seen",
+}'''
+
+new4 = '''_PG_CONFLICT_TARGETS = {
+    "willow_state": "(key) DO UPDATE SET value=EXCLUDED.value, set_at=EXCLUDED.set_at",
+    "agents":       "(name) DO UPDATE SET display_name=EXCLUDED.display_name, "
+                    "trust_level=EXCLUDED.trust_level, agent_type=EXCLUDED.agent_type, "
+                    "profile_path=EXCLUDED.profile_path, registered_at=EXCLUDED.registered_at, "
+                    "last_seen=EXCLUDED.last_seen",
+    "entities":     "(name) DO UPDATE SET mention_count=EXCLUDED.mention_count, "
+                    "last_mentioned=EXCLUDED.last_mentioned, "
+                    "mention_contexts=EXCLUDED.mention_contexts, "
+                    "emotional_valence=EXCLUDED.emotional_valence, "
+                    "promotion_status=EXCLUDED.promotion_status",
+    "knowledge":    "(source_type, source_id) DO UPDATE SET content=EXCLUDED.content, "
+                    "summary=EXCLUDED.summary, category=EXCLUDED.category, "
+                    "updated_at=EXCLUDED.updated_at",
+}'''
+
+if old4 in src:
+    db.write_text(src.replace(old4, new4, 1), encoding="utf-8")
+    print("Bug 4: db.py _PG_CONFLICT_TARGETS extended")
+else:
+    print("Bug 4: SKIP (already fixed or not found)")
+
+print("\nAll done. Restart Willow to pick up db.py changes.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

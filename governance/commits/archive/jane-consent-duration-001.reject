@@ -1,0 +1,225 @@
+# Governance Proposal: Jane Consent Duration Picker
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-01T14:00:00Z
+**Type:** Feature Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add user-selectable session duration to Jane's consent gate, matching the pattern introduced in SafeConsentBanner.astro and the Willow backend consent changes. Jane's consent gate currently shows every page load with no persistence. This adds a duration picker (This tab / 1h / 4h / 12h / 24h) so users aren't re-prompted unnecessarily. "This tab" uses sessionStorage; persistent options use localStorage with ISO timestamp expiry. The conversation itself still ends on "End Session" click regardless of consent token.
+
+## Proposed Changes
+**File:** SAFE/web/jane.html
+**Locations:** CSS block (after .consent-fine-print), HTML (consent-actions section), JS (btnAuthorize handler)
+
+## Rationale
+- NotebookLM review flagged consent friction as UX issue
+- Backend already updated (consent.py, scope_registry.py, safe_routes.py) to support duration_hours
+- NASA Archive SafeConsentBanner.astro already ships the same pattern
+- Jane users shouldn't see the consent gate on every reload during an active session
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — revert consent-gate HTML/CSS/JS
+- **Dependencies:** Willow backend consent changes (already applied)
+- **Testing:** Load jane.html, select duration, authorize, reload — gate should not reappear until token expires
+
+## ΔE Impact
+Expected ΔE: +0.015 (minor UX improvement, no architectural change)
+
+## Implementation
+```python
+import re
+
+path = r'C:\Users\Sean\Documents\GitHub\SAFE\web\jane.html'
+with open(path, 'r', encoding='utf-8') as f:
+    src = f.read()
+
+# 1. Add CSS for duration picker (after .consent-fine-print block)
+old_css = '''    .consent-fine-print {
+      margin-top: 1.25rem;
+      font-size: 13px;
+      color: var(--fg-muted);
+    }'''
+new_css = '''    .consent-fine-print {
+      margin-top: 1.25rem;
+      font-size: 13px;
+      color: var(--fg-muted);
+    }
+    .consent-duration {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    .consent-duration-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+      white-space: nowrap;
+    }
+    .consent-duration input[type="radio"] { display: none; }
+    .consent-duration label {
+      font-size: 12px;
+      font-family: var(--mono);
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      color: var(--fg-muted);
+      transition: background 0.15s, color 0.15s;
+      user-select: none;
+    }
+    .consent-duration input[type="radio"]:checked + label,
+    .consent-duration label:hover {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }'''
+assert old_css in src, 'CSS anchor not found'
+src = src.replace(old_css, new_css, 1)
+
+# 2. Replace consent-actions + fine-print block with duration picker + actions
+old_html = '''      <div class="consent-actions">
+        <button class="btn-primary" id="btn-authorize">Authorize Session</button>
+        <button class="btn-ghost" id="btn-decline">Decline</button>
+      </div>
+
+        <div class="endpoint-rows">
+          <div class="endpoint-row">
+            <span><span class="endpoint-name">Jane</span><span class="endpoint-url">:8421</span></span>
+            <span class="endpoint-badge checking" id="badge-jane">checking</span>
+          </div>
+          <div class="endpoint-row">
+            <span><span class="endpoint-name">Willow</span><span class="endpoint-url">:8420</span></span>
+            <span class="endpoint-badge checking" id="badge-willow">checking</span>
+          </div>
+        </div>
+      </div>
+      <p class="consent-fine-print">
+        This authorization expires when you close this session or click End Session.
+      </p>'''
+new_html = '''      <div class="consent-duration">
+        <span class="consent-duration-label">Keep active:</span>
+        <input type="radio" name="jane-duration" id="jd-tab" value="0">
+        <label for="jd-tab">This tab</label>
+        <input type="radio" name="jane-duration" id="jd-1" value="1">
+        <label for="jd-1">1h</label>
+        <input type="radio" name="jane-duration" id="jd-4" value="4" checked>
+        <label for="jd-4">4h</label>
+        <input type="radio" name="jane-duration" id="jd-12" value="12">
+        <label for="jd-12">12h</label>
+        <input type="radio" name="jane-duration" id="jd-24" value="24">
+        <label for="jd-24">24h</label>
+      </div>
+      <div class="consent-actions">
+        <button class="btn-primary" id="btn-authorize">Authorize Session</button>
+        <button class="btn-ghost" id="btn-decline">Decline</button>
+      </div>
+
+        <div class="endpoint-rows">
+          <div class="endpoint-row">
+            <span><span class="endpoint-name">Jane</span><span class="endpoint-url">:8421</span></span>
+            <span class="endpoint-badge checking" id="badge-jane">checking</span>
+          </div>
+          <div class="endpoint-row">
+            <span><span class="endpoint-name">Willow</span><span class="endpoint-url">:8420</span></span>
+            <span class="endpoint-badge checking" id="badge-willow">checking</span>
+          </div>
+        </div>
+      </div>
+      <p class="consent-fine-print">
+        Authorization persists per your selection above. Your conversation is deleted when you click End Session.
+      </p>'''
+assert old_html in src, 'HTML anchor not found'
+src = src.replace(old_html, new_html, 1)
+
+# 3. Replace btnAuthorize click handler to check consent token + store duration
+old_js = '''    btnAuthorize.addEventListener('click', async () => {
+      btnAuthorize.disabled = true;
+      btnAuthorize.textContent = 'Starting\u2026';
+      await startSession();
+      showScreen('chat');
+      appendMessage('jane', "Hello. What\'s on your mind?");
+      chatInput.focus();
+    });'''
+new_js = '''    const JANE_CONSENT_KEY = 'jane-consent-token';
+
+    function janeConsentActive() {
+      try {
+        if (sessionStorage.getItem(JANE_CONSENT_KEY)) return true;
+        const raw = localStorage.getItem(JANE_CONSENT_KEY);
+        if (!raw) return false;
+        const { expires } = JSON.parse(raw);
+        return expires && new Date(expires) > new Date();
+      } catch { return false; }
+    }
+
+    function storeJaneConsent(hours) {
+      const tabOnly = hours === 0;
+      const payload = JSON.stringify({
+        token: Math.random().toString(36).slice(2),
+        expires: tabOnly ? null : new Date(Date.now() + hours * 3600000).toISOString(),
+      });
+      if (tabOnly) {
+        sessionStorage.setItem(JANE_CONSENT_KEY, payload);
+        localStorage.removeItem(JANE_CONSENT_KEY);
+      } else {
+        localStorage.setItem(JANE_CONSENT_KEY, payload);
+        sessionStorage.removeItem(JANE_CONSENT_KEY);
+      }
+    }
+
+    function clearJaneConsent() {
+      sessionStorage.removeItem(JANE_CONSENT_KEY);
+      localStorage.removeItem(JANE_CONSENT_KEY);
+    }
+
+    btnAuthorize.addEventListener('click', async () => {
+      btnAuthorize.disabled = true;
+      btnAuthorize.textContent = 'Starting\u2026';
+      const durInput = document.querySelector('input[name="jane-duration"]:checked');
+      const hours = durInput ? parseInt(durInput.value) : 4;
+      storeJaneConsent(hours);
+      await startSession();
+      showScreen('chat');
+      appendMessage('jane', "Hello. What\'s on your mind?");
+      chatInput.focus();
+    });
+
+    if (janeConsentActive()) {
+      btnAuthorize.click();
+    }'''
+assert old_js in src, 'JS anchor not found'
+src = src.replace(old_js, new_js, 1)
+
+# 4. Clear consent token on end session
+old_end = '''      sessionId = null;
+      conversationHistory = [];
+      messagesInner.innerHTML = \'\';
+    }'''
+new_end = '''      sessionId = null;
+      conversationHistory = [];
+      messagesInner.innerHTML = \'\';
+      clearJaneConsent();
+    }'''
+assert old_end in src, 'endSession anchor not found'
+src = src.replace(old_end, new_end, 1)
+
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(src)
+print('jane.html updated OK')
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
+
+
+---
+REJECTED: 2026-03-01T14:29:50.756196
+Reason: Talking about it right now

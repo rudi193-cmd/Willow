@@ -1,0 +1,97 @@
+# Governance Proposal: Forward Daemon Output to Server Window
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Pigeon daemon and OCR consumer daemon output never appears in the "WILLOW - SERVER" window.
+
+Root cause: `WILLOW.bat` launches uvicorn with `--reload`. Uvicorn's reload mode spawns the application worker via multiprocessing (Windows `spawn` strategy), which creates a fresh Python interpreter process. That process may not have a valid console handle, so daemon subprocesses (grandchildren) launched by `Popen()` with no explicit stdout/stderr have nowhere to write.
+
+Fix: pipe both daemons' stdout+stderr back to the server process via `subprocess.PIPE`, read it in a daemon thread, and forward each line through the server's logger. The output then flows through Python's logging infrastructure (which IS properly connected to the uvicorn server window) and appears tagged as `[pigeon_daemon]` or `[ocr_daemon]`.
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — reverts by removing the helper function and restoring original Popen calls
+- **Dependencies:** None (stdlib only: threading, logging)
+- **Testing:** Hit the Pigeon scan button in the dashboard → "Trigger received -- scanning Nest" should appear in the WILLOW - SERVER window within 3 seconds
+
+## ΔE Impact
+Expected ΔE: +0.028 (observability — server screen now shows daemon activity)
+
+---
+
+## Implementation
+
+```python
+import pathlib as _pathlib
+
+target = _pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+src = target.read_text(encoding="utf-8")
+
+old = '''# -- Launch Pigeon daemon subprocess ---
+import subprocess as _subprocess
+_pigeon_daemon = _subprocess.Popen(
+    [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
+    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+)
+_ocr_consumer_daemon = _subprocess.Popen(
+    [sys.executable, str(Path(__file__).parent / "core" / "ocr_consumer_daemon.py")],
+    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+)'''
+
+new = '''# -- Launch Pigeon daemon subprocess ---
+import subprocess as _subprocess
+import threading as _threading
+
+
+def _forward_daemon_output(pipe, logger_name: str) -> None:
+    """Read lines from a daemon pipe and forward to server logger. Runs in daemon thread."""
+    _log = logging.getLogger(logger_name)
+    try:
+        for raw in iter(pipe.readline, b""):
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            if line:
+                _log.info(line)
+    except Exception:
+        pass
+
+
+_pigeon_daemon = _subprocess.Popen(
+    [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
+    stdout=_subprocess.PIPE,
+    stderr=_subprocess.STDOUT,
+    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+)
+_threading.Thread(
+    target=_forward_daemon_output,
+    args=(_pigeon_daemon.stdout, "pigeon_daemon"),
+    daemon=True,
+).start()
+
+_ocr_consumer_daemon = _subprocess.Popen(
+    [sys.executable, str(Path(__file__).parent / "core" / "ocr_consumer_daemon.py")],
+    stdout=_subprocess.PIPE,
+    stderr=_subprocess.STDOUT,
+    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+)
+_threading.Thread(
+    target=_forward_daemon_output,
+    args=(_ocr_consumer_daemon.stdout, "ocr_daemon"),
+    daemon=True,
+).start()'''
+
+assert old in src, f"Old string not found in server.py"
+src = src.replace(old, new, 1)
+target.write_text(src, encoding="utf-8")
+print("APPLIED: daemon output now piped through server logger")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

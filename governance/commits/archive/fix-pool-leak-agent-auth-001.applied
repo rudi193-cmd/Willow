@@ -1,0 +1,136 @@
+# Governance Proposal: Fix Connection Leak in agent_auth.py
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-02T20:10:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`agent_auth.checkin()` and `agent_auth.validate_token()` call `db.close()`
+explicitly in the happy path, but have no `try/finally`. If any database
+operation raises (including `PoolError` from an already-exhausted pool),
+execution jumps past `db.close()` and the connection is never returned.
+This is a secondary leak that compounds the RelationshipTracker issue.
+
+Fix: wrap both functions' DB section in `try/finally: db.close()`.
+
+## Proposed Changes
+
+**File:** `core/agent_auth.py`
+**Location:** `checkin()` and `validate_token()` functions
+
+## Rationale
+
+- Defensive: ensures pool connections are always returned even under error conditions
+- Prevents the "one bad request cascades into all requests failing" pattern
+- Secondary fix — primary fix is `fix-pool-leak-relationship-tracker-001`
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** fix-pool-leak-relationship-tracker-001 (apply first)
+- **Testing:**
+  1. After applying, trigger an intentional error in checkin (invalid agent name)
+  2. Pool should not shrink — connection must be returned even on ValueError
+
+## ΔE Impact
+
+Expected ΔE: +0.006 (hardens connection management; prevents secondary leaks)
+
+## Implementation
+
+```python
+import sys
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\agent_auth.py")
+src = target.read_text(encoding="utf-8")
+
+old_checkin = '''\
+    db = _db()
+    row = db.execute(
+        "SELECT name, trust_level FROM agents WHERE name = ?", (agent_name,)
+    ).fetchone()
+    if not row:
+        db.close()
+        raise ValueError(f"Agent \'{agent_name}\' not registered.")
+
+    name, trust_level = row
+    token = str(uuid.uuid4())
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS)).isoformat()
+    now = _now()
+
+    # Store in willow_state KV
+    db.execute(
+        "INSERT OR REPLACE INTO willow_state (key, value, set_at) VALUES (?, ?, ?)",
+        (f"agent_token:{token}", json.dumps({"agent": name, "trust_level": trust_level, "expires_at": expires_at}), now),
+    )
+    # Update last_seen
+    db.execute("UPDATE agents SET last_seen = ? WHERE name = ?", (now, name))
+    db.commit()
+    db.close()'''
+
+new_checkin = '''\
+    db = _db()
+    try:
+        row = db.execute(
+            "SELECT name, trust_level FROM agents WHERE name = ?", (agent_name,)
+        ).fetchone()
+        if not row:
+            raise ValueError(f"Agent \'{agent_name}\' not registered.")
+
+        name, trust_level = row
+        token = str(uuid.uuid4())
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS)).isoformat()
+        now = _now()
+
+        # Store in willow_state KV
+        db.execute(
+            "INSERT OR REPLACE INTO willow_state (key, value, set_at) VALUES (?, ?, ?)",
+            (f"agent_token:{token}", json.dumps({"agent": name, "trust_level": trust_level, "expires_at": expires_at}), now),
+        )
+        # Update last_seen
+        db.execute("UPDATE agents SET last_seen = ? WHERE name = ?", (now, name))
+        db.commit()
+    finally:
+        db.close()'''
+
+old_validate = '''\
+    db = _db()
+    row = db.execute(
+        "SELECT value FROM willow_state WHERE key = ?", (f"agent_token:{token}",)
+    ).fetchone()
+    db.close()'''
+
+new_validate = '''\
+    db = _db()
+    try:
+        row = db.execute(
+            "SELECT value FROM willow_state WHERE key = ?", (f"agent_token:{token}",)
+        ).fetchone()
+    finally:
+        db.close()'''
+
+changed = False
+if "try:\n        row = db.execute(\n            \"SELECT name, trust_level" not in src:
+    src = src.replace(old_checkin, new_checkin, 1)
+    changed = True
+
+if "try:\n        row = db.execute(\n            \"SELECT value FROM willow_state" not in src:
+    src = src.replace(old_validate, new_validate, 1)
+    changed = True
+
+if changed:
+    target.write_text(src, encoding="utf-8")
+    print("APPLIED: try/finally added to checkin() and validate_token()")
+else:
+    print("SKIPPED: already patched")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

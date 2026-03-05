@@ -1,0 +1,111 @@
+# Governance Proposal: Fix knowledge.py record_gap() PG AmbiguousColumn error
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T21:50:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`record_gap()` in knowledge.py has an ON CONFLICT DO UPDATE clause with `times_hit = times_hit + 1`.
+PostgreSQL raises `AmbiguousColumn` because `times_hit` is ambiguous — it could refer to the
+existing row value or the excluded row value.
+
+The fix: use the table-qualified name `knowledge_gaps.times_hit + 1`.
+
+Additionally, `record_gap()` does not rollback on exception, so a failed INSERT leaves the PG
+connection in aborted transaction state, and then `conn.close()` returns it to the pool without
+rollback — poisoning the pool and exhausting connections for subsequent requests.
+
+Fix: use try/except/finally with proper rollback on error.
+
+Also: `get_top_gaps()` and `resolve_gap()` call `init_db()` at the start, which is now a no-op
+on PG. This is fine, but let's verify the rollback pattern is consistent.
+
+## Proposed Changes
+
+**File:** `core/knowledge.py`
+**Change:** Fix `times_hit = times_hit + 1` → `times_hit = knowledge_gaps.times_hit + 1`
+and add try/except/finally rollback pattern to `record_gap()`.
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** None beyond what's already used
+- **Testing:** Searching for a term with no results should not 500
+
+## ΔE Impact
+
+Expected ΔE: +0.400 (fixes pool exhaustion cascade, unblocks all knowledge endpoints)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+path = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\knowledge.py")
+content = path.read_text(encoding="utf-8")
+
+old_record_gap = '''def record_gap(username: str, query: str, source: str, gap_type: str, entity_name: str = None):
+    """
+    Record something the system doesn\'t know.
+    Idempotent on (query, source) — increments times_hit on repeat.
+    """
+    init_db(username)
+    conn = _connect(username)
+    now = datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')
+    # Normalize query for dedup
+    norm_query = query.strip().lower()[:200]
+    conn.execute(
+        """INSERT INTO knowledge_gaps (query, source, gap_type, entity_name, first_seen, last_seen)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(query, source) DO UPDATE SET
+               times_hit = times_hit + 1,
+               last_seen = ?""",
+        (norm_query, source, gap_type, entity_name, now, now, now)
+    )
+    conn.commit()
+    conn.close()'''
+
+new_record_gap = '''def record_gap(username: str, query: str, source: str, gap_type: str, entity_name: str = None):
+    """
+    Record something the system doesn\'t know.
+    Idempotent on (query, source) — increments times_hit on repeat.
+    """
+    init_db(username)
+    conn = _connect(username)
+    now = datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')
+    # Normalize query for dedup
+    norm_query = query.strip().lower()[:200]
+    try:
+        conn.execute(
+            """INSERT INTO knowledge_gaps (query, source, gap_type, entity_name, first_seen, last_seen)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(query, source) DO UPDATE SET
+                   times_hit = knowledge_gaps.times_hit + 1,
+                   last_seen = ?""",
+            (norm_query, source, gap_type, entity_name, now, now, now)
+        )
+        conn.commit()
+    except Exception as e:
+        logging.debug(f"KNOWLEDGE GAP: record failed: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        conn.close()'''
+
+assert old_record_gap in content, "record_gap target not found in knowledge.py"
+content = content.replace(old_record_gap, new_record_gap, 1)
+
+path.write_text(content, encoding="utf-8")
+print("Done: knowledge.py record_gap() fixed for PG AmbiguousColumn + rollback on error")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

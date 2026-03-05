@@ -1,0 +1,58 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-04T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+`atom_extractor._migrate()` calls ALTER TABLE to add columns but never creates the base tables. On a fresh `loam.db`, this raises `sqlite3.OperationalError: no such table: atoms`. Need CREATE TABLE IF NOT EXISTS statements added before the ALTER TABLE calls.
+
+## Proposed Changes
+
+  File: core/atom_extractor.py
+  Location: _migrate() function — add base table creation before ALTER TABLE calls
+
+  Current:
+    def _migrate(conn):
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(atoms)")
+        atom_cols = {r[1] for r in cur.fetchall()}
+        for col, defn in [("domain","TEXT"),("depth","INTEGER DEFAULT 1"),("source_session","TEXT")]:
+            if col not in atom_cols:
+                cur.execute(f"ALTER TABLE atoms ADD COLUMN {col} {defn}")
+
+  Replace with:
+    def _migrate(conn):
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS atoms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL,
+            source_session TEXT,
+            domain TEXT,
+            depth INTEGER DEFAULT 1,
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS entities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            type TEXT,
+            mention_count INTEGER DEFAULT 1,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS gaps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            context TEXT,
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved INTEGER DEFAULT 0)""")
+        cur.execute("PRAGMA table_info(atoms)")
+        atom_cols = {r[1] for r in cur.fetchall()}
+        for col, defn in [("domain","TEXT"),("depth","INTEGER DEFAULT 1"),("source_session","TEXT")]:
+            if col not in atom_cols:
+                cur.execute(f"ALTER TABLE atoms ADD COLUMN {col} {defn}")
+
+## Rationale
+_migrate() was written assuming loam.db was pre-created with base tables. It never is. CREATE TABLE IF NOT EXISTS is idempotent — safe on both fresh and existing databases.
+
+## Risk Assessment
+  Risk Level: MINIMAL
+  Reversible: YES
+  Dependencies: JRNL1, JRNL2, JRNL3 (all applied)

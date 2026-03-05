@@ -1,0 +1,80 @@
+# Governance Proposal: Add ask-jeles to SAFE/apps/REGISTRY.yaml
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-03T04:25:00Z
+**Type:** Configuration Change
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Registers AskJeles (`app_id: ask-jeles`) in the SAFE app registry as a community app.
+Jeles is Willow's AI librarian — verified sources only, no SEO slop. As of 2026-03-03,
+the app is fully functional: `askjeles/` package built, verification pipeline operational,
+smoke test passed (7/10 entities verified, 0 errors). Ready for community listing.
+
+## Rationale
+
+- App is now functional (not just seeded) — warranting a registry entry
+- Jeles is actively verifying the Willow knowledge graph (1694 nodes pending)
+- Source Trail app already references Jeles in its tags — registry should be consistent
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove the YAML block
+- **Dependencies:** None (app already built and running)
+- **Testing:** `python -m askjeles.main --verify "NASA"` → verified: true, confidence: high
+
+## ΔE Impact
+
+Expected ΔE: +0.020 (formal registration, no code change)
+
+## Implementation
+
+```python
+import sys
+from pathlib import Path
+
+REG = Path(r"C:\Users\Sean\Documents\GitHub\SAFE\apps\REGISTRY.yaml")
+content = REG.read_text(encoding="utf-8")
+
+OLD = '# Deprecated Apps (no longer maintained)\ndeprecated_apps: []'
+
+NEW = (
+    '  - app_id: ask-jeles\n'
+    '    name: AskJeles\n'
+    '    repository: https://github.com/seancampbell3161/safe-app-ask-jeles\n'
+    '    author: Sean Campbell\n'
+    '    status: community\n'
+    '    privacy_tier: mixed\n'
+    '    local_processing: 0.80\n'
+    '    description: >\n'
+    '      Jeles, your AI librarian. Verified sources only — Smithsonian, LoC, NASA, NIH, and more.\n'
+    '      No SEO slop. Findings deposited to The Binder. Verifies Willow knowledge graph against public record.\n'
+    '    tags:\n'
+    '      - librarian\n'
+    '      - research\n'
+    '      - verification\n'
+    '      - utety\n'
+    '      - binder\n'
+    '      - verified-sources\n'
+    '\n'
+    '# Deprecated Apps (no longer maintained)\n'
+    'deprecated_apps: []'
+)
+
+if OLD not in content:
+    print("ERROR: target not found", file=sys.stderr)
+    raise SystemExit(1)
+
+content = content.replace(OLD, NEW, 1)
+with open(REG, "w", encoding="utf-8", newline="\n") as f:
+    f.write(content)
+print("OK: ask-jeles added to SAFE/apps/REGISTRY.yaml")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

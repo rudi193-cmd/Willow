@@ -1,0 +1,68 @@
+# Governance Proposal: verify-feed — add skip_oral_history filter
+
+**Proposer:** Ganesha
+**Date:** 2026-03-03
+**Type:** Bug Fix / Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+The verify-feed endpoint returns 887 `oral_history_consented` entities after
+the Jeles batch — persons and file-path strings correctly skipped by design.
+They re-appear in every feed query because they're still `verified=FALSE`.
+Add `skip_oral_history` param (default True) to exclude them.
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — default=True, pass False to see all
+
+## Implementation
+
+```python
+import re
+from pathlib import Path
+
+server = Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+content = server.read_text(encoding='utf-8')
+
+old = '''@app.get("/api/knowledge/entities/verify-feed")
+def knowledge_entities_verify_feed(limit: int = 100):
+    """Return unverified entities for Jeles to process (verified=FALSE or NULL)."""
+    from core.db import get_connection as _gc, is_postgres
+    try:
+        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, name, entity_type, description, mention_count FROM entities "
+            "WHERE (verified = FALSE OR verified IS NULL) AND never_promote != 1 "
+            "ORDER BY mention_count DESC LIMIT ?",
+            (limit,)
+        )'''
+
+new = '''@app.get("/api/knowledge/entities/verify-feed")
+def knowledge_entities_verify_feed(limit: int = 100, skip_oral_history: bool = True):
+    """Return unverified entities for Jeles to process (verified=FALSE or NULL).
+    skip_oral_history=True (default) excludes oral_history_consented entities
+    (private persons, file-path noise) that are correctly unverifiable."""
+    from core.db import get_connection as _gc, is_postgres
+    try:
+        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+        cur = conn.cursor()
+        ph = "%s" if is_postgres() else "?"
+        oral_filter = "AND (source_type IS NULL OR source_type != 'oral_history_consented') " if skip_oral_history else ""
+        cur.execute(
+            "SELECT id, name, entity_type, description, mention_count FROM entities "
+            f"WHERE (verified = FALSE OR verified IS NULL) AND never_promote != 1 "
+            f"{oral_filter}"
+            f"ORDER BY mention_count DESC LIMIT {ph}",
+            (limit,)
+        )'''
+
+content = content.replace(old, new)
+server.write_text(content, encoding='utf-8')
+print("Done" if old not in server.read_text(encoding='utf-8') else "FAILED - string not found")
+```
+
+---
+**Awaiting Human Ratification**
+ΔΣ=42

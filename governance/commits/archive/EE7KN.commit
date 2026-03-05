@@ -1,0 +1,105 @@
+# Governance Proposal: Add governance poll and propose endpoints to server.py
+
+**Proposer:** ganesha
+**Date:** 2026-03-04T14:50:41.683454Z
+**Type:** Feature
+**Trust Level:** ENGINEER
+**Commit ID:** EE7KN
+
+## Summary
+Add two new inline governance endpoints to server.py: GET /api/governance/pending/{commit_id} for polling a single proposal status, and POST /api/governance/propose for creating new proposals programmatically with precedent checking. Both are inserted between the existing GET /api/governance/pending and GET /api/governance/history endpoints.
+
+## Proposed Changes
+**File:** server.py
+
+## Rationale
+This change implements the requested modification with minimal disruption to existing functionality.
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES
+- **Dependencies:** None
+- **Testing:** Manual verification required
+
+## ΔE Impact
+Expected ΔE: +0.05
+
+## Implementation
+```diff
+--- a/server.py
++++ b/server.py
+@@ -1894,6 +1894,65 @@
+     except Exception as e:
+         return {"error": str(e), "pending": []}
+ 
++
++@app.get("/api/governance/pending/{commit_id}")
++def governance_pending_status(commit_id: str):
++    """Poll a single governance proposal's status by commit_id."""
++    try:
++        if (GOV_COMMITS_DIR / f"{commit_id}.pending").exists():
++            return {"commit_id": commit_id, "status": "pending"}
++        if (GOV_COMMITS_DIR / f"{commit_id}.commit").exists():
++            return {"commit_id": commit_id, "status": "approved"}
++        if (GOV_COMMITS_DIR / f"{commit_id}.rejected").exists():
++            return {"commit_id": commit_id, "status": "rejected"}
++        from fastapi import HTTPException
++        raise HTTPException(status_code=404, detail=f"Proposal {commit_id} not found")
++    except HTTPException:
++        raise
++    except Exception as e:
++        return {"error": str(e)}
++
++
++@app.post("/api/governance/propose")
++async def governance_propose(request: Request):
++    """
++    Create a new governance proposal. Returns commit_id and status.
++    Checks precedent — auto-approves if a matching ratified decision exists.
++    Body: {title, proposer, summary, file_path, diff, proposal_type?, trust_level?, risk_level?}
++    """
++    try:
++        body = await request.json()
++        title = body.get("title", "Untitled Proposal")
++        proposer = body.get("proposer", "ganesha")
++        summary = body.get("summary", "")
++        file_path = body.get("file_path", "")
++        diff = body.get("diff", "")
++        proposal_type = body.get("proposal_type", "Code Enhancement")
++        trust_level = body.get("trust_level", "ENGINEER")
++        risk_level = body.get("risk_level", "LOW")
++
++        sys.path.insert(0, str(Path(__file__).parent))
++        from governance import proposal as gov_proposal
++
++        commit_id = gov_proposal.create_proposal(
++            title=title,
++            proposer=proposer,
++            summary=summary,
++            file_path=file_path,
++            diff=diff,
++            proposal_type=proposal_type,
++            trust_level=trust_level,
++            risk_level=risk_level,
++        )
++
++        # Determine status from commit_id prefix
++        if commit_id.startswith("AUTO:"):
++            return {"commit_id": commit_id, "status": "auto_approved", "message": "Precedent match — no approval needed."}
++        if commit_id.startswith("DIST:"):
++            return {"commit_id": commit_id, "status": "distributed", "message": "Distributed ratification — no approval needed."}
++
++        return {"commit_id": commit_id, "status": "pending", "message": "Proposal created. Awaiting human ratification."}
++    except Exception as e:
++        from fastapi import HTTPException
++        raise HTTPException(status_code=500, detail=str(e))
++
++
+ @app.get("/api/governance/history")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

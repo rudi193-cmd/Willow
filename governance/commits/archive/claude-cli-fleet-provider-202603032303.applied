@@ -1,0 +1,73 @@
+# Governance Proposal: Add Claude CLI as Free Fleet Provider
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-03T23:03:43.277593
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Add the `claude` CLI binary as a provider in llm_router.py PROVIDERS list (tier=free).
+Calls `subprocess.run(["claude", "--print", prompt])` with CLAUDECODE unset so it runs
+cleanly outside any active Claude Code session. Sits after Ollama entries in free tier.
+Gives the fleet Sonnet 4.6 quality at zero marginal cost.
+
+## Proposed Changes
+**File:** core/llm_router.py
+**Location:** PROVIDERS list (after Ollama GLM-5) + ask() dispatch block
+
+## Rationale
+- Free fleet currently tops out at Llama 3.1-8B quality
+- claude CLI provides Sonnet 4.6 quality using existing subscription
+- Unsets CLAUDECODE so subprocess is safe even when Willow launched from CLI session
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES
+- **Dependencies:** `claude` binary in PATH
+- **Testing:** `llm_router.ask("hello", preferred_tier="free")` from Willow process
+
+## ΔE Impact
+Expected ΔE: +0.045 (improved fleet quality ceiling)
+
+## Implementation
+```python
+import re
+from pathlib import Path
+
+f = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\llm_router.py")
+src = f.read_text(encoding="utf-8")
+
+old_entry = '    ProviderConfig("Ollama GLM-5", "PATH", "http://localhost:11434/api/generate", "glm-5:cloud", "free"),  # Cloud via Ollama'
+new_entry = old_entry + '\n    ProviderConfig("Claude CLI", "PATH", "cli://claude", "claude-sonnet-4-6", "free"),  # Claude CLI subprocess — Sonnet quality at free tier'
+src = src.replace(old_entry, new_entry, 1)
+
+old_dispatch = "            # --- OPENAI-COMPATIBLE ADAPTER (Groq, DeepSeek, Cerebras, SambaNova, Together.ai, OpenRouter, OpenAI, Fireworks, etc) ---"
+new_dispatch = '''            elif provider.name == "Claude CLI":
+                import subprocess as _sp
+                _env = __import__("os").environ.copy()
+                _env.pop("CLAUDECODE", None)
+                _res = _sp.run(
+                    ["claude", "--print", enhanced_prompt],
+                    capture_output=True, text=True, timeout=120, env=_env
+                )
+                if _res.returncode == 0 and _res.stdout.strip():
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    response_text = _res.stdout.strip()
+                    provider_health.record_success(provider.name, response_time_ms)
+                    return _log_and_return(response_text, provider.name, provider.tier, provider.model, enhanced_prompt, task_type)
+                else:
+                    provider_health.record_failure(provider.name, str(_res.returncode), _res.stderr[:200])
+                    continue
+
+            # --- OPENAI-COMPATIBLE ADAPTER (Groq, DeepSeek, Cerebras, SambaNova, Together.ai, OpenRouter, OpenAI, Fireworks, etc) ---'''
+src = src.replace(old_dispatch, new_dispatch, 1)
+
+f.write_text(src, encoding="utf-8")
+print("Done.")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

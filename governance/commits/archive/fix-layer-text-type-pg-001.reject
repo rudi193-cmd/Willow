@@ -1,0 +1,105 @@
+# Governance Proposal: Fix layer Column Type Mismatch (TEXT vs INTEGER) in PostgreSQL
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-02T20:18:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`tools/pg_schema.sql` defines `entities.layer` as `TEXT DEFAULT '1'`.
+All SQL in `relationship_tracker.py` treats it as an integer — literal `2`/`3`
+in WHERE clauses and INSERT VALUES, and Python `int` passed as a bound parameter.
+
+PostgreSQL strict typing raises:
+  `operator does not exist: text = integer`
+on every query that filters by layer (list_entities, record_reference,
+get_eligible_for_promotion, promote_to_named).
+
+SQLite accepts this because of type affinity coercion. PostgreSQL does not.
+
+Fix: make all `layer` literals string-quoted in SQL (`'2'`, `'3'`) and
+cast the bound parameter to `str` in `list_entities`. No schema change needed —
+TEXT is the correct type for this field (it stores '1', '2', '3').
+
+## Proposed Changes
+
+**File:** `core/relationship_tracker.py`
+**Locations:** Lines 137, 147, 200, 367, 400
+
+## Rationale
+
+- All five changes are search-and-replace of integer literals / int params to
+  string equivalents — no logic changes
+- SQLite type affinity means `layer = '2'` also works in SQLite (coerces text
+  to integer for comparison against INTEGER-typed column)
+- Prevents errors on all binder endpoints that filter by layer
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** None (independent of pool fix)
+- **Testing:**
+  1. `GET /api/binder/entities?layer=3` → returns entities, no error in console
+  2. `GET /api/binder/eligible` → returns eligible list, no error
+  3. Ingest knowledge → record_reference creates L2 entity without error
+  4. Promote entity → promote_to_named creates L3 entity without error
+
+## ΔE Impact
+
+Expected ΔE: +0.010 (fixes all binder entity endpoints for PostgreSQL)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\relationship_tracker.py")
+src = target.read_text(encoding="utf-8")
+
+fixes = [
+    # Line 137: layer = 2 literal in WHERE
+    (
+        'reference_string = ? AND username = ? AND layer = 2"',
+        "reference_string = ? AND username = ? AND layer = '2'\""
+    ),
+    # Line 147: layer value 2 in INSERT VALUES (position 5, after mention_count=1)
+    (
+        "VALUES (?, ?, '', 1, 2, ?, ?, ?, ?, ?, 'untracked', 0, ?)",
+        "VALUES (?, ?, '', 1, '2', ?, ?, ?, ?, ?, 'untracked', 0, ?)"
+    ),
+    # Line 200: layer value 3 in promote_to_named INSERT VALUES
+    (
+        "VALUES (?, ?, ?, ?, 3, ?, ?, 'promoted', ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, '3', ?, ?, 'promoted', ?, ?, ?)"
+    ),
+    # Line 367: layer=2 literal in get_eligible_for_promotion WHERE
+    (
+        "WHERE layer=2 AND promotion_status='eligible'",
+        "WHERE layer='2' AND promotion_status='eligible'"
+    ),
+    # Line 400: bound parameter — cast int to str for TEXT column
+    (
+        "                params.append(layer)\n",
+        "                params.append(str(layer))\n"
+    ),
+]
+
+applied = 0
+for old, new in fixes:
+    if old in src:
+        src = src.replace(old, new, 1)
+        applied += 1
+    else:
+        print(f"WARN: pattern not found: {old[:60]}")
+
+target.write_text(src, encoding="utf-8")
+print(f"APPLIED: {applied}/5 layer type fixes in relationship_tracker.py")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

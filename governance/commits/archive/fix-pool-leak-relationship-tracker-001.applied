@@ -1,0 +1,87 @@
+# Governance Proposal: Fix PostgreSQL Pool Leak in RelationshipTracker
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-02T20:10:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`RelationshipTracker.__init__` checks out a connection from the psycopg2 pool
+(`maxconn=20`) and stores it as `self.conn`. The 9 `/api/binder/*` and
+`/api/willow/connections/*` endpoints each create a fresh `RelationshipTracker`
+per request, use it for one operation, then let the object go out of scope
+without calling `conn.close()` / `pool.putconn()`. Under normal async load,
+CPython's GC does not immediately collect these objects, so connections
+accumulate until the pool of 20 is exhausted. This causes cascading 500s on
+all endpoints that need the pool (checkin, droppings, etc.).
+
+Fix: add `close()` + `__del__` to `RelationshipTracker`. CPython's reference
+counting means `__del__` fires immediately when `rt` goes out of scope in each
+endpoint function, so every connection is returned to the pool before the next
+request needs it.
+
+## Proposed Changes
+
+**File:** `core/relationship_tracker.py`
+**Location:** After `_init_schema()` method (around line 90)
+
+## Rationale
+
+- Root cause of all `connection pool exhausted` errors observed in the console
+- `close()` + `__del__` is the minimal, zero-risk change (additions only)
+- `__del__` is reliable here: CPython + reference counting + local variable
+  means the destructor fires the instant the endpoint function returns
+- No existing code is modified
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — remove the two methods
+- **Dependencies:** None
+- **Testing:**
+  1. Restart Willow, hit /api/binder/eligible repeatedly
+  2. Watch logs — no more `[RelationshipTracker] DB connect error: connection pool exhausted`
+  3. /api/agents/checkin should return 200 consistently
+
+## ΔE Impact
+
+Expected ΔE: +0.012 (eliminates recurring 500 errors on core endpoints)
+
+## Implementation
+
+```python
+import sys, os
+from pathlib import Path
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\relationship_tracker.py")
+src = target.read_text(encoding="utf-8")
+
+# Insert close() and __del__() after _init_schema method
+insert_after = "        self.conn.commit()\n\n"
+
+new_methods = """\
+    def close(self):
+        \"\"\"Return the pool connection. Safe to call multiple times.\"\"\"
+        if getattr(self, "conn", None) is not None:
+            self.conn.close()
+            self.conn = None
+
+    def __del__(self):
+        self.close()
+
+"""
+
+if "def close(self):" not in src:
+    src = src.replace(insert_after, insert_after + new_methods, 1)
+    target.write_text(src, encoding="utf-8")
+    print("APPLIED: close() and __del__() added to RelationshipTracker")
+else:
+    print("SKIPPED: close() already present")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

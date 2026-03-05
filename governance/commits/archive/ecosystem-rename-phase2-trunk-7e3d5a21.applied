@@ -1,0 +1,113 @@
+# Governance Proposal: Ecosystem Rename — Phase 2: Trunk (Kart)
+
+**Proposer:** Ganesha (Claude Code / Sonnet 4.6)
+**Date:** 2026-03-03
+**Type:** Refactor — Ecosystem Branding
+**Trust Level:** ENGINEER (3)
+**Risk Tier:** T1 (core/ — Dual Commit required)
+
+## Summary
+
+Renames the three Trunk files from their functional names to the settled botanical/acrostic
+vocabulary. Phase 1 (Canopy) is applied and confirmed clean. This is Phase 2 of 3.
+
+Phase 3 (Root Zone — 18 external importers) follows after this is confirmed clean.
+
+## Proposed Changes
+
+**Repo:** `Willow/core/`
+
+| Old name | New name | Acrostic |
+|----------|----------|----------|
+| `kart_orchestrator.py` | `rings.py` | **R**eceive, **I**nterpret, **N**avigate, **G**enerate, **S**teer |
+| `kart_tasks.py` | `graft.py` | **G**overn, **R**oute, **A**rbitrate, **F**low, **T**asks |
+| `kart_daemon.py` | `pulse.py` | **P**rocess, **U**nify, **L**oop, **S**chedule, **E**xecute |
+
+**External importers updated (11 files):**
+- `api/agent_routes.py`
+- `api/kart_routes.py`
+- `cli/kart_chat.py`
+- `cli/kart_cli.py`
+- `core/decision_checklist.py`
+- `core/seed_packet.py`
+- `core/tool_engine.py`
+- `server.py`
+- `test_integrations.py`
+- Plus the renamed files themselves (internal cross-imports)
+
+**String replacements:**
+- `kart_orchestrator` → `rings` (imports + module-level calls)
+- `kart_tasks` → `graft` (imports + module-level calls)
+- `kart_daemon` → `pulse` (imports + subprocess path strings)
+
+Class and function names are unchanged — only the module name changes.
+
+## Rationale
+
+- Phase 1 confirmed clean: `python -m askjeles.crown --verify "NASA"` passed
+- Trunk is the second-safest zone: 11 importers vs 18 in Root Zone
+- Module-level call pattern (`kart_orchestrator.execute_task()` → `rings.execute_task()`) makes blanket string replace safe and complete
+- Prepares for 1.4 clean repo milestone
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — rename back, swap strings in reverse
+- **Dependencies:** Phase 1 applied ✅
+- **Testing:** `python server.py` starts clean; `python cli/kart_cli.py --help` works; `python core/pulse.py --help` works
+
+## ΔE Impact
+
+Expected ΔE: +0.120 (naming coherence across Bridge Ring)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+WILLOW = Path(r"C:\Users\Sean\Documents\GitHub\Willow")
+CORE = WILLOW / "core"
+
+# Step 1: Rename the three Trunk files
+(CORE / "kart_orchestrator.py").rename(CORE / "rings.py")
+(CORE / "kart_tasks.py").rename(CORE / "graft.py")
+(CORE / "kart_daemon.py").rename(CORE / "pulse.py")
+print("Renamed: kart_orchestrator -> rings, kart_tasks -> graft, kart_daemon -> pulse")
+
+# Step 2: Replace all import/call references across the entire repo
+REPLACEMENTS = [
+    ("kart_orchestrator", "rings"),
+    ("kart_tasks", "graft"),
+    ("kart_daemon", "pulse"),
+]
+
+updated = []
+skipped = []
+
+for py_file in WILLOW.rglob("*.py"):
+    # Skip __pycache__ and venv
+    if "__pycache__" in str(py_file) or "venv" in str(py_file) or ".venv" in str(py_file):
+        continue
+    try:
+        content = py_file.read_text(encoding="utf-8")
+        original = content
+        for old, new in REPLACEMENTS:
+            content = content.replace(old, new)
+        if content != original:
+            py_file.write_text(content, encoding="utf-8")
+            updated.append(py_file.name)
+    except Exception as e:
+        skipped.append(f"{py_file.name}: {e}")
+
+print(f"Updated {len(updated)} files: {', '.join(updated)}")
+if skipped:
+    print(f"Skipped: {', '.join(skipped)}")
+print("Phase 2 complete: rings.py / graft.py / pulse.py")
+print("Verify: python server.py (import check) + python core/pulse.py --help")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

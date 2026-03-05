@@ -1,0 +1,158 @@
+# Governance Proposal: Add Server-Window Logging to scan-connections and knowledge-graph
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02
+**Type:** Bug Fix (observability)
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+"Scan for connections" and "Refresh knowledge graph" run silently — nothing appears in the WILLOW - SERVER window when they execute. Both are synchronous endpoints with no logger calls.
+
+Also caught: `_willow_scan_connections_internal()` uses `s.get("connection_type", ...)` but `suggest_connections()` returns the key as `suggested_type` — so the connection type recorded is always "co-mention" regardless of what Willow inferred. Fixed to use the correct key.
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** None
+- **Testing:** Hit "Scan for connections" button → `[scan-connections] Scanning N atoms` appears in server window. Load `/graph` → `[knowledge-graph] Building: min_mentions=1` appears.
+
+## ΔE Impact
+Expected ΔE: +0.015 (observability; minor correctness fix on connection_type key)
+
+---
+
+## Implementation
+
+```python
+import pathlib as _pathlib
+
+target = _pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+src = target.read_text(encoding="utf-8")
+
+# ── CHANGE 1: scan-connections internal — add logging + fix suggested_type key ─
+
+old1 = '''def _willow_scan_connections_internal(username: str = "Sweet-Pea-Rudi19") -> dict:
+    """Core scan logic — reusable by route and auto-triggers."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        if not rt.conn:
+            return {"status": "error", "error": "DB unavailable"}
+        # Get all knowledge atom IDs
+        rows = rt.conn.execute("SELECT id FROM knowledge ORDER BY id").fetchall()
+        knowledge_ids = [r["id"] for r in rows]
+        if not knowledge_ids:
+            return {"status": "ok", "new_proposals": 0, "total_suggestions": 0}
+        suggestions = rt.suggest_connections(knowledge_ids)
+        new_count = 0
+        for s in suggestions:
+            result = rt.record_connection(
+                entity_a_id=s["entity_a"]["id"],
+                entity_b_id=s["entity_b"]["id"],
+                connection_type=s.get("connection_type", "co-mention"),
+                weight=s.get("confidence", 0.5),
+                source="willow-auto-scan",
+            )
+            if result:
+                new_count += 1
+        return {"status": "scanned", "new_proposals": new_count, "total_suggestions": len(suggestions)}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}'''
+
+new1 = '''def _willow_scan_connections_internal(username: str = "Sweet-Pea-Rudi19") -> dict:
+    """Core scan logic — reusable by route and auto-triggers."""
+    try:
+        from core.relationship_tracker import RelationshipTracker
+        rt = RelationshipTracker(username)
+        if not rt.conn:
+            return {"status": "error", "error": "DB unavailable"}
+        # Get all knowledge atom IDs
+        rows = rt.conn.execute("SELECT id FROM knowledge ORDER BY id").fetchall()
+        knowledge_ids = [r["id"] for r in rows]
+        if not knowledge_ids:
+            return {"status": "ok", "new_proposals": 0, "total_suggestions": 0}
+        logger.info("[scan-connections] Scanning %d atoms for %s", len(knowledge_ids), username)
+        suggestions = rt.suggest_connections(knowledge_ids)
+        logger.info("[scan-connections] %d suggestions found", len(suggestions))
+        new_count = 0
+        for s in suggestions:
+            result = rt.record_connection(
+                entity_a_id=s["entity_a"]["id"],
+                entity_b_id=s["entity_b"]["id"],
+                connection_type=s.get("suggested_type", "co-mention"),
+                weight=s.get("confidence", 0.5),
+                source="willow-auto-scan",
+            )
+            if result:
+                new_count += 1
+        logger.info("[scan-connections] Done: %d new proposals recorded", new_count)
+        return {"status": "scanned", "new_proposals": new_count, "total_suggestions": len(suggestions)}
+    except Exception as e:
+        logger.error("[scan-connections] Error: %s", e)
+        return {"status": "error", "error": str(e)}'''
+
+assert old1 in src, "CHANGE 1 old string not found in server.py"
+src = src.replace(old1, new1, 1)
+print("CHANGE 1 applied: scan-connections logging + suggested_type fix")
+
+
+# ── CHANGE 2: knowledge_graph — add logging at start and end ───────────────────
+
+old2 = '''@app.get("/api/knowledge/graph")
+def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_node: int = 6):
+    import sqlite3
+    from collections import defaultdict
+    TYPE_COLORS = {
+        "person": "#4a90d9", "project": "#2d6a4f", "concept": "#9b59b6",
+        "tool": "#d4860a", "location": "#c0392b", "event": "#8b4513",
+    }
+    try:
+        db_path = knowledge._db_path(USERNAME)'''
+
+new2 = '''@app.get("/api/knowledge/graph")
+def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_node: int = 6):
+    import sqlite3
+    from collections import defaultdict
+    TYPE_COLORS = {
+        "person": "#4a90d9", "project": "#2d6a4f", "concept": "#9b59b6",
+        "tool": "#d4860a", "location": "#c0392b", "event": "#8b4513",
+    }
+    logger.info("[knowledge-graph] Building: min_mentions=%d, max_nodes=%d", min_mentions, max_nodes)
+    try:
+        db_path = knowledge._db_path(USERNAME)'''
+
+assert old2 in src, "CHANGE 2a old string not found in server.py"
+src = src.replace(old2, new2, 1)
+
+old2b = '''        conn.close()
+        return {"nodes": nodes, "edges": edges}
+    except Exception as e:
+        return {"error": str(e), "nodes": [], "edges": []}
+
+
+@app.get("/graph")'''
+
+new2b = '''        logger.info("[knowledge-graph] Done: %d nodes, %d edges", len(nodes), len(edges))
+        conn.close()
+        return {"nodes": nodes, "edges": edges}
+    except Exception as e:
+        logger.error("[knowledge-graph] Error: %s", e)
+        return {"error": str(e), "nodes": [], "edges": []}
+
+
+@app.get("/graph")'''
+
+assert old2b in src, "CHANGE 2b old string not found in server.py"
+src = src.replace(old2b, new2b, 1)
+print("CHANGE 2 applied: knowledge-graph logging")
+
+target.write_text(src, encoding="utf-8")
+print("ALL CHANGES COMPLETE")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

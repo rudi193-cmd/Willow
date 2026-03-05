@@ -1,0 +1,106 @@
+GOVERNANCE PROPOSAL
+===================
+ID:        topology-build-edges-fix-2026-03-03
+File:      core/topology.py
+Tier:      T1 (production core)
+Author:    Shiva (Claude/Sonnet) + Sean Campbell
+Date:      2026-03-03
+Status:    PENDING
+
+
+SUMMARY
+-------
+Fix two bugs in topology.build_edges() that cause recurring failures:
+1. FOREIGN KEY constraint failure due to orphaned knowledge_entities rows
+2. Connection leak when an exception occurs (causes "database is locked" on next call)
+
+
+ROOT CAUSE ANALYSIS
+-------------------
+Bug 1 — FK constraint (PRIMARY):
+  db.py:168 sets PRAGMA foreign_keys=ON on every SQLite connection.
+  build_edges() queries knowledge_entities to find shared-entity target_ids,
+  then inserts those as target_id into knowledge_edges (which has a FK to knowledge).
+  If knowledge_entities contains orphaned rows (knowledge_id not in knowledge),
+  those IDs pass through as target_id and fail the FK check on insert.
+
+  Confirmed: 20 orphaned knowledge_entities rows (knowledge_id side),
+             136 orphaned rows (entity_id side). Already cleaned from DB.
+
+Bug 2 — Connection leak (SECONDARY):
+  build_edges() and cluster_atoms() call conn.close() only on the happy path.
+  When an exception is raised (e.g., the FK constraint above), conn is never
+  closed. The next call to cluster_atoms() finds the connection still open
+  and fails with "database is locked".
+
+
+CHANGES
+-------
+1. build_edges() — wrap body in try/finally to guarantee conn.close()
+2. build_edges() — add JOIN to knowledge in shared-entity subquery so
+   orphaned knowledge_entities rows can never produce an invalid target_id:
+
+   BEFORE:
+     SELECT ke2.knowledge_id, COUNT(*) as cnt
+     FROM knowledge_entities ke1
+     JOIN knowledge_entities ke2 ON ke1.entity_id = ke2.entity_id
+     WHERE ke1.knowledge_id = ? AND ke2.knowledge_id != ?
+     GROUP BY ke2.knowledge_id HAVING cnt >= 2
+
+   AFTER:
+     SELECT ke2.knowledge_id, COUNT(*) as cnt
+     FROM knowledge_entities ke1
+     JOIN knowledge_entities ke2 ON ke1.entity_id = ke2.entity_id
+     JOIN knowledge k ON k.id = ke2.knowledge_id
+     WHERE ke1.knowledge_id = ? AND ke2.knowledge_id != ?
+     GROUP BY ke2.knowledge_id HAVING cnt >= 2
+
+3. cluster_atoms() — wrap body in try/finally to guarantee conn.close()
+   (same pattern, same risk)
+
+
+DIFF (pseudocode)
+-----------------
+build_edges():
+  conn = loam._connect(username)
++ try:
+      ... (existing body, unchanged logic) ...
+      conn.commit()
+-     conn.close()
+      return created
++ finally:
++     conn.close()
+
+cluster_atoms():
+  conn = loam._connect(username)
++ try:
+      ... (existing body, unchanged logic) ...
+      conn.commit()
+-     conn.close()
+      return cluster_ids
++ finally:
++     conn.close()
+
+
+RISK ASSESSMENT
+---------------
+Risk:    LOW
+Scope:   Read path unchanged. Only write path (INSERT OR IGNORE) is affected.
+         The JOIN filter is strictly more conservative — it can only reduce
+         the set of edges built, never add wrong ones. Existing 497,684 edges
+         are unaffected. The try/finally change is purely structural.
+Rollback: Remove the try/finally wrappers and the JOIN line. Trivial.
+
+
+GOVERNANCE ALIGNMENT
+--------------------
+- Topology is observational only (Aios Addendum) — no routing/scoring changes
+- canonical=0 default preserved
+- No deletions from knowledge or entities tables
+- Data cleanup (orphaned rows) already applied directly to DB as a one-time fix
+
+
+APPROVAL
+--------
+[ ] Sean Campbell — ratify to proceed
+    Apply: python governance/apply_commits.py topology-build-edges-fix-2026-03-03

@@ -1,0 +1,41 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-04T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+`journal_engine.create_session()` does not write `consent_state` to the `session.start` event. `atom_extractor.py` reads consent from `session.start` and defaults to `"write"` when absent, causing it to skip extraction silently. No atoms are ever produced.
+
+## Proposed Changes
+
+  File: core/journal_engine.py
+  Location: create_session() function
+
+  Current:
+    def create_session(username: str) -> str:
+        session_id = uuid.uuid4().hex[:8]
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        path = _journal_dir(username) / f"{date_str}_{session_id}.jsonl"
+        event = {"type": "session.start", "timestamp": datetime.now().isoformat(),
+                 "payload": {"session_id": session_id, "user": username}}
+        path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+        return session_id
+
+  Replace with:
+    def create_session(username: str, consent_state: str = "learn") -> str:
+        session_id = uuid.uuid4().hex[:8]
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        path = _journal_dir(username) / f"{date_str}_{session_id}.jsonl"
+        event = {"type": "session.start", "timestamp": datetime.now().isoformat(),
+                 "payload": {"session_id": session_id, "user": username,
+                             "consent_state": consent_state}}
+        path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+        return session_id
+
+## Rationale
+Atom extraction is the entire point of the journal pipeline. Without consent_state on session.start, the extractor always skips. Default of "learn" is appropriate — this is Shiva building context about the user, not a human user needing privacy protection from their own AI.
+
+## Risk Assessment
+  Risk Level: MINIMAL
+  Reversible: YES — consent_state parameter defaults to "learn", existing callers unaffected
+  Dependencies: JRNL1 (applied)

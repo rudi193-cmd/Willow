@@ -1,0 +1,80 @@
+# Governance Proposal: Fix knowledge.py PostgreSQL compatibility
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T21:15:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Two bugs in core/knowledge.py cause every knowledge API endpoint to fail on PostgreSQL:
+1. `init_db()` fires SQLite DDL (AUTOINCREMENT, FTS5, sqlite_master) against PG — every knowledge
+   call fails at the first DB operation.
+2. `search()` catches `sqlite3.OperationalError` for the FTS fallback, but PG raises `Exception`
+   (psycopg2.Error subclass), so the fallback is never reached and errors propagate.
+
+Fix: add `is_postgres()` early-return guard to `init_db()`, and broaden the exception catch in
+`search()` from `sqlite3.OperationalError` to `Exception`.
+
+## Proposed Changes
+
+**File:** `core/knowledge.py`
+**Changes:**
+1. Add `is_postgres()` guard at top of `init_db()` (after docstring, before any DB ops)
+2. Change `except sqlite3.OperationalError:` → `except Exception:` in `search()`
+
+## Rationale
+
+- Every other module with init_db-style functions already has this guard pattern
+- The PG schema is managed by `tools/pg_schema.sql` — no DDL needed at runtime on PG
+- The FTS5 fallback to LIKE is correct logic; it just needs to catch all exceptions not just sqlite3
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — removing two lines restores prior behavior
+- **Dependencies:** core/db.py `is_postgres()` (already imported by `_connect()`)
+- **Testing:** `curl http://localhost:8420/api/knowledge/search?q=willow` should return 200
+
+## ΔE Impact
+
+Expected ΔE: +0.300 (unblocks all knowledge/search/gaps endpoints that are currently 500-erroring)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+path = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\knowledge.py")
+content = path.read_text(encoding="utf-8")
+
+# Fix 1: add is_postgres() guard to init_db()
+old1 = '''def init_db(username: str):
+    """Create tables if they don't exist. Idempotent. V2 clean schema."""
+    conn = _connect(username)'''
+new1 = '''def init_db(username: str):
+    """Create tables if they don't exist. Idempotent. V2 clean schema."""
+    from core.db import is_postgres
+    if is_postgres():
+        return  # schema managed by pg_schema.sql
+    conn = _connect(username)'''
+
+assert old1 in content, f"Fix 1 target not found in knowledge.py"
+content = content.replace(old1, new1, 1)
+
+# Fix 2: broaden exception catch in search() for PG compat
+old2 = '    except sqlite3.OperationalError:'
+new2 = '    except Exception:'
+
+assert old2 in content, f"Fix 2 target not found in knowledge.py"
+content = content.replace(old2, new2, 1)
+
+path.write_text(content, encoding="utf-8")
+print("Done: knowledge.py updated — init_db() PG guard + search() exception broadened")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

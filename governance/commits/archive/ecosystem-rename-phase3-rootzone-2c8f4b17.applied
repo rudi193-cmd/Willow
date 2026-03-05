@@ -1,0 +1,111 @@
+# Governance Proposal: Ecosystem Rename — Phase 3: Root Zone
+
+**Proposer:** Ganesha (Claude Code / Sonnet 4.6)
+**Date:** 2026-03-03
+**Type:** Refactor — Ecosystem Branding + Consolidation
+**Trust Level:** ENGINEER (3)
+**Risk Tier:** T1 (core/ — Dual Commit required)
+
+## Summary
+
+Final phase of the ecosystem rename. Renames Root Zone files to botanical vocabulary.
+
+Unlike Phase 2, `knowledge` and `watcher` are common English words — blanket replace would
+corrupt `knowledge_graph`, `watcher_alive`, `apps/watcher.py`, etc. This proposal uses
+targeted import-aware replacements only.
+
+Phase 1 (Canopy) ✅ | Phase 2 (Trunk) ✅ | Phase 3 (Root Zone) ← this proposal
+
+## Root Zone File Map
+
+| Before | After | Acrostic |
+|--------|-------|----------|
+| `relationship_tracker.py` | `vine.py` | **V**ector, **I**dentify, **N**etwork, **E**ntity |
+| `knowledge.py` | `loam.py` | **L**edger, **O**rganic, **A**rchive, **M**emory |
+| `watcher.py` | `soil.py` | **S**ense, **O**bserve, **I**ntake, **L**isten |
+| `knowledge_compactor.py` | `compost.py` | auxiliary daemon — not a zone file |
+
+## Complete Zone Architecture (after apply)
+
+```
+Root Zone   vine.py · loam.py · soil.py
+Trunk       rings.py · graft.py · pulse.py
+Canopy      leaf.py · prism.py · crown.py
+
+Auxiliary   pigeon_daemon.py · compost.py · kart_startup.py
+```
+
+## Risk Assessment
+
+- **Risk Level:** MEDIUM (18 external importers — targeted replacements required)
+- **Reversible:** YES — rename back, swap import strings in reverse
+- **Dependencies:** Phase 1 ✅ Phase 2 ✅
+- **Testing:** `python -c "from core import vine, loam, soil; print('Root Zone OK')"`
+
+## ΔE Impact
+
+Expected ΔE: +0.180 (Root Zone coherence — most foundational layer renamed)
+
+## Implementation
+
+```python
+import re
+from pathlib import Path
+
+WILLOW = Path(r"C:\Users\Sean\Documents\GitHub\Willow")
+CORE = WILLOW / "core"
+
+# Step 1: Rename files
+(CORE / "relationship_tracker.py").rename(CORE / "vine.py")
+(CORE / "knowledge.py").rename(CORE / "loam.py")
+(CORE / "watcher.py").rename(CORE / "soil.py")
+(CORE / "knowledge_compactor.py").rename(CORE / "compost.py")
+print("Renamed: relationship_tracker->vine, knowledge->loam, watcher->soil, knowledge_compactor->compost")
+
+updated = []
+for py_file in WILLOW.rglob("*.py"):
+    if "__pycache__" in str(py_file) or "venv" in str(py_file):
+        continue
+    try:
+        content = py_file.read_text(encoding="utf-8")
+        original = content
+
+        # relationship_tracker is specific enough for blanket replace
+        content = content.replace("relationship_tracker", "vine")
+
+        # knowledge_compactor must be replaced before bare "knowledge"
+        content = content.replace("knowledge_compactor", "compost")
+
+        # knowledge: only replace in import statements + module-qualified access
+        # Avoids corrupting: knowledge_graph, knowledge_entities, etc.
+        content = content.replace("from core import knowledge\n", "from core import loam\n")
+        content = content.replace("from core import knowledge,", "from core import loam,")
+        content = content.replace("from core import knowledge ", "from core import loam ")
+        content = content.replace("from core.knowledge import", "from core.loam import")
+        content = content.replace("core.knowledge", "core.loam")
+        # Module usage: knowledge.method() — negative lookbehind skips _knowledge.
+        content = re.sub(r"(?<![_\w])knowledge\.", "loam.", content)
+
+        # watcher: only core module references — NOT apps.watcher or variable names
+        content = content.replace("from core import watcher", "from core import soil")
+        content = content.replace("from core.watcher import", "from core.soil import")
+        content = content.replace("core.watcher", "core.soil")
+        # watcher.py is standalone — no module usage pattern to fix
+
+        if content != original:
+            py_file.write_text(content, encoding="utf-8")
+            updated.append(py_file.name)
+    except Exception:
+        pass
+
+print(f"Updated {len(updated)} files: {', '.join(updated)}")
+print("Phase 3 complete. Willow 1.4 naming done.")
+print("Verify: python -c \"from core import vine, loam, soil; print('Root Zone OK')\"")
+print("        python server.py")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

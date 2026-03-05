@@ -1,0 +1,113 @@
+# Governance Proposal: Fix agent_registry.py and topology.py PostgreSQL compatibility
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T21:15:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Two more T1 files have the same pattern: SQLite DDL fires against PG, causing crashes.
+
+Bug 4 — `core/agent_registry.py:init_agent_tables()`:
+- Calls `_conn(username)` → gets a `_PgConn` wrapper
+- Calls `conn.executescript()` → `_PgConn` has no `executescript()` method → `AttributeError`
+- All tables (agents, agent_mailbox) already exist in `pg_schema.sql`
+- Fix: add `is_postgres()` early return
+
+Bug 5 — `core/topology.py:_init_tables()`:
+- Takes a `conn` parameter (called with an already-open PG connection from `knowledge._connect()`)
+- Creates tables with `AUTOINCREMENT` syntax which is not valid PG syntax
+- Tables (knowledge_edges, knowledge_clusters, cluster_members) exist in `pg_schema.sql`
+- The `ALTER TABLE ... ADD COLUMN canonical` block tries SQLite syntax on PG → error
+- Fix: check `is_postgres()` inside `_init_tables()` and return early
+
+Also fixes `init_state_table()` in agent_registry.py which has the same executescript() problem.
+
+## Proposed Changes
+
+**Files:** `core/agent_registry.py`, `core/topology.py`
+
+## Rationale
+
+- Same pattern as Bug 1: SQLite DDL against PG → exception at startup
+- PG schema already has all these tables via pg_schema.sql
+- Early return is safe — PG schema is authoritative
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** core/db.py `is_postgres()`
+- **Testing:** `curl http://localhost:8420/api/agents/list` and `/api/topology/rings`
+
+## ΔE Impact
+
+Expected ΔE: +0.250 (unblocks agent list and topology endpoints)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+# ── Fix agent_registry.py ──────────────────────────────────────────────────
+ar_path = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\agent_registry.py")
+ar = ar_path.read_text(encoding="utf-8")
+
+# Fix init_agent_tables
+old_iat = '''def init_agent_tables(username):
+    """Add agent tables to existing knowledge DB."""
+    conn = _conn(username)'''
+new_iat = '''def init_agent_tables(username):
+    """Add agent tables to existing knowledge DB."""
+    from core.db import is_postgres
+    if is_postgres():
+        return  # schema managed by pg_schema.sql
+    conn = _conn(username)'''
+
+assert old_iat in ar, "init_agent_tables target not found"
+ar = ar.replace(old_iat, new_iat, 1)
+
+# Fix init_state_table
+old_ist = '''def init_state_table(username):
+    """Add willow_state key-value table to agent DB."""
+    conn = _conn(username)'''
+new_ist = '''def init_state_table(username):
+    """Add willow_state key-value table to agent DB."""
+    from core.db import is_postgres
+    if is_postgres():
+        return  # schema managed by pg_schema.sql
+    conn = _conn(username)'''
+
+assert old_ist in ar, "init_state_table target not found"
+ar = ar.replace(old_ist, new_ist, 1)
+
+ar_path.write_text(ar, encoding="utf-8")
+print("Done: agent_registry.py updated")
+
+# ── Fix topology.py ────────────────────────────────────────────────────────
+topo_path = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\topology.py")
+topo = topo_path.read_text(encoding="utf-8")
+
+old_topo = '''def _init_tables(conn: sqlite3.Connection):
+    """Create topology tables. Idempotent."""
+    cur = conn.cursor()'''
+new_topo = '''def _init_tables(conn: sqlite3.Connection):
+    """Create topology tables. Idempotent."""
+    from core.db import is_postgres
+    if is_postgres():
+        return  # schema managed by pg_schema.sql
+    cur = conn.cursor()'''
+
+assert old_topo in topo, "_init_tables target not found in topology.py"
+topo = topo.replace(old_topo, new_topo, 1)
+
+topo_path.write_text(topo, encoding="utf-8")
+print("Done: topology.py updated")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

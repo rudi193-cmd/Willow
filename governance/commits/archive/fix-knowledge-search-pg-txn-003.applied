@@ -1,0 +1,138 @@
+# Governance Proposal: Fix knowledge.py search() transaction rollback on PG
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02T21:30:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+After fixing Bug 2 (broadening the exception catch), the search() function still fails on PG.
+
+Root cause: When the FTS5/knowledge_fts query fails on PG, PostgreSQL puts the connection into
+an aborted transaction state. The `except Exception` block then tries to run the LIKE fallback
+query on the SAME aborted connection → "current transaction is aborted, commands ignored until
+end of transaction block".
+
+Fix: Add a rollback call after catching the FTS exception, before running the LIKE fallback.
+This clears the aborted state and allows the LIKE query to succeed.
+
+Additionally, on PG the search_vector column (TSVECTOR) exists and should be used for FTS.
+However, the simpler and correct fix is to use `is_postgres()` to choose the query path upfront:
+- On PG: use `search_vector @@ plainto_tsquery(...)` directly (no try/except needed)
+- On SQLite: use FTS5 with LIKE fallback (existing logic)
+
+## Proposed Changes
+
+**File:** `core/knowledge.py`
+**Change:** Replace the try/except FTS block in search() with a PG-aware branch that uses
+tsvector search on PG and FTS5 + LIKE fallback on SQLite.
+
+## Rationale
+
+- PG aborted transaction state must be cleared with rollback before any subsequent queries
+- The pg_schema.sql already maintains a search_vector column with tsvector index
+- This is cleaner than rollback-and-retry: route by DB type upfront
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES
+- **Dependencies:** core/db.py `is_postgres()`
+- **Testing:** `curl http://localhost:8420/api/knowledge/search?q=willow` should return 200 with results
+
+## ΔE Impact
+
+Expected ΔE: +0.350 (knowledge search fully functional on PG)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+path = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\knowledge.py")
+content = path.read_text(encoding="utf-8")
+
+old_search_block = '''    try:
+        rows = cur.execute("""
+            SELECT k.id, k.source_type, k.title, k.summary,
+                   k.content_snippet, k.category, k.created_at,
+                   rank
+            FROM knowledge_fts
+            JOIN knowledge k ON k.id = knowledge_fts.rowid
+            WHERE knowledge_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        """, (fts_expr, max_results)).fetchall()
+    except Exception:
+        # FTS match syntax error — fall back to simple LIKE
+        rows = cur.execute("""
+            SELECT id, source_type, title, summary,
+                   content_snippet, category, created_at,
+                   0 as rank
+            FROM knowledge
+            WHERE title LIKE ? OR summary LIKE ? OR content_snippet LIKE ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (f"%{query}%", f"%{query}%", f"%{query}%", max_results)).fetchall()'''
+
+new_search_block = '''    from core.db import is_postgres as _is_pg
+    if _is_pg():
+        # PostgreSQL: use tsvector search_vector column (maintained by trigger in pg_schema.sql)
+        try:
+            rows = cur.execute("""
+                SELECT id, source_type, title, summary,
+                       content_snippet, category, created_at,
+                       0 as rank
+                FROM knowledge
+                WHERE search_vector @@ plainto_tsquery('english', %s)
+                ORDER BY ts_rank(search_vector, plainto_tsquery('english', %s)) DESC
+                LIMIT %s
+            """, (query, query, max_results)).fetchall()
+        except Exception:
+            conn._conn.rollback()
+            rows = cur.execute("""
+                SELECT id, source_type, title, summary,
+                       content_snippet, category, created_at,
+                       0 as rank
+                FROM knowledge
+                WHERE title ILIKE %s OR summary ILIKE %s OR content_snippet ILIKE %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (f"%{query}%", f"%{query}%", f"%{query}%", max_results)).fetchall()
+    else:
+        try:
+            rows = cur.execute("""
+                SELECT k.id, k.source_type, k.title, k.summary,
+                       k.content_snippet, k.category, k.created_at,
+                       rank
+                FROM knowledge_fts
+                JOIN knowledge k ON k.id = knowledge_fts.rowid
+                WHERE knowledge_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (fts_expr, max_results)).fetchall()
+        except Exception:
+            # FTS match syntax error — fall back to simple LIKE
+            rows = cur.execute("""
+                SELECT id, source_type, title, summary,
+                       content_snippet, category, created_at,
+                       0 as rank
+                FROM knowledge
+                WHERE title LIKE ? OR summary LIKE ? OR content_snippet LIKE ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", f"%{query}%", max_results)).fetchall()'''
+
+assert old_search_block in content, "Search block target not found in knowledge.py"
+content = content.replace(old_search_block, new_search_block, 1)
+
+path.write_text(content, encoding="utf-8")
+print("Done: knowledge.py search() updated with PG tsvector branch + transaction rollback safety")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

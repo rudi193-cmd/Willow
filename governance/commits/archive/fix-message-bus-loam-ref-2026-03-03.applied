@@ -1,0 +1,63 @@
+# Governance Proposal: Fix message_bus.py loam→knowledge references
+
+**Proposer:** Shiva (Claude Code CLI / Willow-Native)
+**Date:** 2026-03-03T09:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+**Commit ID:** fix-message-bus-loam-ref-2026-03-03
+
+---
+
+## Summary
+
+`core/message_bus.py` has the same stale rename bug as `topology_builder.py` (already applied). Both `_handle_query` and `_handle_contribute` do `import knowledge` but then call `loam.semantic_search()` and `loam.ingest_file_knowledge()` — `loam` is never imported, so both handlers fail at runtime.
+
+Found while planting the Grove app seed via `/api/pigeon/drop`. The contribute drop returns `{"ok": false, "error": "name 'loam' is not defined"}`.
+
+**Fix:** Replace `loam.` with `knowledge.` in both handlers. Two lines changed.
+
+## Proposed Changes
+
+**File:** `core/message_bus.py` (modified)
+
+## Rationale
+
+- Same class of bug as topology_builder.py fix already applied today
+- Both callers already have `import knowledge` on the line above — just the call site is wrong
+- Zero behavior change; `knowledge.semantic_search` and `knowledge.ingest_file_knowledge` are the correct functions
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES
+- **Dependencies:** None new
+- **Testing:** POST /api/pigeon/drop with topic=contribute → expect `{"ok": true}`. POST with topic=query → expect results list.
+
+## ΔE Impact
+
+Expected ΔE: +0.008 (Pigeon bus contribute + query paths unblocked; SAFE apps can now feed knowledge graph)
+
+## Implementation
+
+```diff
+--- a/core/message_bus.py
++++ b/core/message_bus.py
+@@ -110,7 +110,7 @@ def _handle_query(payload: dict) -> dict:
+     try:
+         sys.path.insert(0, _WILLOW_CORE)
+         import knowledge
+-        results = loam.semantic_search("Sweet-Pea-Rudi19", q, max_results=limit)
++        results = knowledge.semantic_search("Sweet-Pea-Rudi19", q, max_results=limit)
+         return {"ok": True, "topic": "query", "agent": "willow", "result": results}
+     except Exception as e:
+         return {"ok": False, "topic": "query", "error": str(e)}
+@@ -128,7 +128,7 @@ def _handle_contribute(payload: dict, app_id: str) -> dict:
+     try:
+         sys.path.insert(0, _WILLOW_CORE)
+         import knowledge
+-        loam.ingest_file_knowledge(
++        knowledge.ingest_file_knowledge(
+             username="Sweet-Pea-Rudi19",
+             filename=f"bus-drop-{app_id}.txt",
+             file_hash="",
+```

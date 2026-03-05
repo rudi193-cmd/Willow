@@ -1,0 +1,191 @@
+# Governance Proposal: Kart Background Task Daemon
+
+**Proposer:** Ganesha (Claude Code / Sonnet 4.6)
+**Date:** 2026-03-03
+**Type:** Feature — Bridge Ring Engine
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Creates `core/kart_daemon.py` — the worker loop that makes Kart a real Bridge Ring
+processor. Polls `kart_tasks.db` every 30s, archives stale session-marker tasks on
+startup, and routes actionable tasks through `KartOrchestrator.execute()`.
+
+Without this, Kart is a CLI wrapper with no autonomous processing capability.
+485 tasks have accumulated unprocessed. This is the daemon that clears them
+and handles all future work.
+
+## Proposed Changes
+
+**File:** `core/kart_daemon.py` (NEW)
+
+## Rationale
+
+- Kart has been registered as an agent since 2026-02-24 but never processed tasks
+- 485 pending tasks in kart_tasks.db, 444 stale session markers
+- KartOrchestrator.execute() exists and works — it just has no caller
+- Bridge Ring needs a heartbeat: Source (Willow) → Bridge (Kart) → Continuity (Jeles)
+- Daemon follows same pattern as pigeon_daemon.py and ocr_consumer_daemon.py
+
+## Risk Assessment
+
+- **Risk Level:** LOW
+- **Reversible:** YES — kill the process, nothing changes in existing code
+- **Dependencies:** core/kart_tasks.py, core/kart_orchestrator.py (both exist)
+- **Testing:** Launch with `python core/kart_daemon.py --interval 5`, watch logs
+
+## ΔE Impact
+
+Expected ΔE: +0.420 (activates Bridge Ring for the first time — high system impact)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+content = '''"""
+Kart Daemon -- Background Task Worker
+
+Bridge Ring engine: polls kart_tasks.db for pending actionable tasks,
+routes them through KartOrchestrator, marks results.
+
+Launch: python core/kart_daemon.py [--username NAME] [--interval SECS]
+Server: started as subprocess by server.py on startup (same pattern as pigeon_daemon)
+
+GOVERNANCE: kart-daemon-worker-1997f1a1a903
+CHECKSUM: ΔΣ=42
+"""
+
+import os
+import sys
+import time
+import signal
+import logging
+import argparse
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core import kart_tasks
+from core.kart_orchestrator import KartOrchestrator
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[kart-daemon] %(asctime)s %(levelname)s %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+POLL_INTERVAL = int(os.environ.get("KART_POLL_INTERVAL", "30"))
+USERNAME = os.environ.get("WILLOW_USERNAME", "Sweet-Pea-Rudi19")
+
+# Session-marker tasks logged by agents — not actionable work items
+SKIP_SUBJECTS = {
+    "Ganesha CLI session",
+    "ganesha cli session",
+}
+
+_running = True
+
+
+def _handle_signal(sig, frame):
+    global _running
+    logger.info("Shutdown signal received — stopping after current task")
+    _running = False
+
+
+def _is_actionable(task: dict) -> bool:
+    return task.get("subject", "") not in SKIP_SUBJECTS
+
+
+def _archive_stale(username: str) -> int:
+    """On startup: archive non-actionable pending tasks so they don\'t clog the queue."""
+    tasks = kart_tasks.list_tasks(username, status="pending")
+    count = 0
+    for t in tasks:
+        if not _is_actionable(t):
+            kart_tasks.update_task(username, t["task_id"], "archived", "kart_daemon")
+            count += 1
+    return count
+
+
+def run(username: str, poll_interval: int = POLL_INTERVAL):
+    global _running
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
+    logger.info(f"Kart daemon starting — user={username} interval={poll_interval}s")
+
+    stale = _archive_stale(username)
+    if stale:
+        logger.info(f"Archived {stale} stale session-marker tasks")
+
+    orchestrator = KartOrchestrator(username, agent_name="kart")
+    consecutive_errors = 0
+
+    while _running:
+        try:
+            tasks = kart_tasks.list_tasks(username, status="pending")
+            actionable = [t for t in tasks if _is_actionable(t)]
+
+            if actionable:
+                task = actionable[0]
+                task_id = task["task_id"]
+                description = task["description"]
+
+                logger.info(f"Task {task_id}: {description[:80]!r}")
+                kart_tasks.update_task(username, task_id, "in_progress", "kart_daemon")
+
+                try:
+                    result = orchestrator.execute(description)
+                    status = "COMPLETED" if result.get("success") else "FAILED"
+                    summary = str(result.get("result", ""))[:120]
+                    logger.info(f"Task {task_id} {status} — {summary}")
+                    kart_tasks.update_task(username, task_id, status, "kart_daemon")
+                    consecutive_errors = 0
+                except Exception as e:
+                    logger.error(f"Task {task_id} execution error: {e}")
+                    kart_tasks.update_task(username, task_id, "FAILED", "kart_daemon")
+                    consecutive_errors += 1
+
+                # Back off if repeatedly failing
+                if consecutive_errors >= 3:
+                    logger.warning(f"{consecutive_errors} consecutive failures — pausing 5min")
+                    time.sleep(300)
+                    consecutive_errors = 0
+                    continue
+
+            consecutive_errors = 0
+
+        except Exception as e:
+            logger.error(f"Daemon loop error: {e}")
+            consecutive_errors += 1
+
+        time.sleep(poll_interval)
+
+    logger.info("Kart daemon stopped cleanly")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Kart background task daemon")
+    parser.add_argument("--username", default=USERNAME, help="Willow username")
+    parser.add_argument("--interval", type=int, default=POLL_INTERVAL, help="Poll interval in seconds")
+    parser.add_argument("--daemon", action="store_true", help="No-op flag for compat with WILLOW.bat")
+    args = parser.parse_args()
+    run(args.username, args.interval)
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+target = Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\kart_daemon.py")
+target.write_text(content, encoding="utf-8")
+print(f"Written: {target}")
+print(f"Size: {target.stat().st_size} bytes")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

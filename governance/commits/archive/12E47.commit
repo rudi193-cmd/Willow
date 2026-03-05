@@ -1,0 +1,61 @@
+# Governance Proposal: Add get_proposal_status() to governance/proposal.py
+
+**Proposer:** ganesha
+**Date:** 2026-03-04T14:51:12.305724Z
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER
+**Commit ID:** 12E47
+
+## Summary
+Add get_proposal_status(commit_id) function that checks .pending/.commit/.rejected file existence and returns status string. Required by the new GET /api/governance/pending/{commit_id} polling endpoint.
+
+## Proposed Changes
+**File:** governance/proposal.py
+
+## Rationale
+This change implements the requested modification with minimal disruption to existing functionality.
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES
+- **Dependencies:** None
+- **Testing:** Manual verification required
+
+## ΔE Impact
+Expected ΔE: +0.05
+
+## Implementation
+```diff
+--- a/governance/proposal.py
++++ b/governance/proposal.py
+@@ -196,6 +196,22 @@ def list_proposals(status: str = "pending") -> list[str]:
+     return [p.stem for p in proposals]
+ 
+ 
++def get_proposal_status(commit_id: str) -> str:
++    """
++    Get the current status of a proposal by commit_id.
++
++    Returns:
++        "pending"   -- .pending file exists, awaiting ratification
++        "approved"  -- .commit file exists, ratified
++        "rejected"  -- .rejected file exists
++        "not_found" -- no file found with this commit_id
++    """
++    if (COMMITS_DIR / f"{commit_id}.pending").exists():
++        return "pending"
++    if (COMMITS_DIR / f"{commit_id}.commit").exists():
++        return "approved"
++    if (COMMITS_DIR / f"{commit_id}.rejected").exists():
++        return "rejected"
++    return "not_found"
++
++
+ if __name__ == "__main__":
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

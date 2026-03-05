@@ -1,0 +1,106 @@
+# Governance Proposal: Fix _PgConn.__exit__ Pool Connection Leak
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-04
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+`_PgConn.__exit__()` in `core/db.py` does not protect `self._conn.rollback()` with a try/except. When PostgreSQL terminates a connection server-side (e.g., via `idle_in_transaction_session_timeout=30s`), the rollback call raises `psycopg2.OperationalError`. This exception propagates out of `__exit__`, skipping `self._pool.putconn()` permanently. The checked-out connection is never returned to the pool. After repeated PG-side terminations (e.g., under load test), all 50 pool slots become permanently "in use" and the server enters a permanent "connection pool exhausted" state that survives all request completions. Only a server restart clears it.
+
+Compare: `close()` (line 140-145) correctly wraps rollback in try/except. `__exit__` (line 150-153) does not.
+
+Also adds a `try/finally` guard in `get_connection()` to return the connection to the pool if SET search_path fails during checkout.
+
+## Proposed Changes
+
+**File:** `core/db.py`
+**Location:** `_PgConn.__exit__()` (line 150) and `get_connection()` PG branch (line 174)
+
+## Rationale
+
+- Root cause of "connection pool exhausted" bug that appeared after 100-user locust test
+- `idle_in_transaction_session_timeout=30s` kills connections on PG side; Python pool doesn't know
+- `__exit__` without rollback protection → permanent leak of every PG-terminated connection
+- `get_connection()` without finally → leak if SET search_path raises during checkout
+- Both fixes match the existing pattern in `close()` (lines 141-144)
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — both changes only add try/except/finally guards; no logic change on success path
+- **Dependencies:** None
+- **Testing:** Restart Willow, hit PG endpoint, confirm 200; run locust under load and verify pool doesn't exhaust
+
+## ΔE Impact
+
+Expected ΔE: +0.015 (eliminates recurrent pool exhaustion failure mode)
+
+## Implementation
+
+```python
+import re
+from pathlib import Path
+
+db_path = Path(r'C:\Users\Sean\Documents\GitHub\Willow\core\db.py')
+content = db_path.read_text(encoding='utf-8')
+
+# Fix 1: __exit__ — add try/except around rollback, always call putconn
+old_exit = '''    def __exit__(self, exc_type, *_):
+        if exc_type:
+            self._conn.rollback()
+        self._pool.putconn(self._conn)'''
+
+new_exit = '''    def __exit__(self, exc_type, *_):
+        if exc_type:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+        self._pool.putconn(self._conn)'''
+
+assert old_exit in content, "Could not find __exit__ to patch"
+content = content.replace(old_exit, new_exit, 1)
+
+# Fix 2: get_connection() — try/finally so checkout is always returned on error
+old_gc = '''        pool = _get_pg_pool()
+        conn = pool.getconn()
+        conn.autocommit = False
+        pg_conn = _PgConn(pool, conn)
+        _schema = schema or WILLOW_USERNAME
+        if _schema:
+            safe = _safe_schema_name(_schema)
+            _cur = conn.cursor()
+            _cur.execute(f"SET search_path = {safe}, public")
+            _cur.close()
+        return pg_conn'''
+
+new_gc = '''        pool = _get_pg_pool()
+        conn = pool.getconn()
+        try:
+            conn.autocommit = False
+            pg_conn = _PgConn(pool, conn)
+            _schema = schema or WILLOW_USERNAME
+            if _schema:
+                safe = _safe_schema_name(_schema)
+                _cur = conn.cursor()
+                _cur.execute(f"SET search_path = {safe}, public")
+                _cur.close()
+            return pg_conn
+        except Exception:
+            pool.putconn(conn)
+            raise'''
+
+assert old_gc in content, "Could not find get_connection PG block to patch"
+content = content.replace(old_gc, new_gc, 1)
+
+db_path.write_text(content, encoding='utf-8')
+print("Applied: __exit__ rollback guard + get_connection try/finally")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

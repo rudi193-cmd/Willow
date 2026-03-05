@@ -1,0 +1,118 @@
+# Governance Proposal: Ecosystem Rename — Phase 1: Canopy (Jeles)
+
+**Proposer:** Ganesha (Claude Code / Sonnet 4.6)
+**Date:** 2026-03-03
+**Type:** Refactor — Ecosystem Branding
+**Trust Level:** ENGINEER (3)
+**Risk Tier:** T3 (safe-app-ask-jeles — direct edits OK)
+
+## Summary
+
+Renames the three core files of the Jeles/Continuity Ring from their generic names
+to the settled botanical/acrostic vocabulary. This is Phase 1 of a 3-phase ecosystem
+rename. Canopy goes first — it is T3, self-contained, and has no external dependents.
+
+Phase 2 (Trunk/Kart — 11 external importers) and Phase 3 (Root Zone — 18 external
+importers) follow as separate proposals after this one is confirmed clean.
+
+## Naming Doctrine
+
+Each zone's three files are acrostics of their function AND botanical vocabulary:
+
+**Canopy** (Jeles / Continuity Ring):
+- `sources.py` → `leaf.py`   — **L**ibrary, **E**xternal, **A**rchive, **F**etch
+- `verifier.py` → `prism.py` — **P**rove, **R**eference, **I**nspect, **S**ource, **M**atch
+- `main.py` → `crown.py`     — **C**ompose, **R**elease, **O**utput, **W**itness, **N**urture
+
+CROWN is also the Willow launch benchmark rubric:
+Compose ✅ | Release ✅ | Output ✅ | Witness ⚠️ | Nurture ❌
+
+**Trunk** (Kart / Bridge Ring — Phase 2):
+- `kart_orchestrator.py` → `rings.py`  — **R**eceive, **I**nterpret, **N**avigate, **G**enerate, **S**teer
+- `kart_tasks.py` → `graft.py`         — **G**overn, **R**oute, **A**rbitrate, **F**low, **T**asks
+- `kart_daemon.py` → `pulse.py`        — **P**rocess, **U**nify, **L**oop, **S**chedule, **E**xecute
+
+**Root Zone** (Source Ring — Phase 3):
+- `relationship_tracker.py` → `vine.py` — **V**ector, **I**dentify, **N**etwork, **E**ntity
+- `knowledge.py` → `loam.py`            — **L**edger, **O**rganic, **A**rchive, **M**emory
+- `watcher.py` → `soil.py`              — **S**ense, **O**bserve, **I**ntake, **L**isten
+
+## Proposed Changes (Phase 1 Only)
+
+**Repo:** `safe-app-ask-jeles/askjeles/`
+
+| Old name | New name | Import string change |
+|----------|----------|----------------------|
+| `sources.py` | `leaf.py` | `askjeles.sources` → `askjeles.leaf` |
+| `verifier.py` | `prism.py` | `askjeles.verifier` → `askjeles.prism` |
+| `main.py` | `crown.py` | `askjeles.main:app` → `askjeles.crown:app` |
+
+**Files touched:**
+- `askjeles/sources.py` → renamed to `leaf.py`
+- `askjeles/verifier.py` → renamed to `prism.py` (updates import of `askjeles.sources`)
+- `askjeles/main.py` → renamed to `crown.py` (updates imports of `askjeles.sources` + `askjeles.verifier`)
+- `safe-app-manifest.json` → entry_point updated
+
+## Rationale
+
+- Canopy is T3 — no governance hook, no external dependents, safe to apply immediately
+- Establishes the vocabulary in production before Phase 2/3 (higher-risk) renames
+- `crown.py` as the entry point makes the launch benchmark rubric literal
+- Names are stable — settled across two sessions, locked to memory
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — `git mv` in reverse, swap imports back
+- **Dependencies:** None external. Only `askjeles.sources` and `askjeles.verifier` are imported within the package itself.
+- **Testing:** `python -m askjeles.crown --verify "NASA"` after apply
+
+## ΔE Impact
+
+Expected ΔE: +0.080 (naming clarity, no functional change)
+
+## Implementation
+
+```python
+from pathlib import Path
+
+JELES = Path(r"C:\Users\Sean\Documents\GitHub\safe-app-ask-jeles")
+PKG = JELES / "askjeles"
+
+# Step 1: Rename files
+(PKG / "sources.py").rename(PKG / "leaf.py")
+(PKG / "verifier.py").rename(PKG / "prism.py")
+(PKG / "main.py").rename(PKG / "crown.py")
+
+# Step 2: Fix imports in prism.py (was verifier.py)
+prism = PKG / "prism.py"
+prism.write_text(
+    prism.read_text(encoding="utf-8").replace("askjeles.sources", "askjeles.leaf"),
+    encoding="utf-8"
+)
+
+# Step 3: Fix imports in crown.py (was main.py)
+crown = PKG / "crown.py"
+content = crown.read_text(encoding="utf-8")
+content = content.replace("askjeles.sources", "askjeles.leaf")
+content = content.replace("askjeles.verifier", "askjeles.prism")
+crown.write_text(content, encoding="utf-8")
+
+# Step 4: Update manifest entry_point
+manifest = JELES / "safe-app-manifest.json"
+manifest.write_text(
+    manifest.read_text(encoding="utf-8").replace(
+        '"askjeles.main:app"', '"askjeles.crown:app"'
+    ),
+    encoding="utf-8"
+)
+
+print("Phase 1 complete: leaf.py / prism.py / crown.py")
+print("Verify: python -m askjeles.crown --verify NASA")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

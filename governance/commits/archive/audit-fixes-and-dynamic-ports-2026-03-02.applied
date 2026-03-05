@@ -1,0 +1,353 @@
+# Governance Proposal: Audit Fixes + Dynamic Port Assignment
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-02
+**Type:** Bug Fix + Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Four fixes from the 2026-03-02 full-system audit, plus the dynamic port assignment design Sean described:
+
+1. `/api/knowledge/stats` reads SQLite directly — broken on PostgreSQL backend (returns stale counts)
+2. `willow_state` accumulates expired agent tokens indefinitely — lazy purge on each new token issuance
+3. `assign_port()` uses `MAX(port)+1` with no socket check — can assign an already-in-use port
+4. No Pigeon `"register"` topic — agents can't negotiate a port via the bus; Willow just checks what's open at the time and assigns it, returns port in the response
+
+Also included: `safe-app-utety-chat/safe_integration.py` is missing `status()` — the only safe-app without it (T3 direct edit, noted separately).
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES — all changes are additive or drop-in replacements
+- **Dependencies:** `core.boot._port_open` (already exists) imported by `agent_registry.py`
+- **Testing:**
+  - `curl http://localhost:8420/api/knowledge/stats` → returns PG counts (knowledge: ~2700)
+  - `POST /api/agents/checkin {"agent_name":"ganesha"}` twice → second call purges expired tokens
+  - `python -c "from core import agent_registry; print(agent_registry.assign_port('Sweet-Pea-Rudi19', 'jane'))"`  → prints 8421 (or next free)
+  - `curl -X POST http://localhost:8420/api/pigeon/drop -d '{"topic":"register","app_id":"test","payload":{"agent":"jane","server_type":"interface"}}'` → `{"ok":true,"result":{"port":8421,"url":"http://localhost:8421"}}`
+  - `cd safe-app-utety-chat && python -c "import safe_integration; print(safe_integration.status())"`
+
+## ΔE Impact
+Expected ΔE: +0.042 (correctness — stats now reflect live PG data; port assignment collision-proof; token table bounded)
+
+---
+
+## Implementation
+
+```python
+# ── CHANGE 1: server.py — fix /api/knowledge/stats to use PostgreSQL ──────────
+
+import pathlib as _pathlib
+target = _pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+src = target.read_text(encoding="utf-8")
+
+old = '''@app.get("/api/knowledge/stats")
+def knowledge_stats():
+    import sqlite3
+    stats = {}
+    try:
+        db_path = knowledge._db_path(USERNAME)
+        if Path(db_path).exists():
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
+                try:
+                    cur.execute(f"SELECT COUNT(*) FROM {table}")
+                    stats[table] = cur.fetchone()[0]
+                except:
+                    stats[table] = 0
+            conn.close()
+    except:
+        pass
+    return stats'''
+
+new = '''@app.get("/api/knowledge/stats")
+def knowledge_stats():
+    from core.db import get_connection as _gc, is_postgres
+    stats = {}
+    try:
+        if is_postgres():
+            conn = _gc()
+            for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
+                try:
+                    row = conn.execute(f"SELECT COUNT(*) AS cnt FROM {table}").fetchone()
+                    stats[table] = row["cnt"] if row else 0
+                except Exception:
+                    stats[table] = 0
+            conn.close()
+        else:
+            import sqlite3
+            db_path = knowledge._db_path(USERNAME)
+            if Path(db_path).exists():
+                conn = sqlite3.connect(db_path)
+                cur = conn.cursor()
+                for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
+                    try:
+                        cur.execute(f"SELECT COUNT(*) FROM {table}")
+                        stats[table] = cur.fetchone()[0]
+                    except Exception:
+                        stats[table] = 0
+                conn.close()
+    except Exception:
+        pass
+    return stats'''
+
+assert old in src, "CHANGE 1 old string not found in server.py"
+src = src.replace(old, new, 1)
+target.write_text(src, encoding="utf-8")
+print("CHANGE 1 applied: /api/knowledge/stats now uses PostgreSQL")
+
+
+# ── CHANGE 2: agent_auth.py — lazy purge expired tokens + add purge function ──
+
+target2 = _pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\agent_auth.py")
+src2 = target2.read_text(encoding="utf-8")
+
+old2 = '''    # Mirror to ~/.willow/agent_tokens.json
+    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    existing = json.loads(TOKEN_FILE.read_text(encoding="utf-8")) if TOKEN_FILE.exists() else {}
+    existing[agent_name] = {"token": token, "expires_at": expires_at}
+    TOKEN_FILE.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+    pending = _fetch_pending()
+    return {"token": token, "trust_level": trust_level, "expires_at": expires_at, "agent_name": name, "pending": pending}'''
+
+new2 = '''    # Mirror to ~/.willow/agent_tokens.json
+    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    existing = json.loads(TOKEN_FILE.read_text(encoding="utf-8")) if TOKEN_FILE.exists() else {}
+    existing[agent_name] = {"token": token, "expires_at": expires_at}
+    TOKEN_FILE.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+    # Lazy purge: clean expired tokens on each new issuance
+    purge_expired_tokens()
+
+    pending = _fetch_pending()
+    return {"token": token, "trust_level": trust_level, "expires_at": expires_at, "agent_name": name, "pending": pending}'''
+
+assert old2 in src2, "CHANGE 2a old string not found in agent_auth.py"
+src2 = src2.replace(old2, new2, 1)
+
+# Add purge_expired_tokens() after validate_token()
+old2b = '''def load_my_token(agent_name: str) -> Optional[str]:'''
+new2b = '''def purge_expired_tokens() -> int:
+    """Delete expired agent tokens from willow_state. Called lazily on each new token issuance."""
+    db = _db()
+    try:
+        now = _now()
+        rows = db.execute(
+            "SELECT key, value FROM willow_state WHERE key LIKE 'agent_token:%'"
+        ).fetchall()
+        expired = []
+        for row in rows:
+            try:
+                val = json.loads(row["value"])
+                if val.get("expires_at", "") < now:
+                    expired.append(row["key"])
+            except Exception:
+                pass
+        if expired:
+            placeholders = ",".join("?" * len(expired))
+            db.execute(f"DELETE FROM willow_state WHERE key IN ({placeholders})", expired)
+            db.commit()
+        return len(expired)
+    except Exception:
+        return 0
+    finally:
+        db.close()
+
+
+def load_my_token(agent_name: str) -> Optional[str]:'''
+
+assert old2b in src2, "CHANGE 2b old string not found in agent_auth.py"
+src2 = src2.replace(old2b, new2b, 1)
+target2.write_text(src2, encoding="utf-8")
+print("CHANGE 2 applied: purge_expired_tokens() added to agent_auth.py")
+
+
+# ── CHANGE 3: agent_registry.py — assign_port() uses socket check ─────────────
+
+target3 = _pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\agent_registry.py")
+src3 = target3.read_text(encoding="utf-8")
+
+old3 = '''def assign_port(username: str, agent_name: str, server_type: str = "interface") -> int:
+    """Assign next available 84xx port to an agent. Returns assigned port."""
+    conn = _conn(username)
+    # Find highest assigned port
+    row = conn.execute("SELECT MAX(port) FROM agents WHERE port IS NOT NULL").fetchone()
+    next_port = (row[0] + 1) if row and row[0] else PORT_BASE
+    conn.execute(
+        "UPDATE agents SET port=?, server_type=? WHERE name=?",
+        (next_port, server_type, agent_name)
+    )
+    conn.commit()
+    conn.close()
+    return next_port'''
+
+new3 = '''def assign_port(username: str, agent_name: str, server_type: str = "interface") -> int:
+    """Assign next available 84xx port to an agent. Skips ports already bound. Returns assigned port."""
+    from core.boot import _port_open
+    PORT_MAX = 8499
+    conn = _conn(username)
+    rows = conn.execute("SELECT port FROM agents WHERE port IS NOT NULL").fetchall()
+    assigned = {r["port"] for r in rows if r["port"]}
+    port = None
+    for p in range(PORT_BASE, PORT_MAX):
+        if p not in assigned and not _port_open("127.0.0.1", p):
+            port = p
+            break
+    if port is None:
+        conn.close()
+        raise RuntimeError("No free ports available in 84xx range (8421-8499)")
+    conn.execute(
+        "UPDATE agents SET port=?, server_type=? WHERE name=?",
+        (port, server_type, agent_name)
+    )
+    conn.commit()
+    conn.close()
+    return port'''
+
+assert old3 in src3, "CHANGE 3 old string not found in agent_registry.py"
+src3 = src3.replace(old3, new3, 1)
+target3.write_text(src3, encoding="utf-8")
+print("CHANGE 3 applied: assign_port() now uses socket check in agent_registry.py")
+
+
+# ── CHANGE 4: message_bus.py — add "register" topic handler ───────────────────
+
+target4 = _pathlib.Path(r"C:\Users\Sean\Documents\GitHub\Willow\core\message_bus.py")
+src4 = target4.read_text(encoding="utf-8")
+
+old4 = '''    elif topic == "status":
+        return {
+            "ok": True,
+            "topic": "status",
+            "agent": "willow",
+            "result": {"status": "ok", "ts": datetime.now(UTC).isoformat()},
+        }
+    else:'''
+
+new4 = '''    elif topic == "status":
+        return {
+            "ok": True,
+            "topic": "status",
+            "agent": "willow",
+            "result": {"status": "ok", "ts": datetime.now(UTC).isoformat()},
+        }
+    elif topic == "register":
+        return _handle_register(payload)
+    else:'''
+
+assert old4 in src4, "CHANGE 4a old string not found in message_bus.py"
+src4 = src4.replace(old4, new4, 1)
+
+# Add _handle_register after _handle_connect
+old4b = '''def _handle_connect(payload: dict, app_id: str) -> dict:
+    """Route connect → Kart → proposed entity edge (logged for Willow review)."""
+    entity_a = payload.get("entity_a", "")
+    entity_b = payload.get("entity_b", "")
+    relation = payload.get("relation", "related_to")
+
+    if not entity_a or not entity_b:
+        return {"ok": False, "topic": "connect", "error": "missing entity_a or entity_b"}
+
+    # Log as a pending connection for Willow dashboard review
+    import json
+    logger.info(f"BUS: connect proposal from {app_id}: {entity_a} --{relation}--> {entity_b}")
+    return {
+        "ok": True,
+        "topic": "connect",
+        "agent": "kart",
+        "result": {
+            "status": "proposed",
+            "entity_a": entity_a,
+            "entity_b": entity_b,
+            "relation": relation,
+            "review": "pending — check Willow dashboard",
+        },
+    }'''
+
+new4b = '''def _handle_connect(payload: dict, app_id: str) -> dict:
+    """Route connect → Kart → proposed entity edge (logged for Willow review)."""
+    entity_a = payload.get("entity_a", "")
+    entity_b = payload.get("entity_b", "")
+    relation = payload.get("relation", "related_to")
+
+    if not entity_a or not entity_b:
+        return {"ok": False, "topic": "connect", "error": "missing entity_a or entity_b"}
+
+    # Log as a pending connection for Willow dashboard review
+    import json
+    logger.info(f"BUS: connect proposal from {app_id}: {entity_a} --{relation}--> {entity_b}")
+    return {
+        "ok": True,
+        "topic": "connect",
+        "agent": "kart",
+        "result": {
+            "status": "proposed",
+            "entity_a": entity_a,
+            "entity_b": entity_b,
+            "relation": relation,
+            "review": "pending — check Willow dashboard",
+        },
+    }
+
+
+def _handle_register(payload: dict) -> dict:
+    """Agent requests a port from Willow. Willow finds the next open 84xx socket and assigns it.
+
+    Payload: {"agent": "jane", "server_type": "interface"}
+    Response: {"ok": true, "result": {"port": 8421, "url": "http://localhost:8421"}}
+    """
+    agent_name = payload.get("agent", "")
+    server_type = payload.get("server_type", "interface")
+    username = payload.get("username", "Sweet-Pea-Rudi19")
+
+    if not agent_name:
+        return {"ok": False, "topic": "register", "error": "missing agent"}
+
+    try:
+        from core import agent_registry
+        port = agent_registry.assign_port(username, agent_name, server_type)
+        logger.info(f"BUS: port {port} assigned to agent '{agent_name}'")
+        return {
+            "ok": True,
+            "topic": "register",
+            "agent": "willow",
+            "result": {"port": port, "url": f"http://localhost:{port}"},
+        }
+    except Exception as e:
+        return {"ok": False, "topic": "register", "error": str(e)}'''
+
+assert old4b in src4, "CHANGE 4b old string not found in message_bus.py"
+src4 = src4.replace(old4b, new4b, 1)
+target4.write_text(src4, encoding="utf-8")
+print("CHANGE 4 applied: 'register' topic handler added to message_bus.py")
+
+
+# ── CHANGE 5: safe-app-utety-chat/safe_integration.py — add status() (T3) ─────
+
+target5 = _pathlib.Path(r"C:\Users\Sean\Documents\GitHub\safe-app-utety-chat\safe_integration.py")
+src5 = target5.read_text(encoding="utf-8")
+
+old5 = '''def _drop(topic: str, payload: dict) -> dict:'''
+new5 = '''def status() -> dict:
+    """Check if Willow bus is reachable."""
+    return _drop("status", {})
+
+
+def _drop(topic: str, payload: dict) -> dict:'''
+
+assert old5 in src5, "CHANGE 5 old string not found in safe-app-utety-chat/safe_integration.py"
+src5 = src5.replace(old5, new5, 1)
+target5.write_text(src5, encoding="utf-8")
+print("CHANGE 5 applied: status() added to safe-app-utety-chat/safe_integration.py")
+
+
+print("ALL CHANGES COMPLETE")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

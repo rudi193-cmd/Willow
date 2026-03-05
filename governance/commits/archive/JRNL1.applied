@@ -1,0 +1,29 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-04T00:00:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+`journal_engine.py` uses a hardcoded Windows path for WILLOW_ROOT. In WSL/Linux, directory creation silently fails — no journal sessions are ever written to disk. This breaks the entire journal → atom extraction pipeline. Zero session JSONL files exist under `artifacts/Sweet-Pea-Rudi19/journal/` as a result.
+
+## Proposed Changes
+
+  File: core/journal_engine.py
+  Location: line 7 — replace hardcoded WILLOW_ROOT
+
+  Current:
+    WILLOW_ROOT = Path("C:/Users/Sean/Documents/GitHub/Willow")
+
+  Replace with:
+    import sys as _sys
+    _WIN = _sys.platform == "win32"
+    WILLOW_ROOT = Path(r"C:\Users\Sean\Documents\GitHub\Willow" if _WIN
+                       else "/mnt/c/Users/Sean/Documents/GitHub/Willow")
+
+## Rationale
+Same WSL path issue fixed in pigeon.py (governance UUHXH). The journal_engine runs in the WSL/Linux environment under Willow's uvicorn server. Windows paths resolve to nothing in that context. Sessions start, write nothing, end — and atom_extractor.run() gets called with a file that was never created.
+
+## Risk Assessment
+  Risk Level: MINIMAL
+  Reversible: YES
+  Dependencies: none — same pattern already proven in pigeon.py

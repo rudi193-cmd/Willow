@@ -1,0 +1,51 @@
+# Governance Proposal: Fix Dashboard Kart Endpoint Wiring
+
+**Proposer:** Ganesha (Claude Code CLI)
+**Date:** 2026-03-02T23:40:00Z
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+The SAFE dashboard checks for a "Jane" service at localhost:8421/health — a standalone
+server that doesn't exist. Kart's actual status endpoint is /api/kart/status served
+through Willow at port 8420. This fix wires the dashboard correctly: checks Kart via
+Willow's existing /api/kart/status endpoint instead of a phantom port.
+
+## Proposed Changes
+**File:** SAFE/web/dashboard.html
+**Location:** renderEndpoints() function, endpoints array (~line 494)
+
+Change Jane/8421 to Kart/8420 using the correct existing endpoint.
+
+## Rationale
+- /api/kart/status exists and returns trust_level, tools, task_stats
+- No standalone Jane or Kart HTTP server runs on port 8421
+- ERR_CONNECTION_REFUSED on 8421 is wrong/misleading in the dashboard
+- All agent services are routed through Willow at 8420
+
+## Risk Assessment
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — one-line change
+- **Dependencies:** None
+- **Testing:** Load dashboard, verify Kart shows "online" instead of "offline"
+
+## ΔE Impact
+Expected ΔE: +0.010 (correct system status reporting)
+
+## Implementation
+```python
+from pathlib import Path
+path = Path(r"C:\Users\Sean\Documents\GitHub\SAFE\web\dashboard.html")
+content = path.read_text(encoding="utf-8")
+old = "    { name: 'Jane',   port: 8421, url: 'http://localhost:8421/health' },"
+new = "    { name: 'Kart',   port: 8420, url: 'http://localhost:8420/api/kart/status' },"
+assert old in content, f"Target line not found in dashboard.html"
+content = content.replace(old, new, 1)
+path.write_text(content, encoding="utf-8")
+print("dashboard.html updated: Kart now wired to /api/kart/status")
+```
+
+---
+**Awaiting Human Ratification**
+
+ΔΣ=42

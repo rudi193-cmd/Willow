@@ -1,0 +1,138 @@
+# Governance Proposal: Add Jeles Verification Endpoints to server.py
+
+**Proposer:** Ganesha (Claude Code CLI / Sonnet 4.6)
+**Date:** 2026-03-03T04:15:00Z
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Adds two endpoints to server.py to support Jeles (AskJeles) graph verification:
+1. `GET /api/knowledge/entities/verify-feed` — feeds Jeles unverified entities to process
+2. `PATCH /api/knowledge/entities/{entity_id}/verify` — Jeles writes verification results back
+
+These endpoints are the write-back interface for the Jeles verification pipeline which will
+cross-reference Willow's 1694 knowledge graph nodes against verified public sources.
+The migration adding `verified`, `confidence`, `source_type`, `sources`, `corrections` columns
+to `entities` has already been applied (migrate_verification.py, 2026-03-03).
+
+## Rationale
+
+- Jeles runs as an external SAFE app — cannot write directly to the DB
+- Needs a clean API to pull unverified work and write results back
+- Follows existing server.py endpoint patterns exactly
+- No breaking changes to existing endpoints
+
+## Risk Assessment
+
+- **Risk Level:** MINIMAL
+- **Reversible:** YES — new endpoints only, no modification of existing routes
+- **Dependencies:** migrate_verification.py must have run (it has — confirmed 2026-03-03)
+- **Testing:** `curl http://localhost:8420/api/knowledge/entities/verify-feed?limit=5`
+
+## ΔE Impact
+
+Expected ΔE: +0.030 (new Jeles integration capability, minimal risk)
+
+## Implementation
+
+```python
+import sys
+from pathlib import Path
+
+SRV = Path(r"C:\Users\Sean\Documents\GitHub\Willow\server.py")
+content = SRV.read_text(encoding="utf-8")
+
+OLD = (
+    '    loop = asyncio.get_event_loop()\n'
+    '    return await loop.run_in_executor(None, _do_rename)\n'
+    '\n'
+    '\n'
+    '@app.get("/api/knowledge/graph")\n'
+)
+
+NEW = (
+    '    loop = asyncio.get_event_loop()\n'
+    '    return await loop.run_in_executor(None, _do_rename)\n'
+    '\n'
+    '\n'
+    '@app.get("/api/knowledge/entities/verify-feed")\n'
+    'def knowledge_entities_verify_feed(limit: int = 100):\n'
+    '    """Return unverified entities for Jeles to process (verified=FALSE or NULL)."""\n'
+    '    from core.db import get_connection as _gc, is_postgres\n'
+    '    try:\n'
+    '        conn = _gc() if is_postgres() else _gc(knowledge._db_path(USERNAME))\n'
+    '        cur = conn.cursor()\n'
+    '        cur.execute(\n'
+    '            "SELECT id, name, entity_type, description, mention_count FROM entities "\n'
+    '            "WHERE (verified = FALSE OR verified IS NULL) AND never_promote != 1 "\n'
+    '            "ORDER BY mention_count DESC LIMIT ?",\n'
+    '            (limit,)\n'
+    '        )\n'
+    '        rows = cur.fetchall()\n'
+    '        conn.close()\n'
+    '        return {"entities": [\n'
+    '            {"id": r[0], "name": r[1], "type": r[2], "description": r[3] or "", "mentions": r[4]}\n'
+    '            for r in rows\n'
+    '        ], "count": len(rows)}\n'
+    '    except Exception as e:\n'
+    '        return {"entities": [], "error": str(e)}\n'
+    '\n'
+    '\n'
+    '@app.patch("/api/knowledge/entities/{entity_id}/verify")\n'
+    'async def knowledge_entity_verify(entity_id: int, request: Request):\n'
+    '    """Jeles writes verification results for an entity back to Willow."""\n'
+    '    import json as _json\n'
+    '    import datetime as _dt\n'
+    '    body = await request.json()\n'
+    '    verified = body.get("verified", False)\n'
+    '    confidence = body.get("confidence", "low")\n'
+    '    source_type = body.get("source_type", "oral_history_consented")\n'
+    '    sources = body.get("sources", [])\n'
+    '    corrections = body.get("corrections", [])\n'
+    '    if isinstance(sources, list):\n'
+    '        sources = _json.dumps(sources)\n'
+    '    if isinstance(corrections, list):\n'
+    '        corrections = _json.dumps(corrections)\n'
+    '    verified_at = _dt.datetime.utcnow().isoformat()\n'
+    '\n'
+    '    def _do_verify():\n'
+    '        try:\n'
+    '            from core.db import get_connection as _gc, is_postgres\n'
+    '            conn = _gc() if is_postgres() else _gc(knowledge._db_path(USERNAME))\n'
+    '            cur = conn.cursor()\n'
+    '            cur.execute(\n'
+    '                "UPDATE entities SET verified=?, confidence=?, source_type=?, "\n'
+    '                "sources=?, corrections=?, verified_at=?, verified_by=\'jeles\' WHERE id=?",\n'
+    '                (verified, confidence, source_type, sources, corrections, verified_at, entity_id)\n'
+    '            )\n'
+    '            updated = cur.rowcount\n'
+    '            conn.commit()\n'
+    '            conn.close()\n'
+    '            return {"success": bool(updated), "entity_id": entity_id,\n'
+    '                    "verified": verified, "confidence": confidence}\n'
+    '        except Exception as e:\n'
+    '            return {"success": False, "error": str(e)}\n'
+    '\n'
+    '    loop = asyncio.get_event_loop()\n'
+    '    return await loop.run_in_executor(None, _do_verify)\n'
+    '\n'
+    '\n'
+    '@app.get("/api/knowledge/graph")\n'
+)
+
+if OLD not in content:
+    print("ERROR: target not found", file=sys.stderr)
+    raise SystemExit(1)
+
+content = content.replace(OLD, NEW, 1)
+with open(SRV, "w", encoding="utf-8", newline="\n") as f:
+    f.write(content)
+print("OK: verify-feed and verify endpoints added to server.py")
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42
