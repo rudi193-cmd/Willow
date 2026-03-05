@@ -716,7 +716,7 @@ async def knowledge_entity_verify(entity_id: int, request: Request):
 
 
 @app.get("/api/knowledge/graph")
-def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_node: int = 6):
+def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_node: int = 6, layout: str = "force"):
     from core.db import get_connection as _gc, is_postgres
     from collections import defaultdict
     TYPE_COLORS = {
@@ -769,17 +769,34 @@ def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_n
                 entity_dict[r[0]] = r
 
         entity_ids = set(entity_dict.keys())
-        nodes = [{"id": r[0], "label": r[1], "type": r[2],
-                  "size": max(8, min(40, r[3] * 4)), "mentions": r[3],
-                  "description": r[4] or "",
-                  "color": TYPE_COLORS.get(r[2], "#888888")} for r in entity_dict.values()]
 
         if not entity_ids:
             conn.close()
-            return {"nodes": [], "edges": []}
+            return {"nodes": [], "edges": [], "layout_available": False}
 
         id_placeholders = ",".join("?" * len(entity_ids))
         id_list = list(entity_ids)
+
+        # Load cube coordinates from derived index (see CUBE_INDEX_SPEC.md)
+        try:
+            cur.execute(
+                f"SELECT node_id, cx, cy, cz, domain_name, temporal_name "
+                f"FROM cube_cells WHERE node_type='entity' AND node_id IN ({id_placeholders})",
+                id_list
+            )
+            cube_lookup = {r[0]: {"cx": r[1], "cy": r[2], "cz": r[3],
+                                  "cube_domain": r[4], "cube_temporal": r[5]}
+                           for r in cur.fetchall()}
+        except Exception:
+            cube_lookup = {}
+
+        _null_cube = {"cx": None, "cy": None, "cz": None,
+                      "cube_domain": None, "cube_temporal": None}
+        nodes = [{"id": r[0], "label": r[1], "type": r[2],
+                  "size": max(8, min(40, r[3] * 4)), "mentions": r[3],
+                  "description": r[4] or "",
+                  "color": TYPE_COLORS.get(r[2], "#888888"),
+                  **cube_lookup.get(r[0], _null_cube)} for r in entity_dict.values()]
 
         # knowledge_edges (semantic similarity)
         cur.execute(
@@ -823,9 +840,11 @@ def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_n
                                "weight": weight, "canonical": canonical,
                                "width": max(1, min(5, int(weight * 3)))})
 
-        logger.info("[knowledge-graph] Done: %d nodes, %d edges", len(nodes), len(edges))
+        layout_available = any(n.get("cx") is not None for n in nodes)
+        logger.info("[knowledge-graph] Done: %d nodes, %d edges, cube=%s",
+                    len(nodes), len(edges), layout_available)
         conn.close()
-        return {"nodes": nodes, "edges": edges}
+        return {"nodes": nodes, "edges": edges, "layout_available": layout_available}
     except Exception as e:
         logger.error("[knowledge-graph] Error: %s", e)
         return {"error": str(e), "nodes": [], "edges": []}

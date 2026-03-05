@@ -246,6 +246,15 @@ def main():
         total_edges = conn.execute("SELECT COUNT(*) FROM knowledge_edges").fetchone()[0]
         print(f"\nApplied {applied} new edges. Total knowledge_edges: {total_edges:,}")
 
+        # Update cube index after writing new edges
+        try:
+            from cube_indexer import index_knowledge, index_entities
+            k = index_knowledge(conn)
+            e = index_entities(conn)
+            print(f"Cube index updated: +{k} knowledge, +{e} entities")
+        except Exception as _ci_err:
+            print(f"[cube_indexer] skipped: {_ci_err}")
+
     conn.close()
 
 

@@ -199,6 +199,22 @@ def init_db(username: str):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_entities_username_domain ON entities(username, domain)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_entities_promotion ON entities(promotion_status)")
 
+    # 23³ Cube Index — derived spatial index (see CUBE_INDEX_SPEC.md)
+    cur.execute("""CREATE TABLE IF NOT EXISTS cube_cells (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id       INTEGER NOT NULL,
+        node_type     TEXT NOT NULL CHECK (node_type IN ('knowledge', 'entity')),
+        cx            INTEGER NOT NULL CHECK (cx BETWEEN 0 AND 22),
+        cy            INTEGER NOT NULL CHECK (cy BETWEEN 1 AND 23),
+        cz            INTEGER NOT NULL CHECK (cz BETWEEN 0 AND 22),
+        domain_name   TEXT NOT NULL,
+        temporal_name TEXT NOT NULL,
+        indexed_at    TEXT NOT NULL,
+        UNIQUE (node_id, node_type)
+    )""")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cube_xyz  ON cube_cells(cx, cy, cz)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cube_type ON cube_cells(node_type)")
+
     conn.commit()
     conn.close()
 

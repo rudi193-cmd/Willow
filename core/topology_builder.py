@@ -46,6 +46,19 @@ def run_cycle():
     except Exception as e:
         log.error(f"cluster_atoms failed: {e}")
 
+    # Update cube spatial index after topology changes
+    try:
+        import subprocess, sys as _sys
+        result = subprocess.run(
+            [_sys.executable, str(Path(__file__).parent.parent / "tools" / "cube_indexer.py")],
+            capture_output=True, text=True, timeout=120
+        )
+        log.info(f"cube_indexer: {result.stdout.strip()}")
+        if result.returncode != 0:
+            log.warning(f"cube_indexer stderr: {result.stderr.strip()}")
+    except Exception as e:
+        log.error(f"cube_indexer failed: {e}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Topology Builder Daemon")

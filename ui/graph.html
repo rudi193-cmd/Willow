@@ -63,6 +63,16 @@ hr { border: none; border-top: 1px solid #333; margin: 10px 0; }
 }
 #refreshBtn:hover { background: #3a8a65; }
 
+.layout-btn {
+  background: #333; color: #aaa; border: 1px solid #444;
+  padding: 4px 10px; border-radius: 4px; cursor: pointer;
+  font-size: 0.82rem; transition: background 0.15s;
+}
+.layout-btn.active { background: #2d6a4f; color: #fff; border-color: #2d6a4f; }
+.layout-btn:hover:not(.active) { background: #3a3a3a; }
+
+#cubeCoords { color: #666; font-size: 0.75rem; margin-top: 4px; font-family: monospace; }
+
 .type-filters { display: flex; flex-direction: column; gap: 6px; }
 .type-filter {
   display: flex;
@@ -170,6 +180,11 @@ hr { border: none; border-top: 1px solid #333; margin: 10px 0; }
     <input type="number" id="minMentions" value="2" min="1" max="9999">
     <button id="refreshBtn">Refresh</button>
   </div>
+  <div class="filter-row">
+    <label>Layout:</label>
+    <button id="forceBtn" class="layout-btn active">Force</button>
+    <button id="cubeBtn" class="layout-btn">Cube</button>
+  </div>
   <div class="type-filters" id="typeFilters"></div>
   <hr>
   <div id="detailPanel">
@@ -177,6 +192,7 @@ hr { border: none; border-top: 1px solid #333; margin: 10px 0; }
     <span class="detail-badge" id="detailBadge"></span>
     <div class="detail-mentions" id="detailMentions"></div>
     <div class="detail-desc" id="detailDesc"></div>
+    <div id="cubeCoords"></div>
   </div>
 </div>
 
@@ -196,6 +212,46 @@ let network = null;
 let allNodes = null;
 let allEdges = null;
 let currentNodeId = null;
+let currentLayout = 'force';
+
+// 23³ Cube projection (isometric-style)
+const CUBE_OFFSET_X = 200;
+const CUBE_OFFSET_Y = 400;
+const CUBE_SCALE_X  = 55;
+const CUBE_SCALE_Y  = 35;
+const CUBE_SCALE_ZX = 14;
+const CUBE_SCALE_ZY = 8;
+
+function cubeToCanvas(cx, cy, cz) {
+  return {
+    x: CUBE_OFFSET_X + (cx * CUBE_SCALE_X) + (cz * CUBE_SCALE_ZX),
+    y: CUBE_OFFSET_Y - (cy * CUBE_SCALE_Y) + (cz * CUBE_SCALE_ZY)
+  };
+}
+
+function applyLayout(layout) {
+  if (!allNodes || !network) return;
+  currentLayout = layout;
+
+  if (layout === 'cube') {
+    network.setOptions({ physics: { enabled: false } });
+    const updates = [];
+    allNodes.get().forEach(n => {
+      if (n.cx !== null && n.cx !== undefined) {
+        const pos = cubeToCanvas(n.cx, n.cy, n.cz);
+        updates.push({ id: n.id, x: pos.x, y: pos.y, fixed: { x: true, y: true } });
+      }
+    });
+    network.body.data.nodes.update(updates);
+  } else {
+    const unfixed = allNodes.get().map(n => ({ id: n.id, fixed: false }));
+    network.body.data.nodes.update(unfixed);
+    network.setOptions({ physics: { enabled: true, solver: 'forceAtlas2Based' } });
+  }
+
+  document.getElementById('forceBtn').classList.toggle('active', layout === 'force');
+  document.getElementById('cubeBtn').classList.toggle('active', layout === 'cube');
+}
 
 // DOM refs
 const spinner    = document.getElementById('spinner');
@@ -291,6 +347,15 @@ function showDetail(node) {
   } else {
     detailDesc.style.display = 'none';
   }
+  const coordsEl = document.getElementById('cubeCoords');
+  if (node.cx !== null && node.cx !== undefined) {
+    coordsEl.textContent =
+      '⬡ (' + node.cx + ',' + node.cy + ',' + node.cz + ')  ' +
+      (node.cube_domain || '') + ' · ' + (node.cube_temporal || '');
+    coordsEl.style.display = 'block';
+  } else {
+    coordsEl.style.display = 'none';
+  }
   detailPanel.classList.add('visible');
 }
 
@@ -335,6 +400,11 @@ function renderGraph(nodes, edges) {
       mentions: n.mentions || 0,
       description: n.description || '',
       size: n.size || 10,
+      cx: n.cx ?? null,
+      cy: n.cy ?? null,
+      cz: n.cz ?? null,
+      cube_domain: n.cube_domain ?? null,
+      cube_temporal: n.cube_temporal ?? null,
       color: { background: color, border: color, highlight: { background: color, border: '#fff' } },
       title: (n.label || n.id) + (n.description ? '\n' + n.description : ''),
       opacity: 1
@@ -412,6 +482,10 @@ document.getElementById('refreshBtn').addEventListener('click', function() {
   const val = parseInt(document.getElementById('minMentions').value, 10);
   loadGraph(isNaN(val) || val < 1 ? 1 : val);
 });
+
+// Layout toggle buttons
+document.getElementById('forceBtn').addEventListener('click', () => applyLayout('force'));
+document.getElementById('cubeBtn').addEventListener('click', () => applyLayout('cube'));
 
 // Initial load
 loadGraph(2);
