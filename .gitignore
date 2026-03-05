@@ -14,3 +14,7 @@ artifacts/
 .dev.vars
 .wrangler/
 .env
+
+# Frontend build artifacts
+ui/node_modules/
+ui/dist/
