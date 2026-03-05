@@ -22,7 +22,7 @@ from datetime import datetime
 WILLOW_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(WILLOW_ROOT))
 
-from core.knowledge import init_db, _connect, _extract_entities_regex, get_ring
+from core.loam import init_db, _connect, _extract_entities_regex, get_ring
 
 USERNAME = "Sweet-Pea-Rudi19"
 GDRIVE = Path("C:/Users/Sean/My Drive")
@@ -189,7 +189,7 @@ def main():
     args = parser.parse_args()
 
     init_db(USERNAME)
-    from core.knowledge import _db_path
+    from core.loam import _db_path
     db_path = _db_path(USERNAME)
 
     total = skipped = ingested = errors = 0

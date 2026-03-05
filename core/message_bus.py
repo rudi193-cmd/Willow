@@ -26,6 +26,7 @@ TOPIC_ROUTES = {
     "contribute": "kart",
     "connect":    "kart",
     "status":     "willow",
+    "message":    "mailbox",  # agent-to-agent mailbox deposit
 }
 
 _WILLOW_CORE = str(Path(__file__).parent)
@@ -64,6 +65,10 @@ def dispatch_to_agent(agent_name: str, dropping: dict) -> dict:
             "agent": "willow",
             "result": {"status": "ok", "ts": datetime.now(UTC).isoformat()},
         }
+    elif topic == "register":
+        return _handle_register(payload)
+    elif topic == "message":
+        return _handle_message(payload, app_id)
     else:
         return {"ok": False, "topic": topic, "error": f"unknown topic: {topic}"}
 
@@ -163,3 +168,50 @@ def _handle_connect(payload: dict, app_id: str) -> dict:
             "review": "pending — check Willow dashboard",
         },
     }
+
+
+def _handle_message(payload: dict, app_id: str) -> dict:
+    """Route message → agent mailbox deposit."""
+    from_agent = payload.get("from_agent", app_id)
+    to_agent = payload.get("to_agent", "")
+    subject = payload.get("subject", "")
+    body = payload.get("body", "")
+    thread_id = payload.get("thread_id")
+    username = payload.get("username", "Sweet-Pea-Rudi19")
+
+    if not to_agent or not subject or not body:
+        return {"ok": False, "topic": "message", "error": "missing to_agent, subject, or body"}
+
+    try:
+        from core import agent_registry
+        agent_registry.send_message(username, from_agent, to_agent, subject, body, thread_id)
+        return {"ok": True, "topic": "message", "to": to_agent, "from": from_agent}
+    except Exception as e:
+        return {"ok": False, "topic": "message", "error": str(e)}
+
+
+def _handle_register(payload: dict) -> dict:
+    """Agent requests a port from Willow. Willow finds the next open 84xx socket and assigns it.
+
+    Payload: {"agent": "shiva", "server_type": "interface"}
+    Response: {"ok": true, "result": {"port": 8421, "url": "http://localhost:8421"}}
+    """
+    agent_name = payload.get("agent", "")
+    server_type = payload.get("server_type", "interface")
+    username = payload.get("username", "Sweet-Pea-Rudi19")
+
+    if not agent_name:
+        return {"ok": False, "topic": "register", "error": "missing agent"}
+
+    try:
+        from core import agent_registry
+        port = agent_registry.assign_port(username, agent_name, server_type)
+        logger.info(f"BUS: port {port} assigned to agent '{agent_name}'")
+        return {
+            "ok": True,
+            "topic": "register",
+            "agent": "willow",
+            "result": {"port": port, "url": f"http://localhost:{port}"},
+        }
+    except Exception as e:
+        return {"ok": False, "topic": "register", "error": str(e)}

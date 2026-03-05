@@ -78,7 +78,7 @@ class SafeSyncDaemon:
 
         try:
             from core.db import get_connection as _gc, is_postgres
-            conn = _gc() if is_postgres() else sqlite3.connect(str(KB_PATH), timeout=10)
+            conn = _gc() if is_postgres() else _gc(str(KB_PATH))
             conn.row_factory = sqlite3.Row
             placeholders = ','.join('?' for _ in CONTINUITY_SOURCE_TYPES)
             cat_placeholders = ','.join('?' for _ in CONTINUITY_CATEGORIES)

@@ -7,7 +7,7 @@ Drains ocr_queue_*.json entries from Pickup by processing each source file:
 - PDFs: pdfplumber text extraction
 - Text (.txt, .md): direct read
 
-Results ingested into Willow knowledge graph via knowledge.ingest_file_knowledge().
+Results ingested into Willow knowledge graph via loam.ingest_file_knowledge().
 Queue files renamed ocr_done_* on success, ocr_skip_* if not processable.
 
 Run standalone:  python core/ocr_consumer.py [--batch N] [--username NAME]
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from core import knowledge
+from core import loam
 
 USERNAME = "Sweet-Pea-Rudi19"
 GDRIVE_PICKUP = Path(r"G:\My Drive\Willow\Auth Users") / USERNAME / "Pickup"
@@ -132,7 +132,7 @@ def process_queue(username: str = USERNAME, max_batch: int = MAX_BATCH) -> dict:
             file_hash = hashlib.md5(text.encode()).hexdigest()
             cat = _category(src.name, text)
 
-            knowledge.ingest_file_knowledge(
+            loam.ingest_file_knowledge(
                 username=username,
                 filename=src.name,
                 file_hash=file_hash,

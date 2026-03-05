@@ -5,6 +5,24 @@ title WILLOW
 
 if not exist logs mkdir logs
 
+:: ---------------------------------------------------------------
+:: 0. CLEANUP — kill orphans from any previous run
+:: ---------------------------------------------------------------
+echo Cleaning up previous session...
+for %%p in (
+    "WILLOW - SERVER"
+    "WILLOW - KART"
+    "WILLOW-GovernanceMonitor"
+    "WILLOW-CoherenceScanner"
+    "WILLOW-TopologyBuilder"
+    "WILLOW-KnowledgeCompactor"
+    "WILLOW-SAFESync"
+    "WILLOW-PersonaScheduler"
+    "WILLOW-InboxWatcher"
+    "WILLOW-NestWatcher"
+) do taskkill /FI "WINDOWTITLE eq %%~p" /F >nul 2>&1
+if exist .daemon_owner.pid del .daemon_owner.pid >nul 2>&1
+
 echo.
 echo   W I L L O W
 echo   Community Memory Sovereign OS
@@ -69,7 +87,7 @@ echo       REPL started in visible window
 :: 5. SERVER  (VISIBLE window -- see errors when it breaks)
 :: ---------------------------------------------------------------
 echo [5/5] Server...
-start "WILLOW - SERVER" python -m uvicorn server:app --host 0.0.0.0 --port 8420 --reload --log-level info
+start "WILLOW - SERVER" python server.py
 
 echo       waiting for :8420...
 set retries=0
@@ -151,7 +169,8 @@ if %errorlevel% neq 0 (
     echo    Server output: WILLOW - SERVER window
     echo    Daemon logs:   logs\
     echo.
-    echo    Press Any Key To Exit
+    echo    Press ANY key to shut down Willow.
+    echo    (Don't look for the ANY key)
     echo   ========================================
     echo.
     pause >nul
@@ -192,7 +211,11 @@ for %%p in (
     "WILLOW-SAFESync"
     "WILLOW-PersonaScheduler"
     "WILLOW-InboxWatcher"
-) do taskkill /FI "WINDOWTITLE eq %%~p" >nul 2>&1
+    "WILLOW-NestWatcher"
+) do taskkill /FI "WINDOWTITLE eq %%~p" /F >nul 2>&1
+if exist .daemon_owner.pid del .daemon_owner.pid >nul 2>&1
+:: Belt-and-suspenders: catch daemons with no window title (pigeon, nest watcher, etc.)
+taskkill /F /IM python.exe /T >nul 2>&1
 echo   Done. (Ollama left running)
 echo.
 echo   Press Any Key To Exit

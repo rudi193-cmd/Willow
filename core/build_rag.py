@@ -14,7 +14,7 @@ REPOS = {
 
 SKIP_DIRS = {'__pycache__', '.git', '.pytest_cache', 'venv', 'env', 'vendor', 'node_modules'}
 SKIP_PATTERNS = {'test_', '_test.', '.pyc'}
-DB_PATH = 'C:/Users/Sean/Documents/GitHub/Willow/core/knowledge.db'
+DB_PATH = 'C:/Users/Sean/Documents/GitHub/Willow/core/loam.db'
 
 
 def init_db():

@@ -5,9 +5,19 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
 
-from core.coherence import compute_delta_e, get_knowledge_atoms
+# Ensure Willow root is on sys.path so 'from core.x import' works
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from typing import Dict, List
+
+from core import coherence, knowledge
+
+USERNAME = "Sweet-Pea-Rudi19"
+SCAN_TOPICS = [
+    "knowledge", "memory", "conversation", "code",
+    "documents", "tasks", "system", "files",
+]
 
 # Configure logging
 LOG_FILE = Path(__file__).parent / "coherence_scan.log"
@@ -29,63 +39,33 @@ class CoherenceScannerDaemon:
         self.running = False
 
     def scan_coherence(self) -> None:
-        """Scan the knowledge base for coherence issues."""
+        """Scan knowledge clusters for coherence drift."""
         try:
-            atoms = get_knowledge_atoms()
-            if not atoms:
-                logger.warning("No knowledge atoms found to scan")
-                return
-
-            issues = self._analyze_coherence(atoms)
-            self._log_issues(issues)
-
+            scanned = 0
+            for topic in SCAN_TOPICS:
+                atoms = knowledge.search(USERNAME, topic, max_results=20)
+                summaries = [a.get("summary") or a.get("content_snippet", "") for a in atoms]
+                summaries = [s for s in summaries if s]
+                if not summaries:
+                    continue
+                result = coherence.get_cluster_coherence(topic, summaries)
+                scanned += 1
+                if result["state"] == "decaying":
+                    logger.warning(
+                        f"Drift in '{topic}': coherence={result['coherence']:.3f} "
+                        f"({result['members']} atoms, {result['pairs_measured']} pairs)"
+                    )
+                else:
+                    logger.info(
+                        f"Cluster '{topic}': {result['state']} "
+                        f"coherence={result['coherence']:.3f} ({result['members']} atoms)"
+                    )
+            report = coherence.get_coherence_report()
+            logger.info(f"System coherence report: {report}")
+            if scanned == 0:
+                logger.warning("No knowledge atoms found across any scan topic")
         except Exception as e:
             logger.error(f"Error during coherence scan: {str(e)}", exc_info=True)
-
-    def _analyze_coherence(self, atoms: List[Dict]) -> Dict[str, List[Tuple[str, str]]]:
-        """Analyze coherence between knowledge atoms."""
-        issues = {
-            "drift": [],
-            "contradiction": [],
-            "gap": []
-        }
-
-        # Check for gaps (orphaned atoms)
-        connected_atoms = set()
-        for atom in atoms:
-            for related in atom.get("related_atoms", []):
-                connected_atoms.add(related)
-
-        for atom in atoms:
-            if atom["id"] not in connected_atoms and atom["id"] not in [a["id"] for a in atoms if a["id"] != atom["id"]]:
-                issues["gap"].append((atom["id"], "No connections found"))
-
-        # Check for drift and contradictions between related atoms
-        for atom in atoms:
-            for related_id in atom.get("related_atoms", []):
-                related_atom = next((a for a in atoms if a["id"] == related_id), None)
-                if not related_atom:
-                    continue
-
-                delta_e = compute_delta_e(atom, related_atom)
-                if delta_e > self.contradiction_threshold:
-                    issues["contradiction"].append((atom["id"], related_atom["id"]))
-                elif delta_e > self.drift_threshold:
-                    issues["drift"].append((atom["id"], related_atom["id"]))
-
-        return issues
-
-    def _log_issues(self, issues: Dict[str, List[Tuple[str, str]]]) -> None:
-        """Log coherence issues."""
-        for issue_type, atom_pairs in issues.items():
-            if not atom_pairs:
-                continue
-
-            for atom1, atom2 in atom_pairs:
-                if issue_type == "gap":
-                    logger.warning(f"Gap detected: {atom1}")
-                else:
-                    logger.warning(f"{issue_type.capitalize()} between {atom1} and {atom2}")
 
     def run(self) -> None:
         """Run the daemon in a loop."""

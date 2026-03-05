@@ -1,7 +1,7 @@
 """
 Eyes -> Knowledge Pipeline
 
-Connects: eyes_events.py capture -> content_scan.py scoring -> knowledge.py ingestion.
+Connects: eyes_events.py capture -> content_scan.py scoring -> loam.py ingestion.
 High-value screenshots (score >= 3) become knowledge atoms.
 
 Can run as:
@@ -34,7 +34,7 @@ if str(_willow_root) not in sys.path:
 if _eyes_path not in sys.path:
     sys.path.insert(0, _eyes_path)
 
-from core import knowledge
+from core import loam
 
 # Try to import content_scan (may not be available if die-namic-system not present)
 try:
@@ -121,7 +121,7 @@ def ingest_screenshot(filepath, username: str = USERNAME) -> bool:
         return False
 
     # Ingest into knowledge DB
-    knowledge.ingest_file_knowledge(
+    loam.ingest_file_knowledge(
         username=username,
         filename=filepath.name,
         file_hash=fhash,

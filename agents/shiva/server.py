@@ -1,11 +1,12 @@
 """
 Shiva — SAFE Consumer Interface Server
 ======================================
-Shiva's own FastAPI server at port 8421 (assigned by Willow).
+Shiva's own FastAPI server at port 2121.
 Proxies chat to Willow's agent API, journals all exchanges.
 Normal users interact with Willow's system through Shiva — never directly.
 """
 
+import sys
 import httpx
 import uvicorn
 from fastapi import FastAPI
@@ -16,8 +17,19 @@ from pydantic import BaseModel
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-WILLOW_URL = "http://localhost:8420"
-SHIVA_PORT = 8421
+# Core imports for agent CLI channel
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+try:
+    from core.n2n_packets import N2NPacket, PacketType
+    from core import command_parser, tool_engine, agent_registry
+    _AGENT_CHANNEL = True
+except ImportError:
+    _AGENT_CHANNEL = False
+
+WILLOW_URL = "http://127.0.0.1:8420"
+SHIVA_PORT = 2121
+SHIVA_NODE = "shiva"
+USERNAME = "Sweet-Pea-Rudi19"
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Shiva", description="SAFE Consumer Interface — Willow")
@@ -117,6 +129,103 @@ async def status():
             }
         except Exception:
             return {"willow_online": False, "governance_pending": 0}
+
+
+# ── Agent CLI Channel ─────────────────────────────────────────────────────────
+# Backend agent-to-agent communication via CLI commands, not chat.
+# WIRE-12 N2N packet envelope. No LLM. Deterministic.
+
+@app.post("/agent/exec")
+async def agent_exec(body: dict):
+    """
+    CLI command channel for agent-to-agent communication.
+    Accepts a WIRE-12 N2N DELTA packet with payload.command (string).
+    Routes through command_parser → tool_engine. No LLM involved.
+    Returns a WIRE-12 N2N DELTA response packet.
+    """
+    if not _AGENT_CHANNEL:
+        return {"ok": False, "error": "agent_channel_unavailable"}
+
+    if not N2NPacket.validate_packet(body):
+        return {"ok": False, "error": "invalid_packet"}
+
+    header = body["header"]
+    payload = body["payload"]
+    source = header["source_node"]
+    command = payload.get("command", "").strip()
+    session_id = payload.get("session_id", "")
+
+    if not command:
+        return {"ok": False, "error": "missing_command"}
+
+    parsed = command_parser.parse_command(command)
+
+    if parsed is None:
+        result = {"ok": False, "parsed": False, "error": "unrecognized_command"}
+    else:
+        try:
+            tool_result = tool_engine.execute(
+                tool_name=parsed.get("tool", ""),
+                params=parsed.get("params", {}),
+                agent=SHIVA_NODE,
+                username=USERNAME,
+            )
+            result = {"ok": True, "parsed": True, "tool": parsed.get("tool"), "result": tool_result}
+        except Exception as e:
+            result = {"ok": False, "parsed": True, "tool": parsed.get("tool"), "error": str(e)}
+
+    response_packet = N2NPacket.create_packet(
+        PacketType.DELTA,
+        source_node=SHIVA_NODE,
+        target_node=source,
+        payload={**result, "session_id": session_id, "echo_command": command},
+        intent="exec_response",
+    )
+    return response_packet
+
+
+@app.get("/agent/mailbox")
+async def agent_mailbox_read(unread_only: bool = True):
+    """Read Shiva's mailbox. Async messages from other agents."""
+    if not _AGENT_CHANNEL:
+        return {"ok": False, "error": "agent_channel_unavailable"}
+    messages = agent_registry.get_mailbox(USERNAME, SHIVA_NODE, unread_only)
+    return {"ok": True, "messages": messages}
+
+
+@app.post("/agent/mailbox")
+async def agent_mailbox_send(body: dict):
+    """
+    Deposit a message into an agent's mailbox via Willow.
+    Routes through Willow's /api/agents/{name}/message so all agents
+    read from the same Postgres-backed store.
+    File payloads route through Pigeon — this endpoint is for structured messages only.
+    """
+    from_agent = body.get("from_agent", "")
+    to_agent = body.get("to_agent", SHIVA_NODE)
+    subject = body.get("subject", "")
+    message_body = body.get("body", "")
+    thread_id = body.get("thread_id", "")
+
+    if not from_agent or not subject or not message_body:
+        return {"ok": False, "error": "missing from_agent, subject, or body"}
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        drop = {
+            "topic": "message",
+            "app_id": SHIVA_NODE,
+            "payload": {
+                "from_agent": from_agent,
+                "to_agent": to_agent,
+                "subject": subject,
+                "body": message_body,
+                "thread_id": thread_id,
+            },
+        }
+        r = await client.post(f"{WILLOW_URL}/api/pigeon/drop", json=drop)
+        r.raise_for_status()
+
+    return {"ok": True, "to": to_agent, "from": from_agent}
 
 
 if __name__ == "__main__":

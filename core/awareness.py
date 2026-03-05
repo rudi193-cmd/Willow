@@ -130,7 +130,7 @@ def _compose(event_type: str, data: Dict) -> tuple:
         title = "drive scan finished"
         lines = [f"scanned {total} files."]
         if atoms:
-            lines.append(f"ingested {atoms} into knowledge.")
+            lines.append(f"ingested {atoms} into loam.")
         if dupes:
             lines.append(f"found {dupes} duplicates.")
         return title, " ".join(lines), "default"
@@ -145,7 +145,7 @@ def _compose(event_type: str, data: Dict) -> tuple:
     elif event_type == "clusters_formed":
         count = data.get("clusters_created", 0)
         title = "clusters formed"
-        return title, f"{count} topic clusters from your knowledge.", "low"
+        return title, f"{count} topic clusters from your loam.", "low"
 
     elif event_type == "coherence_decay":
         delta_e = data.get("delta_e", 0)

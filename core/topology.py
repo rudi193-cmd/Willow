@@ -5,7 +5,7 @@ Makes the three-ring architecture (Source → Bridge → Continuity → Source)
 explicit and queryable. Edges between atoms. Clusters from embeddings.
 Zoom traversal. Strip continuity checks.
 
-GOVERNANCE: Read-only exploration of knowledge. No deletions.
+GOVERNANCE: Read-only exploration of loam. No deletions.
   Topology is observational, not executive. (Aios Addendum, Consus ratified)
   - Clusters, edges, derived groupings are analytical views only.
   - canonical=0 by default; only human promotes to canonical=1.
@@ -30,7 +30,7 @@ try:
 except ImportError:
     _SKLEARN_AVAILABLE = False
 
-from core import knowledge, embeddings
+from core import loam, embeddings
 
 log = logging.getLogger("topology")
 
@@ -41,6 +41,9 @@ log = logging.getLogger("topology")
 
 def _init_tables(conn: sqlite3.Connection):
     """Create topology tables. Idempotent."""
+    from core.db import is_postgres
+    if is_postgres():
+        return  # schema managed by pg_schema.sql
     cur = conn.cursor()
 
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_edges (
@@ -93,104 +96,106 @@ def build_edges(username: str, batch_size: int = 50) -> int:
     Compute edges between knowledge atoms. Incremental.
     Returns number of new edges created.
     """
-    knowledge.init_db(username)
-    conn = knowledge._connect(username)
-    _init_tables(conn)
-    cur = conn.cursor()
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    created = 0
+    loam.init_db(username)
+    conn = loam._connect(username)
+    try:
+        _init_tables(conn)
+        cur = conn.cursor()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        created = 0
 
-    # Get atoms without edges yet
-    atoms = cur.execute("""
-        SELECT k.id, k.category, k.created_at, k.embedding, k.ring, k.title, k.content_snippet
-        FROM knowledge k
-        WHERE NOT EXISTS (SELECT 1 FROM knowledge_edges e WHERE e.source_id = k.id)
-        LIMIT ?
-    """, (batch_size,)).fetchall()
+        # Get atoms without edges yet
+        atoms = cur.execute("""
+            SELECT k.id, k.category, k.created_at, k.embedding, k.ring, k.title, k.content_snippet
+            FROM knowledge k
+            WHERE NOT EXISTS (SELECT 1 FROM knowledge_edges e WHERE e.source_id = k.id)
+            LIMIT ?
+        """, (batch_size,)).fetchall()
 
-    if not atoms:
-        conn.close()
-        return 0
+        if not atoms:
+            return 0
 
-    for atom_id, category, created_at, emb, ring, title, snippet in atoms:
+        for atom_id, category, created_at, emb, ring, title, snippet in atoms:
 
-        # 1. Shared entity edges
-        shared = cur.execute("""
-            SELECT ke2.knowledge_id, COUNT(*) as cnt
-            FROM knowledge_entities ke1
-            JOIN knowledge_entities ke2 ON ke1.entity_id = ke2.entity_id
-            WHERE ke1.knowledge_id = ? AND ke2.knowledge_id != ?
-            GROUP BY ke2.knowledge_id HAVING cnt >= 2
-        """, (atom_id, atom_id)).fetchall()
+            # 1. Shared entity edges — JOIN to knowledge guards against orphaned knowledge_entities rows
+            shared = cur.execute("""
+                SELECT ke2.knowledge_id, COUNT(*) as cnt
+                FROM knowledge_entities ke1
+                JOIN knowledge_entities ke2 ON ke1.entity_id = ke2.entity_id
+                JOIN knowledge k ON k.id = ke2.knowledge_id
+                WHERE ke1.knowledge_id = ? AND ke2.knowledge_id != ?
+                GROUP BY ke2.knowledge_id HAVING cnt >= 2
+            """, (atom_id, atom_id)).fetchall()
 
-        for target_id, cnt in shared:
-            w = min(1.0, cnt / 5.0)
-            cur.execute(
-                "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, edge_type, weight, created_at) VALUES (?,?,?,?,?)",
-                (atom_id, target_id, "shared_entity", w, now)
-            )
-            created += 1
-
-        # 2. Semantic similarity edges
-        if emb and embeddings.is_available():
-            others = cur.execute(
-                "SELECT id, embedding FROM knowledge WHERE id != ? AND embedding IS NOT NULL", (atom_id,)
-            ).fetchall()
-            for tid, temb in others:
-                sim = embeddings.cosine_similarity(emb, temb)
-                if sim >= 0.75:
-                    cur.execute(
-                        "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, edge_type, weight, created_at) VALUES (?,?,?,?,?)",
-                        (atom_id, tid, "semantic_similar", round(sim, 4), now)
-                    )
-                    created += 1
-
-        # 3. Temporal edges (same day)
-        try:
-            dt = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S')
-            day_start = dt.strftime('%Y-%m-%d 00:00:00')
-            day_end = (dt + timedelta(days=1)).strftime('%Y-%m-%d 00:00:00')
-            temporal = cur.execute(
-                "SELECT id FROM knowledge WHERE id != ? AND created_at >= ? AND created_at < ? LIMIT 10",
-                (atom_id, day_start, day_end)
-            ).fetchall()
-            for (tid,) in temporal:
+            for target_id, cnt in shared:
+                w = min(1.0, cnt / 5.0)
                 cur.execute(
                     "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, edge_type, weight, created_at) VALUES (?,?,?,?,?)",
-                    (atom_id, tid, "temporal", 0.5, now)
+                    (atom_id, target_id, "shared_entity", w, now)
                 )
                 created += 1
-        except ValueError:
-            pass
 
-        # 4. Ring flow edges
-        next_ring = {"source": "bridge", "bridge": "continuity", "continuity": "source"}.get(ring)
-        if next_ring:
-            # Get this atom's entity names
-            ent_names = [r[0] for r in cur.execute("""
-                SELECT e.name FROM entities e
-                JOIN knowledge_entities ke ON ke.entity_id = e.id
-                WHERE ke.knowledge_id = ?
-            """, (atom_id,)).fetchall()]
-
-            if ent_names:
-                candidates = cur.execute(
-                    "SELECT id, content_snippet FROM knowledge WHERE ring = ? AND id != ?",
-                    (next_ring, atom_id)
+            # 2. Semantic similarity edges
+            if emb and embeddings.is_available():
+                others = cur.execute(
+                    "SELECT id, embedding FROM knowledge WHERE id != ? AND embedding IS NOT NULL", (atom_id,)
                 ).fetchall()
-                for tid, tsnippet in candidates:
-                    tsnippet_lower = (tsnippet or "").lower()
-                    if any(en.lower() in tsnippet_lower for en in ent_names):
+                for tid, temb in others:
+                    sim = embeddings.cosine_similarity(emb, temb)
+                    if sim >= 0.75:
                         cur.execute(
                             "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, edge_type, weight, created_at) VALUES (?,?,?,?,?)",
-                            (atom_id, tid, "ring_flow", 0.8, now)
+                            (atom_id, tid, "semantic_similar", round(sim, 4), now)
                         )
                         created += 1
 
-    conn.commit()
-    conn.close()
-    log.info(f"Built {created} edges for {len(atoms)} atoms")
-    return created
+            # 3. Temporal edges (same day)
+            try:
+                dt = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S')
+                day_start = dt.strftime('%Y-%m-%d 00:00:00')
+                day_end = (dt + timedelta(days=1)).strftime('%Y-%m-%d 00:00:00')
+                temporal = cur.execute(
+                    "SELECT id FROM knowledge WHERE id != ? AND created_at >= ? AND created_at < ? LIMIT 10",
+                    (atom_id, day_start, day_end)
+                ).fetchall()
+                for (tid,) in temporal:
+                    cur.execute(
+                        "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, edge_type, weight, created_at) VALUES (?,?,?,?,?)",
+                        (atom_id, tid, "temporal", 0.5, now)
+                    )
+                    created += 1
+            except ValueError:
+                pass
+
+            # 4. Ring flow edges
+            next_ring = {"source": "bridge", "bridge": "continuity", "continuity": "source"}.get(ring)
+            if next_ring:
+                # Get this atom's entity names
+                ent_names = [r[0] for r in cur.execute("""
+                    SELECT e.name FROM entities e
+                    JOIN knowledge_entities ke ON ke.entity_id = e.id
+                    WHERE ke.knowledge_id = ?
+                """, (atom_id,)).fetchall()]
+
+                if ent_names:
+                    candidates = cur.execute(
+                        "SELECT id, content_snippet FROM knowledge WHERE ring = ? AND id != ?",
+                        (next_ring, atom_id)
+                    ).fetchall()
+                    for tid, tsnippet in candidates:
+                        tsnippet_lower = (tsnippet or "").lower()
+                        if any(en.lower() in tsnippet_lower for en in ent_names):
+                            cur.execute(
+                                "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, edge_type, weight, created_at) VALUES (?,?,?,?,?)",
+                                (atom_id, tid, "ring_flow", 0.8, now)
+                            )
+                            created += 1
+
+        conn.commit()
+        log.info(f"Built {created} edges for {len(atoms)} atoms")
+        return created
+    finally:
+        conn.close()
 
 
 # =========================================================================
@@ -204,79 +209,80 @@ def cluster_atoms(username: str, n_clusters: int = 10, method: str = "kmeans") -
     if not embeddings.is_available():
         return []
 
-    knowledge.init_db(username)
-    conn = knowledge._connect(username)
-    _init_tables(conn)
-    cur = conn.cursor()
+    loam.init_db(username)
+    conn = loam._connect(username)
+    try:
+        _init_tables(conn)
+        cur = conn.cursor()
 
-    # Clear old clusters
-    cur.execute("DELETE FROM cluster_members")
-    cur.execute("DELETE FROM knowledge_clusters")
+        # Clear old clusters
+        cur.execute("DELETE FROM cluster_members")
+        cur.execute("DELETE FROM knowledge_clusters")
 
-    rows = cur.execute(
-        "SELECT id, embedding, title FROM knowledge WHERE embedding IS NOT NULL ORDER BY id"
-    ).fetchall()
+        rows = cur.execute(
+            "SELECT id, embedding, title FROM knowledge WHERE embedding IS NOT NULL ORDER BY id"
+        ).fetchall()
 
-    if len(rows) < 3:
+        if len(rows) < 3:
+            return []
+
+        n_clusters = min(n_clusters, len(rows) // 2)
+        atom_ids = [r[0] for r in rows]
+
+        # Unpack embeddings
+        vecs = []
+        for r in rows:
+            dim = len(r[1]) // 4
+            vecs.append(list(struct.unpack(f'{dim}f', r[1])))
+        X = normalize(np.array(vecs))
+
+        km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        labels = km.fit_predict(X)
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cluster_ids = []
+
+        for label in range(n_clusters):
+            member_ids = [atom_ids[i] for i in range(len(atom_ids)) if labels[i] == label]
+            if not member_ids:
+                continue
+
+            # Label from top entities
+            placeholders = ",".join(["?"] * len(member_ids))
+            top_ents = cur.execute(f"""
+                SELECT e.name, COUNT(*) as cnt FROM entities e
+                JOIN knowledge_entities ke ON ke.entity_id = e.id
+                WHERE ke.knowledge_id IN ({placeholders})
+                GROUP BY e.name ORDER BY cnt DESC LIMIT 3
+            """, member_ids).fetchall()
+
+            cluster_label = ", ".join(e[0] for e in top_ents) if top_ents else f"Cluster {label}"
+
+            # Centroid
+            mask = labels == label
+            centroid = X[mask].mean(axis=0)
+            centroid_blob = struct.pack(f'{len(centroid)}f', *centroid)
+
+            cur.execute(
+                "INSERT INTO knowledge_clusters (label, method, created_at, atom_count, centroid) VALUES (?,?,?,?,?)",
+                (cluster_label, method, now, len(member_ids), centroid_blob)
+            )
+            cid = cur.lastrowid
+            cluster_ids.append(cid)
+
+            for i, aid in enumerate(atom_ids):
+                if labels[i] == label:
+                    dist = float(np.linalg.norm(X[i] - centroid))
+                    cur.execute(
+                        "INSERT OR REPLACE INTO cluster_members (cluster_id, knowledge_id, distance) VALUES (?,?,?)",
+                        (cid, aid, round(dist, 4))
+                    )
+
+        conn.commit()
+        log.info(f"Created {len(cluster_ids)} clusters")
+        return cluster_ids
+    finally:
         conn.close()
-        return []
-
-    n_clusters = min(n_clusters, len(rows) // 2)
-    atom_ids = [r[0] for r in rows]
-
-    # Unpack embeddings
-    vecs = []
-    for r in rows:
-        dim = len(r[1]) // 4
-        vecs.append(list(struct.unpack(f'{dim}f', r[1])))
-    X = normalize(np.array(vecs))
-
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = km.fit_predict(X)
-
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    cluster_ids = []
-
-    for label in range(n_clusters):
-        member_ids = [atom_ids[i] for i in range(len(atom_ids)) if labels[i] == label]
-        if not member_ids:
-            continue
-
-        # Label from top entities
-        placeholders = ",".join(["?"] * len(member_ids))
-        top_ents = cur.execute(f"""
-            SELECT e.name, COUNT(*) as cnt FROM entities e
-            JOIN knowledge_entities ke ON ke.entity_id = e.id
-            WHERE ke.knowledge_id IN ({placeholders})
-            GROUP BY e.name ORDER BY cnt DESC LIMIT 3
-        """, member_ids).fetchall()
-
-        cluster_label = ", ".join(e[0] for e in top_ents) if top_ents else f"Cluster {label}"
-
-        # Centroid
-        mask = labels == label
-        centroid = X[mask].mean(axis=0)
-        centroid_blob = struct.pack(f'{len(centroid)}f', *centroid)
-
-        cur.execute(
-            "INSERT INTO knowledge_clusters (label, method, created_at, atom_count, centroid) VALUES (?,?,?,?,?)",
-            (cluster_label, method, now, len(member_ids), centroid_blob)
-        )
-        cid = cur.lastrowid
-        cluster_ids.append(cid)
-
-        for i, aid in enumerate(atom_ids):
-            if labels[i] == label:
-                dist = float(np.linalg.norm(X[i] - centroid))
-                cur.execute(
-                    "INSERT OR REPLACE INTO cluster_members (cluster_id, knowledge_id, distance) VALUES (?,?,?)",
-                    (cid, aid, round(dist, 4))
-                )
-
-    conn.commit()
-    conn.close()
-    log.info(f"Created {len(cluster_ids)} clusters")
-    return cluster_ids
 
 
 # =========================================================================
@@ -285,8 +291,8 @@ def cluster_atoms(username: str, n_clusters: int = 10, method: str = "kmeans") -
 
 def zoom(username: str, node_id: int, depth: int = 1) -> Dict:
     """Traverse the topology from a single atom."""
-    knowledge.init_db(username)
-    conn = knowledge._connect(username)
+    loam.init_db(username)
+    conn = loam._connect(username)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
@@ -348,28 +354,28 @@ def zoom(username: str, node_id: int, depth: int = 1) -> Dict:
 
 def check_strip_continuity(username: str) -> Dict:
     """Find atoms stuck in one ring — gaps in the Möbius strip."""
-    knowledge.init_db(username)
-    conn = knowledge._connect(username)
+    loam.init_db(username)
+    conn = loam._connect(username)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     _init_tables(conn)
 
-    total = cur.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+    total = cur.execute("SELECT COUNT(*) AS cnt FROM knowledge").fetchone()["cnt"]
     by_ring = {}
     for ring in ("source", "bridge", "continuity"):
-        by_ring[ring] = cur.execute("SELECT COUNT(*) FROM knowledge WHERE ring=?", (ring,)).fetchone()[0]
+        by_ring[ring] = cur.execute("SELECT COUNT(*) AS cnt FROM knowledge WHERE ring=?", (ring,)).fetchone()["cnt"]
 
     # Source atoms with no flow to bridge
     stuck_source = cur.execute("""
-        SELECT COUNT(*) FROM knowledge k WHERE k.ring = 'source'
+        SELECT COUNT(*) AS cnt FROM knowledge k WHERE k.ring = 'source'
         AND NOT EXISTS (SELECT 1 FROM knowledge_edges e WHERE e.source_id = k.id AND e.edge_type = 'ring_flow')
-    """).fetchone()[0]
+    """).fetchone()["cnt"]
 
     # Bridge atoms with no edges at all (isolated)
     stuck_bridge = cur.execute("""
-        SELECT COUNT(*) FROM knowledge k WHERE k.ring = 'bridge'
+        SELECT COUNT(*) AS cnt FROM knowledge k WHERE k.ring = 'bridge'
         AND NOT EXISTS (SELECT 1 FROM knowledge_edges e WHERE e.source_id = k.id)
-    """).fetchone()[0]
+    """).fetchone()["cnt"]
 
     # Example gaps
     gaps = []
@@ -403,24 +409,24 @@ def check_strip_continuity(username: str) -> Dict:
 
 def get_ring_flow_graph(username: str) -> Dict:
     """Sankey-style: nodes with counts, links with flow values."""
-    knowledge.init_db(username)
-    conn = knowledge._connect(username)
+    loam.init_db(username)
+    conn = loam._connect(username)
     cur = conn.cursor()
     _init_tables(conn)
 
     nodes = []
     for ring in ("source", "bridge", "continuity"):
-        cnt = cur.execute("SELECT COUNT(*) FROM knowledge WHERE ring=?", (ring,)).fetchone()[0]
+        _row = cur.execute("SELECT COUNT(*) AS cnt FROM knowledge WHERE ring=?", (ring,)).fetchone(); cnt = _row["cnt"] if hasattr(_row, "__getitem__") and not isinstance(_row, tuple) else _row[0]
         nodes.append({"id": ring, "count": cnt})
 
     links = []
     for src, tgt in [("source", "bridge"), ("bridge", "continuity"), ("continuity", "source")]:
-        cnt = cur.execute("""
-            SELECT COUNT(*) FROM knowledge_edges e
+        _row = cur.execute("""
+            SELECT COUNT(*) AS cnt FROM knowledge_edges e
             JOIN knowledge ks ON ks.id = e.source_id
             JOIN knowledge kt ON kt.id = e.target_id
             WHERE ks.ring = ? AND kt.ring = ? AND e.edge_type = 'ring_flow'
-        """, (src, tgt)).fetchone()[0]
+        """, (src, tgt)).fetchone(); cnt = _row["cnt"] if hasattr(_row, "__getitem__") and not isinstance(_row, tuple) else _row[0]
         links.append({"source": src, "target": tgt, "value": cnt})
 
     conn.close()
@@ -429,10 +435,10 @@ def get_ring_flow_graph(username: str) -> Dict:
 
 def get_ring_distribution(username: str) -> Dict:
     """Simple ring counts."""
-    knowledge.init_db(username)
-    conn = knowledge._connect(username)
+    loam.init_db(username)
+    conn = loam._connect(username)
     result = {}
     for ring in ("source", "bridge", "continuity"):
-        result[ring] = conn.execute("SELECT COUNT(*) FROM knowledge WHERE ring=?", (ring,)).fetchone()[0]
+        _row = conn.execute("SELECT COUNT(*) AS cnt FROM knowledge WHERE ring=?", (ring,)).fetchone(); result[ring] = _row["cnt"] if hasattr(_row, "__getitem__") and not isinstance(_row, tuple) else _row[0]
     conn.close()
     return result

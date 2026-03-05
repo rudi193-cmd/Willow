@@ -39,7 +39,7 @@ import io
 # --- MODULAR IMPORTS ---
 from core import state, gate, storage
 from core import llm_router
-from core import knowledge
+from core import loam
 from core.filename_sanitizer import sanitize_filename
 
 # --- CONFIG ---
@@ -1217,7 +1217,7 @@ FOLDER:"""
                     fhash = _file_hash(dest_filepath)
                     catalog_file(target_dir, filename, destination_folder, auth_source, prov)
                     sync_to_master(filename, fhash, destination_folder, auth_source, prov, username)
-                    knowledge.ingest_file_knowledge(username, filename, fhash, destination_folder, context_content, prov)
+                    loam.ingest_file_knowledge(username, filename, fhash, destination_folder, context_content, prov)
                     deep_extract(dest_filepath, target_dir)
 
                     # --- SMART ROUTING (multi-destination) ---
@@ -1301,8 +1301,8 @@ def main():
                 # Knowledge backfill: fill NULL summaries + embeddings via free fleet
                 for username in get_active_users():
                     try:
-                        knowledge.backfill_summaries(username)
-                        knowledge.backfill_embeddings(username)
+                        loam.backfill_summaries(username)
+                        loam.backfill_embeddings(username)
                     except Exception as e:
                         logging.debug(f"KNOWLEDGE BACKFILL [{username}]: {e}")
             # Indexer pass every 10th cycle

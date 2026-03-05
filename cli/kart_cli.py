@@ -24,7 +24,7 @@ from typing import Dict, Any
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core import kart_orchestrator, kart_tasks, tool_engine, agent_registry
+from core import rings, graft, tool_engine, agent_registry
 
 # Configuration
 USERNAME = "Sweet-Pea-Rudi19"
@@ -99,7 +99,7 @@ def cmd_execute(task: str):
     print(f"Task: {task}")
     print()
 
-    result = kart_orchestrator.execute_task(
+    result = rings.execute_task(
         username=USERNAME,
         user_request=task,
         agent_name=AGENT_NAME
@@ -115,7 +115,7 @@ def cmd_resume(seed_packet_path: str):
     print(f"SEED_PACKET: {seed_packet_path}")
     print()
 
-    result = kart_orchestrator.resume_task(
+    result = rings.resume_task(
         username=USERNAME,
         seed_packet_path=seed_packet_path,
         agent_name=AGENT_NAME
@@ -154,7 +154,7 @@ def cmd_status():
         print(f"  - {tool['name']}: {tool['description']}")
 
     # Get task stats
-    stats = kart_tasks.get_stats(USERNAME, AGENT_NAME)
+    stats = graft.get_stats(USERNAME, AGENT_NAME)
     print(f"\nTask Statistics:")
     print(f"  Total: {stats['total']}")
     print(f"  Pending: {stats['pending']}")
@@ -222,7 +222,7 @@ def cmd_agent_restart():
 
 def cmd_tasks(status_filter: str = None):
     """List tasks."""
-    tasks = kart_tasks.list_tasks(USERNAME, AGENT_NAME, status=status_filter)
+    tasks = graft.list_tasks(USERNAME, AGENT_NAME, status=status_filter)
 
     print()
     print(f"Kart Tasks{f' ({status_filter})' if status_filter else ''}")

@@ -90,6 +90,15 @@ class RelationshipTracker:
 
         self.conn.commit()
 
+    def close(self):
+        """Return the pool connection. Safe to call multiple times."""
+        if getattr(self, "conn", None) is not None:
+            self.conn.close()
+            self.conn = None
+
+    def __del__(self):
+        self.close()
+
     def record_anonymous_mention(self, context: str, category: str = "unknown") -> int:
         if not self.conn:
             return 0
@@ -248,38 +257,34 @@ class RelationshipTracker:
             return {}
         try:
             c = self.conn.cursor()
-            try:
-                c.execute(
-                    """INSERT INTO entity_connections
-                       (entity_a_id, entity_b_id, connection_type, weight, source, created_at, confirmed)
-                       VALUES (?, ?, ?, ?, ?, ?, 0)""",
-                    (entity_a_id, entity_b_id, connection_type, weight, source, self._ts()),
-                )
-                self.conn.commit()
+            # INSERT OR IGNORE: db.py translates to ON CONFLICT DO NOTHING on PostgreSQL.
+            # No exception raised on duplicates — no transaction poisoning — no flood.
+            c.execute(
+                """INSERT OR IGNORE INTO entity_connections
+                   (entity_a_id, entity_b_id, connection_type, weight, source, created_at, confirmed)
+                   VALUES (?, ?, ?, ?, ?, ?, 0)""",
+                (entity_a_id, entity_b_id, connection_type, weight, source, self._ts()),
+            )
+            if c.rowcount == 0:
+                # Row already existed — update weight as running average
                 row = c.execute(
-                    "SELECT * FROM entity_connections WHERE id=?", (c.lastrowid,)
-                ).fetchone()
-            except sqlite3.IntegrityError:
-                existing = c.execute(
-                    """SELECT * FROM entity_connections
+                    """SELECT weight FROM entity_connections
                        WHERE entity_a_id=? AND entity_b_id=? AND connection_type=?""",
                     (entity_a_id, entity_b_id, connection_type),
                 ).fetchone()
-                if existing:
-                    avg_weight = (existing["weight"] + weight) / 2.0
+                if row:
+                    avg_weight = (row["weight"] + weight) / 2.0
                     c.execute(
                         """UPDATE entity_connections SET weight=?
                            WHERE entity_a_id=? AND entity_b_id=? AND connection_type=?""",
                         (avg_weight, entity_a_id, entity_b_id, connection_type),
                     )
-                    self.conn.commit()
-                    row = c.execute(
-                        """SELECT * FROM entity_connections
-                           WHERE entity_a_id=? AND entity_b_id=? AND connection_type=?""",
-                        (entity_a_id, entity_b_id, connection_type),
-                    ).fetchone()
-                else:
-                    return {}
+            self.conn.commit()
+            row = c.execute(
+                """SELECT * FROM entity_connections
+                   WHERE entity_a_id=? AND entity_b_id=? AND connection_type=?""",
+                (entity_a_id, entity_b_id, connection_type),
+            ).fetchone()
             return self._row(row) if row else {}
         except Exception as e:
             print(f"[record_connection] {e}", file=sys.stderr)

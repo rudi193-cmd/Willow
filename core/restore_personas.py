@@ -9,7 +9,7 @@ project_root = os.path.dirname(current_dir)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from core import knowledge
+from core import loam
 
 def is_text_file(filename):
     """Filter for persona/content files."""
@@ -21,7 +21,7 @@ def omni_restore():
     
     # 1. Initialize DB (Schema-Aware Check)
     print("Verifying Database Schema...")
-    knowledge.init_db("Sean")
+    loam.init_db("Sean")
     
     restored_count = 0
     
@@ -50,7 +50,7 @@ def omni_restore():
                 
                 if is_likely_persona:
                     print(f"  -> Ingesting: {filename} (from {os.path.basename(root)})")
-                    knowledge.ingest_file_knowledge(
+                    loam.ingest_file_knowledge(
                         username="Sean",
                         filename=filename,
                         file_hash=f"auto_{filename}",

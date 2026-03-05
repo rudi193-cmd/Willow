@@ -1,10 +1,13 @@
 import json
 import uuid
 import argparse
+import sys as _sys
 from pathlib import Path
 from datetime import datetime
 
-WILLOW_ROOT = Path("C:/Users/Sean/Documents/GitHub/Willow")
+_WIN = _sys.platform == "win32"
+WILLOW_ROOT = Path(r"C:\Users\Sean\Documents\GitHub\Willow" if _WIN
+                   else "/mnt/c/Users/Sean/Documents/GitHub/Willow")
 
 
 def _journal_dir(username: str) -> Path:
@@ -19,12 +22,13 @@ def _find_session_file(username: str, session_id: str) -> Path | None:
     return None
 
 
-def create_session(username: str) -> str:
+def create_session(username: str, consent_state: str = "learn") -> str:
     session_id = uuid.uuid4().hex[:8]
     date_str = datetime.now().strftime("%Y-%m-%d")
     path = _journal_dir(username) / f"{date_str}_{session_id}.jsonl"
     event = {"type": "session.start", "timestamp": datetime.now().isoformat(),
-             "payload": {"session_id": session_id, "user": username}}
+             "payload": {"session_id": session_id, "user": username,
+                         "consent_state": consent_state}}
     path.write_text(json.dumps(event) + "\n", encoding="utf-8")
     return session_id
 
@@ -46,7 +50,7 @@ def end_session(username: str, session_id: str) -> bool:
         session_file = _find_session_file(username, session_id)
         if session_file:
             import threading
-            import atom_extractor
+            from core import atom_extractor
             t = threading.Thread(
                 target=atom_extractor.run,
                 args=(username, session_file),

@@ -73,33 +73,37 @@ def checkin(agent_name: str) -> dict:
     Returns {token, trust_level, expires_at, agent_name} or raises ValueError.
     """
     db = _db()
-    row = db.execute(
-        "SELECT name, trust_level FROM agents WHERE name = ?", (agent_name,)
-    ).fetchone()
-    if not row:
+    try:
+        row = db.execute(
+            "SELECT name, trust_level FROM agents WHERE name = ?", (agent_name,)
+        ).fetchone()
+        if not row:
+            raise ValueError(f"Agent '{agent_name}' not registered.")
+
+        name, trust_level = row
+        token = str(uuid.uuid4())
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS)).isoformat()
+        now = _now()
+
+        # Store in willow_state KV
+        db.execute(
+            "INSERT OR REPLACE INTO willow_state (key, value, set_at) VALUES (?, ?, ?)",
+            (f"agent_token:{token}", json.dumps({"agent": name, "trust_level": trust_level, "expires_at": expires_at}), now),
+        )
+        # Update last_seen
+        db.execute("UPDATE agents SET last_seen = ? WHERE name = ?", (now, name))
+        db.commit()
+    finally:
         db.close()
-        raise ValueError(f"Agent '{agent_name}' not registered.")
-
-    name, trust_level = row
-    token = str(uuid.uuid4())
-    expires_at = (datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS)).isoformat()
-    now = _now()
-
-    # Store in willow_state KV
-    db.execute(
-        "INSERT OR REPLACE INTO willow_state (key, value, set_at) VALUES (?, ?, ?)",
-        (f"agent_token:{token}", json.dumps({"agent": name, "trust_level": trust_level, "expires_at": expires_at}), now),
-    )
-    # Update last_seen
-    db.execute("UPDATE agents SET last_seen = ? WHERE name = ?", (now, name))
-    db.commit()
-    db.close()
 
     # Mirror to ~/.willow/agent_tokens.json
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(TOKEN_FILE.read_text(encoding="utf-8")) if TOKEN_FILE.exists() else {}
     existing[agent_name] = {"token": token, "expires_at": expires_at}
     TOKEN_FILE.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+    # Lazy purge: clean expired tokens on each new issuance
+    purge_expired_tokens()
 
     pending = _fetch_pending()
     return {"token": token, "trust_level": trust_level, "expires_at": expires_at, "agent_name": name, "pending": pending}
@@ -110,10 +114,12 @@ def validate_token(token: str) -> Optional[dict]:
     Validate a token. Returns {agent_name, trust_level} or None if invalid/expired.
     """
     db = _db()
-    row = db.execute(
-        "SELECT value FROM willow_state WHERE key = ?", (f"agent_token:{token}",)
-    ).fetchone()
-    db.close()
+    try:
+        row = db.execute(
+            "SELECT value FROM willow_state WHERE key = ?", (f"agent_token:{token}",)
+        ).fetchone()
+    finally:
+        db.close()
     if not row:
         return None
     data = json.loads(row[0])
@@ -121,6 +127,33 @@ def validate_token(token: str) -> Optional[dict]:
     if datetime.now(timezone.utc) > expires_at:
         return None
     return {"agent_name": data["agent"], "trust_level": data["trust_level"]}
+
+
+def purge_expired_tokens() -> int:
+    """Delete expired agent tokens from willow_state. Called lazily on each new token issuance."""
+    db = _db()
+    try:
+        now = _now()
+        rows = db.execute(
+            "SELECT key, value FROM willow_state WHERE key LIKE 'agent_token:%'"
+        ).fetchall()
+        expired = []
+        for row in rows:
+            try:
+                val = json.loads(row["value"])
+                if val.get("expires_at", "") < now:
+                    expired.append(row["key"])
+            except Exception:
+                pass
+        if expired:
+            placeholders = ",".join("?" * len(expired))
+            db.execute(f"DELETE FROM willow_state WHERE key IN ({placeholders})", expired)
+            db.commit()
+        return len(expired)
+    except Exception:
+        return 0
+    finally:
+        db.close()
 
 
 def load_my_token(agent_name: str) -> Optional[str]:

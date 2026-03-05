@@ -151,6 +151,7 @@ PROVIDERS = [
     ProviderConfig("Ollama", "PATH", "http://localhost:11434/api/generate", "llama3.2:latest", "free"),  # General purpose
     ProviderConfig("Ollama Minimax", "PATH", "http://localhost:11434/api/generate", "minimax-m2.5:cloud", "free"),  # Cloud via Ollama
     ProviderConfig("Ollama GLM-5", "PATH", "http://localhost:11434/api/generate", "glm-5:cloud", "free"),  # Cloud via Ollama
+    ProviderConfig("Claude CLI", "PATH", "cli://claude", "claude-sonnet-4-6", "free"),  # Claude CLI subprocess — Sonnet quality at free tier
     
     # Cloud providers (fallback if Ollama unavailable)
     ProviderConfig("OCI Gemini Pro", "ORACLE_OCI", "https://inference.generativeai.us-phoenix-1.oci.oraclecloud.com", "ocid1.generativeaimodel.oc1.phx.amaaaaaask7dceyaaxukx6phswip5qkz4oeti6gg3mm4vbahum7bfjwzy3da", "free"),

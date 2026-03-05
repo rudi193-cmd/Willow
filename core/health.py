@@ -150,7 +150,7 @@ def _send_alert(severity: str, issue_type: str, target: str, description: str):
 
 def check_node_health(stale_threshold_hours: int = 24) -> Dict:
     """
-    Check if nodes' knowledge.db files are being updated.
+    Check if nodes' loam.db files are being updated.
     Returns dict of node health status.
     """
     artifacts_path = Path(__file__).parent.parent / "artifacts"
@@ -162,7 +162,7 @@ def check_node_health(stale_threshold_hours: int = 24) -> Dict:
             continue
 
         node_name = node_dir.name
-        kb_path = node_dir / "willow_knowledge.db"  # Fixed: knowledge.py creates willow_knowledge.db
+        kb_path = node_dir / "willow_knowledge.db"  # Fixed: loam.py creates willow_knowledge.db
 
         if not kb_path.exists():
             node_health[node_name] = {

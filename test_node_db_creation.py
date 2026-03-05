@@ -12,23 +12,23 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 
 def test_knowledge_init():
-    """Test 1: knowledge.init_db() creates database"""
-    print("\n[TEST 1] knowledge.init_db() Function")
+    """Test 1: loam.init_db() creates database"""
+    print("\n[TEST 1] loam.init_db() Function")
     print("-" * 50)
 
-    from core import knowledge
+    from core import loam
 
     test_node = "test_node_creation"
 
     # Create database
     try:
-        knowledge.init_db(test_node)
-        print(f"[OK] knowledge.init_db('{test_node}') succeeded")
+        loam.init_db(test_node)
+        print(f"[OK] loam.init_db('{test_node}') succeeded")
     except Exception as e:
-        print(f"[FAIL] knowledge.init_db() failed: {e}")
+        print(f"[FAIL] loam.init_db() failed: {e}")
         return False
 
-    # Verify database exists (knowledge.py creates willow_knowledge.db)
+    # Verify database exists (loam.py creates willow_knowledge.db)
     db_path = Path(__file__).parent / "artifacts" / test_node / "willow_knowledge.db"
     if db_path.exists():
         print(f"[OK] Database created at: {db_path}")
@@ -84,7 +84,7 @@ def test_api_endpoint():
     base_url = "http://127.0.0.1:8420"
     test_node = "api_test_node"
 
-    # First, delete test node DB if it exists (knowledge.py creates willow_knowledge.db)
+    # First, delete test node DB if it exists (loam.py creates willow_knowledge.db)
     db_path = Path(__file__).parent / "artifacts" / test_node / "willow_knowledge.db"
     if db_path.exists():
         db_path.unlink()
@@ -218,7 +218,7 @@ def main():
 
     results = []
 
-    results.append(("knowledge.init_db() Function", test_knowledge_init()))
+    results.append(("loam.init_db() Function", test_knowledge_init()))
     results.append(("Node Health Check", test_node_health_check()))
     results.append(("API Endpoint", test_api_endpoint()))
     results.append(("Invalid Node Name Validation", test_invalid_node_name()))

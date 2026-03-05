@@ -66,9 +66,28 @@ from api import kart_routes, agent_routes, safe_routes, social_routes, social_wo
 
 app = FastAPI(title="Willow", docs_url=None, redoc_url=None)
 
-# -- Launch Pigeon daemon subprocess ---
+# -- Launch Pigeon + OCR daemons (one set per Willow instance, not per worker) ---
+import os as _os
 import subprocess as _subprocess
 import threading as _threading
+
+_DAEMON_LOCK = Path(__file__).parent / ".daemon_owner.pid"
+
+
+def _claim_daemon_lock() -> bool:
+    """Return True if this process should spawn daemons (first worker wins)."""
+    try:
+        if _DAEMON_LOCK.exists():
+            existing_pid = int(_DAEMON_LOCK.read_text().strip())
+            try:
+                _os.kill(existing_pid, 0)  # 0 = check existence only
+                return False               # still alive — another worker owns it
+            except OSError:
+                pass                       # gone — claim it
+        _DAEMON_LOCK.write_text(str(_os.getpid()))
+        return True
+    except Exception:
+        return True  # if lock check fails, let it spawn
 
 
 def _forward_daemon_output(pipe, logger_name: str) -> None:
@@ -83,29 +102,33 @@ def _forward_daemon_output(pipe, logger_name: str) -> None:
         pass
 
 
-_pigeon_daemon = _subprocess.Popen(
-    [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
-    stdout=_subprocess.PIPE,
-    stderr=_subprocess.STDOUT,
-    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
-)
-_threading.Thread(
-    target=_forward_daemon_output,
-    args=(_pigeon_daemon.stdout, "pigeon_daemon"),
-    daemon=True,
-).start()
+if _claim_daemon_lock():
+    _pigeon_daemon = _subprocess.Popen(
+        [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
+        stdout=_subprocess.PIPE,
+        stderr=_subprocess.STDOUT,
+        creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+    )
+    _threading.Thread(
+        target=_forward_daemon_output,
+        args=(_pigeon_daemon.stdout, "pigeon_daemon"),
+        daemon=True,
+    ).start()
 
-_ocr_consumer_daemon = _subprocess.Popen(
-    [sys.executable, str(Path(__file__).parent / "core" / "ocr_consumer_daemon.py")],
-    stdout=_subprocess.PIPE,
-    stderr=_subprocess.STDOUT,
-    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
-)
-_threading.Thread(
-    target=_forward_daemon_output,
-    args=(_ocr_consumer_daemon.stdout, "ocr_daemon"),
-    daemon=True,
-).start()
+    _ocr_consumer_daemon = _subprocess.Popen(
+        [sys.executable, str(Path(__file__).parent / "core" / "ocr_consumer_daemon.py")],
+        stdout=_subprocess.PIPE,
+        stderr=_subprocess.STDOUT,
+        creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+    )
+    _threading.Thread(
+        target=_forward_daemon_output,
+        args=(_ocr_consumer_daemon.stdout, "ocr_daemon"),
+        daemon=True,
+    ).start()
+    logger.info("Daemons started (pigeon + ocr) — PID %d owns lock", _os.getpid())
+else:
+    logger.info("Daemon lock held by another worker — skipping spawn")
 
 # Track server start time for uptime
 SERVER_START_TIME = datetime.now()
@@ -145,109 +168,137 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/api/system/status")
-async def system_status():
-    """
-    Comprehensive system status for Willow health monitoring.
-    Checks: Ollama, server uptime, governance queue, intake pipeline, engine, tunnel.
-    """
-    status = {
-        "ollama": {"running": False, "models": []},
-        "server": {"uptime_seconds": 0, "port": 8420},
-        "governance": {"pending_commits": 0, "last_ratification": None},
-        "intake": {"dump": 0, "hold": 0, "process": 0, "route": 0, "clear": 0},
-        "engine": {"running": False},
-        "tunnel": {"url": None, "reachable": False},
-        "kart": {"available_tools": 0, "task_stats": {}, "trust_level": "UNKNOWN"}
-    }
+# ── Startup: configure thread pool ───────────────────────────────────────────
+# NOTE: on_event("startup") removed — incompatible with Starlette 0.50.0.
+# Thread pool is configured via uvicorn's lifespan instead (see __main__).
 
-    # --- Ollama Check ---
+
+# ── Status cache ──────────────────────────────────────────────────────────────
+import time as _time
+_status_cache: dict = {"data": None, "ts": 0.0}
+_STATUS_TTL = 5.0  # seconds
+_status_lock: Optional[asyncio.Lock] = None
+
+
+def _get_status_lock() -> asyncio.Lock:
+    """Lazy-init lock (must be created inside the running event loop)."""
+    global _status_lock
+    if _status_lock is None:
+        _status_lock = asyncio.Lock()
+    return _status_lock
+
+
+async def _check_ollama() -> dict:
     try:
-        async with httpx.AsyncClient(timeout=3) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             r = await client.get("http://127.0.0.1:11434/api/tags")
-            r.raise_for_status()
             data = r.json()
-            status["ollama"]["running"] = True
-            status["ollama"]["models"] = [m["name"] for m in data.get("models", [])]
-    except:
-        pass
+            return {"running": True, "models": [m["name"] for m in data.get("models", [])]}
+    except Exception:
+        return {"running": False, "models": []}
 
-    # --- Server Uptime ---
-    status["server"]["uptime_seconds"] = int((datetime.now() - SERVER_START_TIME).total_seconds())
 
-    # --- Governance Check ---
+async def _check_tunnel() -> dict:
+    try:
+        tunnel_file = Path(".tunnel_url")
+        if not tunnel_file.is_file():
+            return {"url": None, "reachable": False}
+        tunnel_url = tunnel_file.read_text().strip()
+        if not tunnel_url:
+            return {"url": None, "reachable": False}
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.head(tunnel_url + "/api/health")
+            return {"url": tunnel_url, "reachable": r.is_success}
+    except Exception:
+        return {"url": None, "reachable": False}
+
+
+def _sync_status_checks() -> dict:
+    """Blocking checks: filesystem, psutil, DB. Runs in thread executor."""
+    governance = {"pending_commits": 0, "last_ratification": None}
     try:
         gov_dir = Path("governance/commits")
         if gov_dir.is_dir():
             pending = list(gov_dir.glob("*.pending"))
-            status["governance"]["pending_commits"] = len(pending)
-
-            # Last ratification = most recent non-pending file
+            governance["pending_commits"] = len(pending)
             all_files = [f for f in gov_dir.iterdir() if f.is_file() and not f.name.endswith(".pending")]
             if all_files:
                 latest = max(all_files, key=lambda f: f.stat().st_mtime)
-                status["governance"]["last_ratification"] = datetime.fromtimestamp(latest.stat().st_mtime).isoformat()
-    except:
+                governance["last_ratification"] = datetime.fromtimestamp(latest.stat().st_mtime).isoformat()
+    except Exception:
         pass
 
-    # --- Intake Check ---
+    intake = {"dump": 0, "hold": 0, "process": 0, "route": 0, "clear": 0}
     try:
         intake_dir = Path("intake")
-        for stage in ["dump", "hold", "process", "route", "clear"]:
+        for stage in intake:
             stage_path = intake_dir / stage
             if stage_path.is_dir():
-                status["intake"][stage] = len(list(stage_path.iterdir()))
-    except:
+                intake[stage] = len(list(stage_path.iterdir()))
+    except Exception:
         pass
 
-    # --- Engine Check (kart process) ---
+    engine = {"running": False}
     try:
         for proc in psutil.process_iter(['name']):
-            if 'kart' in proc.info['name'].lower() or 'python' in proc.info['name'].lower():
-                # Check if it's running kart.py (basic heuristic)
+            if 'python' in proc.info['name'].lower():
                 try:
                     if any('kart' in arg.lower() for arg in proc.cmdline()):
-                        status["engine"]["running"] = True
+                        engine["running"] = True
                         break
                 except (psutil.AccessDenied, psutil.NoSuchProcess):
                     pass
-    except:
+    except Exception:
         pass
 
-    # --- Tunnel Check ---
+    kart = {"available_tools": 0, "task_stats": {}, "trust_level": "UNKNOWN"}
     try:
-        tunnel_file = Path(".tunnel_url")
-        if tunnel_file.is_file():
-            tunnel_url = tunnel_file.read_text().strip()
-            if tunnel_url:
-                status["tunnel"]["url"] = tunnel_url
-                try:
-                    async with httpx.AsyncClient(timeout=5) as client:
-                        r = await client.head(tunnel_url + "/api/health")
-                        status["tunnel"]["reachable"] = r.is_success
-                except:
-                    pass
-    except:
-        pass
-
-    # --- Kart Check ---
-    try:
-        # Get agent info
         agent_info = agent_registry.get_agent("Sweet-Pea-Rudi19", "kart")
         if agent_info:
-            status["kart"]["trust_level"] = agent_info.get("trust_level", "UNKNOWN")
-
-        # Get tool count
+            kart["trust_level"] = agent_info.get("trust_level", "UNKNOWN")
         tools = tool_engine.list_tools("kart", "Sweet-Pea-Rudi19")
-        status["kart"]["available_tools"] = len(tools)
-
-        # Get task stats
-        task_stats = graft.get_stats("Sweet-Pea-Rudi19", "kart")
-        status["kart"]["task_stats"] = task_stats
-    except:
+        kart["available_tools"] = len(tools)
+        kart["task_stats"] = graft.get_stats("Sweet-Pea-Rudi19", "kart")
+    except Exception:
         pass
 
-    return status
+    return {"governance": governance, "intake": intake, "engine": engine, "kart": kart}
+
+
+@app.get("/api/system/status")
+async def system_status():
+    """Parallel system status with 5s result cache. Lock prevents thundering herd on cache miss."""
+    now = _time.monotonic()
+    if _status_cache["data"] and (now - _status_cache["ts"]) < _STATUS_TTL:
+        return _status_cache["data"]
+
+    async with _get_status_lock():
+        # Re-check after acquiring — another waiter may have refreshed while we queued
+        now = _time.monotonic()
+        if _status_cache["data"] and (now - _status_cache["ts"]) < _STATUS_TTL:
+            return _status_cache["data"]
+
+        loop = asyncio.get_running_loop()
+        ollama_result, tunnel_result, sync = await asyncio.gather(
+            _check_ollama(),
+            _check_tunnel(),
+            loop.run_in_executor(None, _sync_status_checks),
+            return_exceptions=True,
+        )
+
+        result = {
+            "ollama":     ollama_result if isinstance(ollama_result, dict) else {"running": False, "models": []},
+            "server":     {"uptime_seconds": int((_time.time() - SERVER_START_TIME.timestamp())), "port": 8420},
+            "governance": sync["governance"] if isinstance(sync, dict) else {"pending_commits": 0, "last_ratification": None},
+            "intake":     sync["intake"]     if isinstance(sync, dict) else {},
+            "engine":     sync["engine"]     if isinstance(sync, dict) else {"running": False},
+            "tunnel":     tunnel_result if isinstance(tunnel_result, dict) else {"url": None, "reachable": False},
+            "kart":       sync["kart"]       if isinstance(sync, dict) else {"available_tools": 0, "task_stats": {}, "trust_level": "UNKNOWN"},
+        }
+
+        _status_cache["data"] = result
+        _status_cache["ts"] = now
+        return result
 
 
 @app.get("/api/status")
@@ -1677,6 +1728,20 @@ def agents_mailbox(name: str, unread_only: bool = False):
     return {"agent": name, "messages": messages, "count": len(messages)}
 
 
+@app.post("/api/agents/{name}/mailbox")
+async def agents_mailbox_send(name: str, request: Request):
+    """Send a message to an agent's mailbox."""
+    body = await request.json()
+    from_agent = body.get("from_agent", "")
+    subject = body.get("subject", "")
+    message_body = body.get("body", "")
+    thread_id = body.get("thread_id")
+    if not from_agent or not subject or not message_body:
+        raise HTTPException(status_code=400, detail="missing from_agent, subject, or body")
+    agent_registry.send_message(USERNAME, from_agent, name, subject, message_body, thread_id)
+    return {"ok": True, "to": name, "from": from_agent}
+
+
 @app.post("/api/agents/messages/{message_id}/read")
 def agents_mark_read(message_id: int):
     """Mark a message as read."""
@@ -1827,6 +1892,52 @@ def governance_pending():
         return {"pending": pending}
     except Exception as e:
         return {"error": str(e), "pending": []}
+
+
+@app.get("/api/governance/pending/{commit_id}")
+def governance_pending_status(commit_id: str):
+    """Poll a single governance proposal's status by commit_id."""
+    try:
+        if (GOV_COMMITS_DIR / f"{commit_id}.pending").exists():
+            return {"commit_id": commit_id, "status": "pending"}
+        if (GOV_COMMITS_DIR / f"{commit_id}.commit").exists():
+            return {"commit_id": commit_id, "status": "approved"}
+        if (GOV_COMMITS_DIR / f"{commit_id}.rejected").exists():
+            return {"commit_id": commit_id, "status": "rejected"}
+        raise HTTPException(status_code=404, detail=f"Proposal {commit_id} not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/governance/propose")
+async def governance_propose(request: Request):
+    """
+    Create a new governance proposal. Returns commit_id and status.
+    Checks precedent — auto-approves if a matching ratified decision exists.
+    Body: {title, proposer, summary, file_path, diff, proposal_type?, trust_level?, risk_level?}
+    """
+    try:
+        body = await request.json()
+        from governance import proposal as gov_proposal
+        commit_id = gov_proposal.create_proposal(
+            title=body.get("title", "Untitled Proposal"),
+            proposer=body.get("proposer", "ganesha"),
+            summary=body.get("summary", ""),
+            file_path=body.get("file_path", ""),
+            diff=body.get("diff", ""),
+            proposal_type=body.get("proposal_type", "Code Enhancement"),
+            trust_level=body.get("trust_level", "ENGINEER"),
+            risk_level=body.get("risk_level", "LOW"),
+        )
+        if commit_id.startswith("AUTO:"):
+            return {"commit_id": commit_id, "status": "auto_approved", "message": "Precedent match — no approval needed."}
+        if commit_id.startswith("DIST:"):
+            return {"commit_id": commit_id, "status": "distributed", "message": "Distributed ratification — no approval needed."}
+        return {"commit_id": commit_id, "status": "pending", "message": "Proposal created. Awaiting human ratification."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/governance/history")
@@ -3670,7 +3781,25 @@ if __name__ == "__main__":
         print(f"[BOOT] {msg}")  # start or stale_reclaimed
 
     print(f"Willow UI: http://{cfg.host}:{cfg.port}")
-    uvicorn.run("server:app", host=cfg.host, port=cfg.port, log_level="info")
+    from concurrent.futures import ThreadPoolExecutor
+    import asyncio as _asyncio
+
+    async def _setup_and_serve():
+        loop = _asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=50, thread_name_prefix="willow"))
+        config = uvicorn.Config(
+            app,
+            host=cfg.host,
+            port=cfg.port,
+            log_level="info",
+            timeout_keep_alive=2,
+            limit_concurrency=500,
+            access_log=False,
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+
+    _asyncio.run(_setup_and_serve())
 
 # BASE 17 Compact Communication Endpoint
 @app.route('/api/compact', methods=['POST'])

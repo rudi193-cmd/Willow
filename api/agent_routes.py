@@ -10,16 +10,28 @@ VERSION: 2.0
 CHECKSUM: ΔΣ=42
 """
 
+import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 # Core imports
-from core import agent_engine, agent_registry, agent_auth
+from core import agent_engine, agent_registry, agent_auth, job_queue
 
 # Default username (TODO: get from auth context)
 USERNAME = "Sweet-Pea-Rudi19"
+
+# Limit concurrent LLM calls — prevents chat threads from starving fast endpoints
+_chat_sem: Optional[asyncio.Semaphore] = None
+
+
+def _get_chat_sem() -> asyncio.Semaphore:
+    global _chat_sem
+    if _chat_sem is None:
+        _chat_sem = asyncio.Semaphore(8)
+    return _chat_sem
+
 
 # Create router
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -32,6 +44,7 @@ class ChatRequest(BaseModel):
     agent: Optional[str] = "willow"
     conversation_history: Optional[List[Dict[str, str]]] = None
     stream: Optional[bool] = False
+    async_mode: Optional[bool] = False
 
 
 class ChatResponse(BaseModel):
@@ -55,125 +68,101 @@ async def chat_with_agent(req: ChatRequest, agent_name: Optional[str] = None):
     """
     Conversational chat with any Willow agent.
 
-    Path: /api/agents/chat or /api/agents/chat/{agent_name}
-
-    Body:
-        {
-            "message": "User message",
-            "agent": "willow" (optional, can also use path param),
-            "conversation_history": [...] (optional),
-            "stream": false (optional, for SSE streaming)
-        }
-
-    Returns:
-        {
-            "response": "Agent response",
-            "tool_calls": [list of tools used],
-            "tokens_used": int,
-            "agent": "agent_name",
-            "pending_approval": bool (if governance approval needed),
-            "request_id": str (if pending approval)
-        }
+    async_mode=false (default): awaits result, blocks until LLM responds
+    async_mode=true: returns job_id immediately, poll GET /chat/job/{id}
     """
-    # Determine which agent to use
     agent = agent_name or req.agent or "willow"
 
-    try:
-        # Verify agent exists
-        agent_info = agent_registry.get_agent(USERNAME, agent)
-        if not agent_info:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Agent '{agent}' not found. Available agents: willow, kart, shiva, riggs, ada, gerald, steve"
-            )
+    agent_info = agent_registry.get_agent(USERNAME, agent)
+    if not agent_info:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Agent '{agent}' not found. Available agents: willow, kart, shiva, riggs, ada, gerald, steve"
+        )
 
-        # Chat with agent
-        if req.stream:
-            # TODO: Implement streaming (SSE)
-            raise HTTPException(
-                status_code=501,
-                detail="Streaming not yet implemented. Use stream=false for now."
-            )
-
-        # Route to appropriate handler
+    if getattr(req, 'async_mode', False):
         if agent == "kart":
-            # Kart uses orchestrator directly (bypasses LLM tool parsing issues)
-            from core import rings
-            orchestrator_result = rings.execute_task(
+            job_id = await job_queue.submit_kart(
+                task=req.message,
                 username=USERNAME,
-                user_request=req.message,
-                agent_name="kart"
+                notify_agent=None,
             )
+        else:
+            def _run():
+                return agent_engine.chat(
+                    username=USERNAME,
+                    agent_name=agent,
+                    message=req.message,
+                    conversation_history=req.conversation_history,
+                )
+            job_id = await job_queue.submit(_run)
+        return {"job_id": job_id, "status": "pending", "agent": agent}
 
-            # Convert orchestrator result to chat API format
-            result = {
-                "response": orchestrator_result.get("result", "Task completed"),
-                "tool_calls": orchestrator_result.get("steps", []),
+    # Sync mode — cap concurrent LLM calls, then run in thread pool
+    loop = asyncio.get_running_loop()
+    async with _get_chat_sem():
+        if agent == "kart":
+            from core import rings
+            raw = await loop.run_in_executor(
+                None,
+                lambda: rings.execute_task(
+                    username=USERNAME,
+                    user_request=req.message,
+                    agent_name="kart",
+                )
+            )
+            return {
+                "response": raw.get("result", "Task completed"),
+                "tool_calls": raw.get("steps", []),
                 "provider": "rings",
-                "tier": "direct"
+                "tier": "direct",
+                "agent": agent,
             }
         else:
-            # Other agents use conversational chat
-            result = agent_engine.chat(
-                username=USERNAME,
-                agent_name=agent,
-                message=req.message,
-                conversation_history=req.conversation_history,
-                stream=False
+            result = await loop.run_in_executor(
+                None,
+                lambda: agent_engine.chat(
+                    username=USERNAME,
+                    agent_name=agent,
+                    message=req.message,
+                    conversation_history=req.conversation_history,
+                )
             )
+            return result
 
-        # Add agent name to response
-        result["agent"] = agent
 
-        return result
+@router.get("/chat/job/{job_id}")
+async def poll_chat_job(job_id: str):
+    """Poll async chat job status. Returns result when done."""
+    return job_queue.poll(job_id)
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+def _build_agents_list() -> list:
+    """Blocking: DB query + tool_engine per agent. Runs in thread executor."""
+    from core import tool_engine
+    agents_data = agent_registry.list_agents(USERNAME)
+    agents = []
+    for agent_data in agents_data:
+        tools = tool_engine.list_tools(agent_data["name"], USERNAME)
+        agents.append({
+            "name": agent_data["name"],
+            "display_name": agent_data["display_name"],
+            "trust_level": agent_data["trust_level"],
+            "agent_type": agent_data["agent_type"],
+            "available_tools": len(tools),
+            "registered_at": agent_data.get("registered_at"),
+            "last_seen": agent_data.get("last_seen"),
+        })
+    return agents
 
 
 @router.get("/list")
 async def list_agents():
-    """
-    List all registered agents.
-
-    Returns:
-        {
-            "agents": [
-                {
-                    "name": "willow",
-                    "display_name": "Willow",
-                    "trust_level": "OPERATOR",
-                    "agent_type": "persona",
-                    "purpose": "...",
-                    "available_tools": int
-                },
-                ...
-            ]
-        }
-    """
+    """List all registered agents."""
     try:
-        agents_data = agent_registry.list_agents(USERNAME)
-
-        # Enrich with tool counts
-        agents = []
-        for agent_data in agents_data:
-            from core import tool_engine
-            tools = tool_engine.list_tools(agent_data["name"], USERNAME)
-
-            agents.append({
-                "name": agent_data["name"],
-                "display_name": agent_data["display_name"],
-                "trust_level": agent_data["trust_level"],
-                "agent_type": agent_data["agent_type"],
-                "available_tools": len(tools),
-                "registered_at": agent_data.get("registered_at"),
-                "last_seen": agent_data.get("last_seen")
-            })
-
+        loop = asyncio.get_running_loop()
+        agents = await loop.run_in_executor(None, _build_agents_list)
         return {"agents": agents}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

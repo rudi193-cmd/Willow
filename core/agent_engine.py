@@ -181,7 +181,9 @@ class AgentEngine:
         if not self.context or self.context[0].get("role") != "system":
             system_content = self.system_prompt
             if self.agent_name in ("shiva", "kart", "sean"):
-                memory_header = context_injector.build_context_header(self.username, self.agent_name)
+                memory_header = context_injector.build_context_header(
+                    self.username, self.agent_name, user_message=user_message
+                )
                 system_content = memory_header + "\n\n" + system_content
             self.context.insert(0, {
                 "role": "system",

@@ -88,7 +88,7 @@ def query_databases(topic: str) -> Dict[str, Any]:
     # Check if databases exist
     db_paths = {
         "knowledge": "data/willow_knowledge.db",
-        "tasks": "data/kart_tasks.db",
+        "tasks": "data/graft.db",
         "n2n": "data/n2n.db",
         "auth": "data/auth_users.db",
         "conversation": "data/conversation_memory.db"

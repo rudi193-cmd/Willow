@@ -27,7 +27,7 @@ DEPTH_MAX = 23
 LATTICE_SIZE = len(DOMAINS) * DEPTH_MAX * len(TEMPORAL_STATES) # 12167
 
 # Storage configuration
-DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "jane_memory")
+DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shiva_memory")
 
 # 
 # INTERNAL UTILITIES

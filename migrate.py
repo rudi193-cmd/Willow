@@ -108,7 +108,7 @@ if personal_ids:
 self_names = [
     'Willow', 'SAFE OS', 'die-namic-system', 'die-namic', 'Die-Namic',
     'SAFE', 'gate.py', 'pigeon_daemon', 'Kart', 'Kartikeya', 'Jane',
-    'OpAuth', 'agent_engine', 'relationship_tracker', 'Ganesha',
+    'OpAuth', 'agent_engine', 'vine', 'Ganesha',
     'bridge ring', 'source ring', 'continuity ring', 'AIONIC',
     'Aionic Continuity', 'Aionic System', 'dual commit', 'governance',
     'SEED_PACKET', 'context_store', 'llm_router', 'Eyes', 'Social Media Tracker',

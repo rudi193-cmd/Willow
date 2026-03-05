@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 # Core imports
-from core import kart_orchestrator, kart_tasks, tool_engine
+from core import rings, graft, tool_engine
 
 # Default username (TODO: get from auth context)
 USERNAME = "Sweet-Pea-Rudi19"
@@ -52,41 +52,30 @@ class TaskUpdateRequest(BaseModel):
 async def execute_task(req: ExecuteRequest):
     """
     Execute a multi-step task via Kart orchestrator.
-
-    Body:
-        {
-            "task": "Task description",
-            "agent": "kart" (optional),
-            "resume_from": "/path/to/seed_packet.json" (optional)
-        }
-
-    Returns:
-        {
-            "success": bool,
-            "result": str,
-            "steps": list,
-            "session_id": str,
-            "seed_packet": str (if paused/halted)
-        }
+    Non-blocking — runs rings.execute_task in a thread executor.
     """
+    import asyncio
+    loop = asyncio.get_running_loop()
     try:
         if req.resume_from:
-            # Resume from SEED_PACKET
-            result = kart_orchestrator.resume_task(
-                username=USERNAME,
-                seed_packet_path=req.resume_from,
-                agent_name=req.agent
+            result = await loop.run_in_executor(
+                None,
+                lambda: rings.resume_task(
+                    username=USERNAME,
+                    seed_packet_path=req.resume_from,
+                    agent_name=req.agent
+                )
             )
         else:
-            # Execute new task
-            result = kart_orchestrator.execute_task(
-                username=USERNAME,
-                user_request=req.task,
-                agent_name=req.agent
+            result = await loop.run_in_executor(
+                None,
+                lambda: rings.execute_task(
+                    username=USERNAME,
+                    user_request=req.task,
+                    agent_name=req.agent
+                )
             )
-
         return result
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -114,7 +103,7 @@ async def get_status():
         tools = tool_engine.list_tools("kart", USERNAME)
 
         # Get task stats
-        stats = kart_tasks.get_stats(USERNAME, "kart")
+        stats = graft.get_stats(USERNAME, "kart")
 
         return {
             "agent": "kart",
@@ -203,7 +192,7 @@ async def list_tasks(status: Optional[str] = None):
         }
     """
     try:
-        tasks = kart_tasks.list_tasks(USERNAME, agent="kart", status=status)
+        tasks = graft.list_tasks(USERNAME, agent="kart", status=status)
         return {"tasks": tasks}
 
     except Exception as e:
@@ -219,7 +208,7 @@ async def get_task(task_id: str):
         Task object or 404
     """
     try:
-        task = kart_tasks.get_task(USERNAME, task_id)
+        task = graft.get_task(USERNAME, task_id)
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         return task
@@ -245,7 +234,7 @@ async def update_task(task_id: str, req: TaskUpdateRequest):
         {"success": bool}
     """
     try:
-        success = kart_tasks.update_task(
+        success = graft.update_task(
             username=USERNAME,
             task_id=task_id,
             status=req.status,
@@ -275,7 +264,7 @@ async def get_task_log(task_id: str):
         }
     """
     try:
-        log = kart_tasks.get_task_log(USERNAME, task_id)
+        log = graft.get_task_log(USERNAME, task_id)
         return {"task_id": task_id, "log": log}
 
     except Exception as e:
@@ -291,7 +280,7 @@ async def delete_task(task_id: str):
         {"success": bool}
     """
     try:
-        success = kart_tasks.delete_task(USERNAME, task_id)
+        success = graft.delete_task(USERNAME, task_id)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
         return {"success": True, "task_id": task_id}
@@ -300,3 +289,10 @@ async def delete_task(task_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/queue/depth")
+async def kart_queue_depth():
+    """Current job queue depths and status counts."""
+    from core import job_queue
+    return job_queue.queue_depth()

@@ -25,7 +25,7 @@ from typing import Optional
 from core.coherence import track_conversation, get_coherence_report, check_intervention
 
 # === KNOWLEDGE ACCUMULATION ===
-from core import knowledge as _knowledge
+from core import loam as _knowledge
 
 # === CONFIGURATION ===
 OLLAMA_URL = "http://localhost:11434"

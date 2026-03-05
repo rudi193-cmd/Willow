@@ -89,7 +89,7 @@ _willow_root = Path(__file__).parent.parent.parent
 if str(_willow_root) not in sys.path:
     sys.path.insert(0, str(_willow_root))
 
-from core import knowledge
+from core import loam
 
 # Audit log path
 LOG_DIR = Path.home() / ".willow"
@@ -392,7 +392,7 @@ def _ingest_text(filepath: Path, entry: Dict, username: str):
         for i, chunk in enumerate(chunks):
             chunk_id = f"{filename}#chunk{i}" if len(chunks) > 1 else filename
             file_hash = hashlib.md5(chunk.encode()).hexdigest()
-            knowledge.ingest_file_knowledge(
+            loam.ingest_file_knowledge(
                 username=username,
                 filename=chunk_id,
                 file_hash=file_hash,
@@ -571,7 +571,7 @@ def correct_file(
     if corrected_text and len(corrected_text) >= 10:
         file_hash = hashlib.md5(corrected_text.encode()).hexdigest()
         category = new_category or "corrected"
-        knowledge.ingest_file_knowledge(
+        loam.ingest_file_knowledge(
             username=username,
             filename=f"{src.name}#corrected",
             file_hash=file_hash,

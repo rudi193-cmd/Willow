@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core import agent_engine, tool_engine, kart_tasks
+from core import agent_engine, tool_engine, graft
 from cli import format_helpers, session_manager, terminal_ui, context_manager
 from cli.terminal_ui import *
 
@@ -45,7 +45,7 @@ def main():
     # Initialize
     print(spinner_msg("Initializing agent..."), end='\r')
     engine = agent_engine.AgentEngine(username=USERNAME, agent_name=AGENT_NAME)
-    kart_tasks.init_db(USERNAME)
+    graft.init_db(USERNAME)
     print(" " * 50, end='\r')  # Clear spinner
     
     history = []
@@ -94,7 +94,7 @@ def main():
                     print(f"  {name:30s} {trust} {desc}")
                 
             elif msg == "/tasks":
-                tasks = kart_tasks.list_tasks(USERNAME, AGENT_NAME)
+                tasks = graft.list_tasks(USERNAME, AGENT_NAME)
                 print(section_header(f"Tasks ({len(tasks)})"))
                 for t in tasks:
                     status = t.get('status', '')

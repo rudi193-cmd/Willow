@@ -3,7 +3,7 @@
 NASA Archive API Routes
 =======================
 Serves North America Scootering Archive data only.
-Does NOT expose personal Willow knowledge.
+Does NOT expose personal Willow loam.
 DS=42
 """
 

@@ -12,8 +12,9 @@ import sqlite3
 import threading
 
 _DEFAULT_SQLITE = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db"
-DB_PATH      = os.getenv("WILLOW_DB_PATH", _DEFAULT_SQLITE)
-DATABASE_URL = os.getenv("WILLOW_DB_URL", f"sqlite:///{DB_PATH}")
+DB_PATH         = os.getenv("WILLOW_DB_PATH", _DEFAULT_SQLITE)
+DATABASE_URL    = os.getenv("WILLOW_DB_URL", f"sqlite:///{DB_PATH}")
+WILLOW_USERNAME = os.getenv("WILLOW_USERNAME", "")  # default schema on PG
 
 _pg_pool      = None
 _pg_pool_lock = threading.Lock()
@@ -28,7 +29,7 @@ def _get_pg_pool():
             try:
                 import psycopg2.pool
                 _pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=2, maxconn=20, dsn=DATABASE_URL
+                    minconn=4, maxconn=50, dsn=DATABASE_URL
                 )
             except ImportError:
                 raise RuntimeError("psycopg2 not installed. Run: pip install psycopg2-binary")
@@ -61,6 +62,9 @@ def _sqlite_to_pg(sql: str) -> str:
         table = m.group(1).lower() if m else ""
         conflict = _PG_CONFLICT_TARGETS.get(table, "DO NOTHING")
         s = s.rstrip().rstrip(";") + f" ON CONFLICT {conflict}"
+    # Escape literal % (e.g. in LIKE patterns) before converting ? -> %s.
+    # Otherwise psycopg2 interprets %.% as a format specifier, consuming params.
+    s = s.replace("%", "%%")
     s = s.replace("?", "%s")
     return s
 
@@ -134,19 +138,33 @@ class _PgConn:
         self._row_factory = value  # stored; cursor() uses RealDictCursor when sqlite3.Row
 
     def close(self):
+        try:
+            self._conn.rollback()
+        except Exception:
+            pass
         self._pool.putconn(self._conn)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, *_):
-        if exc_type:
-            self._conn.rollback()
+        try:
+            self._conn.rollback()  # always clean — committed txns are no-ops, aborted ones get cleared
+        except Exception:
+            pass
         self._pool.putconn(self._conn)
 
 
-def get_connection(path: str = None):
-    """Return a DB connection. path overrides default for per-user DBs (SQLite only)."""
+def _safe_schema_name(name: str) -> str:
+    """Convert a username to a safe PostgreSQL schema name (lowercase, underscores)."""
+    import re as _re2
+    s = _re2.sub(r"[^a-z0-9]", "_", name.lower())
+    return s[:63]
+
+
+def get_connection(path: str = None, schema: str = None):
+    """Return a DB connection. path overrides default for per-user DBs (SQLite only).
+    schema: if set and PostgreSQL, SET search_path = {schema}, public after connecting."""
     url = DATABASE_URL if path is None else f"sqlite:///{path}"
     if url.startswith("sqlite"):
         db   = url.replace("sqlite:///", "")
@@ -158,8 +176,19 @@ def get_connection(path: str = None):
     elif url.startswith("postgresql") or url.startswith("postgres"):
         pool = _get_pg_pool()
         conn = pool.getconn()
-        conn.autocommit = False
-        return _PgConn(pool, conn)
+        try:
+            conn.autocommit = False
+            pg_conn = _PgConn(pool, conn)
+            _schema = schema or WILLOW_USERNAME
+            if _schema:
+                safe = _safe_schema_name(_schema)
+                _cur = conn.cursor()
+                _cur.execute(f"SET search_path = {safe}, public")
+                _cur.close()
+            return pg_conn
+        except Exception:
+            pool.putconn(conn)
+            raise
     else:
         raise ValueError(f"Unsupported WILLOW_DB_URL scheme: {url}")
 
@@ -167,3 +196,21 @@ def get_connection(path: str = None):
 def is_postgres() -> bool:
     """True when running against PostgreSQL."""
     return DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres")
+
+
+def init_user_schema(username: str) -> str:
+    """Create a PostgreSQL schema for this user if it does not exist.
+    Returns the safe schema name. No-op on SQLite (returns safe name only)."""
+    safe = _safe_schema_name(username)
+    if not is_postgres():
+        return safe
+    pool = _get_pg_pool()
+    conn = pool.getconn()
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(f"CREATE SCHEMA IF NOT EXISTS {safe}")
+        cur.close()
+    finally:
+        pool.putconn(conn)
+    return safe

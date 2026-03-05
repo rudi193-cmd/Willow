@@ -14,7 +14,7 @@ DOMAINS = ["relationships","work","health","finance","creativity","learning","gr
 DOMAIN_LIST = ", ".join(DOMAINS)
 
 def get_db(username):
-    db_path = WILLOW_ROOT / "artifacts" / username / "knowledge.db"
+    db_path = WILLOW_ROOT / "artifacts" / username / "loam.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA busy_timeout=10000")
     conn.execute("PRAGMA journal_mode=WAL")
@@ -23,6 +23,26 @@ def get_db(username):
 
 def _migrate(conn):
     cur = conn.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS atoms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT NOT NULL,
+        source_session TEXT,
+        domain TEXT,
+        depth INTEGER DEFAULT 1,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS entities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT,
+        mention_count INTEGER DEFAULT 1,
+        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS gaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question TEXT NOT NULL,
+        context TEXT,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        resolved INTEGER DEFAULT 0)""")
     cur.execute("PRAGMA table_info(atoms)")
     atom_cols = {r[1] for r in cur.fetchall()}
     for col, defn in [("domain","TEXT"),("depth","INTEGER DEFAULT 1"),("source_session","TEXT")]:

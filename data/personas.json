@@ -1,0 +1,66 @@
+{
+  "willow": {
+    "display_name": "Willow",
+    "trust_level": "OPERATOR",
+    "schedule": {
+      "enabled": false,
+      "interval_seconds": 3600
+    }
+  },
+  "ada": {
+    "display_name": "Ada",
+    "trust_level": "OPERATOR",
+    "schedule": {
+      "enabled": false,
+      "interval_seconds": 3600
+    }
+  },
+  "steve": {
+    "display_name": "Steve",
+    "trust_level": "OPERATOR",
+    "schedule": {
+      "enabled": false,
+      "interval_seconds": 3600
+    }
+  },
+  "kart": {
+    "display_name": "Kart",
+    "trust_level": "ENGINEER",
+    "schedule": {
+      "enabled": false,
+      "interval_seconds": 60
+    }
+  },
+  "gerald": {
+    "display_name": "Gerald",
+    "trust_level": "WORKER",
+    "schedule": {
+      "enabled": false,
+      "interval_seconds": 3600
+    }
+  },
+  "jane": {
+    "display_name": "Jane",
+    "trust_level": "WORKER",
+    "schedule": {
+      "enabled": false,
+      "interval_seconds": 3600
+    }
+  },
+  "pigeon": {
+    "display_name": "The Pigeon",
+    "trust_level": "WORKER",
+    "schedule": {
+      "enabled": false,
+      "interval_seconds": 300
+    }
+  },
+  "riggs": {
+    "display_name": "Riggs",
+    "trust_level": "WORKER",
+    "schedule": {
+      "enabled": false,
+      "interval_seconds": 3600
+    }
+  }
+}

@@ -81,7 +81,7 @@ def run_startup(username: str) -> dict:
                 with open(file_path, encoding="utf-8", errors="replace") as _f:
                     text = _f.read()
                 fhash = hashlib.md5(text.encode()).hexdigest()
-                knowledge.ingest_file_knowledge(username, fname, fhash, "readme", text[:4000], "kart_startup")
+                loam.ingest_file_knowledge(username, fname, fhash, "readme", text[:4000], "kart_startup")
                 ingested += 1
         steps += 1
     except Exception as e:

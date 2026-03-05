@@ -148,10 +148,10 @@ def test_checksum_chain():
     # print(f"[OK] Envelope created")
 
 
-def test_kart_orchestrator():
+def test_rings():
     """Test Kart orchestrator with new SEED_PACKET."""
     print("\n=== Testing Kart Orchestrator ===")
-    from core.kart_orchestrator import KartOrchestrator
+    from core.rings import KartOrchestrator
 
     orchestrator = KartOrchestrator("Sweet-Pea-Rudi19", "kart")
     print(f"[OK] Orchestrator initialized")
@@ -190,7 +190,7 @@ def main():
         test_n2n_packets,
         test_n2n_db,
         test_checksum_chain,
-        test_kart_orchestrator,
+        test_rings,
         test_agent_engine
     ]
 

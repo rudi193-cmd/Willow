@@ -1,19 +1,31 @@
 
-import os, json, hashlib, shutil, sqlite3, logging, re, threading
+import os, sys, json, hashlib, shutil, sqlite3, logging, re, threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, UTC
 from pathlib import Path
 
 logger = logging.getLogger("pigeon")
 
-DB_PATH = r"C:\\Users\\Sean\\Documents\\GitHub\\Willow\\artifacts\\Sweet-Pea-Rudi19\\willow_knowledge.db"
+_WIN = sys.platform == "win32"
+_BASE = r"C:\Users\Sean" if _WIN else "/mnt/c/Users/Sean"
+_REPO = (r"C:\Users\Sean\Documents\GitHub\Willow" if _WIN
+         else "/mnt/c/Users/Sean/Documents/GitHub/Willow")
+
+DB_PATH = os.path.join(_REPO, "artifacts", "Sweet-Pea-Rudi19", "willow_knowledge.db")
 
 NEST_PATHS = {
-    "Sweet-Pea-Rudi19": r"C:\\Users\\Sean\\Willow\\Nest",
+    "Sweet-Pea-Rudi19": os.path.join(_BASE, "Willow", "Nest"),
 }
 
+AGENT_NAMES = [
+    "willow", "kart", "riggs", "ada", "shiva", "gerald", "steve", "pigeon",
+    "field_notes", "law_gazelle", "private_ledger", "public_ledger", "source_trail", "the_squirrel",
+]
+
+NEST_BASE = os.path.join(_BASE, "Willow", "Nest")
+
 FILED_BASE = {
-    "Sweet-Pea-Rudi19": r"C:\\Users\\Sean\\Willow\\Filed",
+    "Sweet-Pea-Rudi19": os.path.join(_BASE, "Willow", "Filed"),
 }
 
 VALID_CATEGORIES = {"legal", "narrative", "personal", "code", "reference", "media"}
@@ -32,7 +44,14 @@ def _file_hash(path: Path) -> str:
 
 
 def get_nest_path(username: str) -> str:
-    path = NEST_PATHS.get(username, os.path.join(r"C:\\Users\\Sean", "Willow", "Nest"))
+    path = NEST_PATHS.get(username, os.path.join(_BASE, "Willow", "Nest"))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def get_agent_nest_path(agent_name: str) -> str:
+    """Get (and create) the per-agent Nest subfolder."""
+    path = os.path.join(NEST_BASE, agent_name)
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -123,7 +142,7 @@ def _read_snippet(file_path: str, max_bytes: int = 2000) -> str:
 
 def classify_file(filename: str, snippet: str) -> dict:
     import sys
-    sys.path.insert(0, r"C:\Users\Sean\Documents\GitHub\Willow\core")
+    sys.path.insert(0, os.path.join(_REPO, "core"))
     import llm_router
     llm_router.load_keys_from_json()
     prompt = (
@@ -159,7 +178,7 @@ def classify_file(filename: str, snippet: str) -> dict:
         return {"category": "media", "subcategory": "photos", "summary": f"Media file: {filename}"}
     return {"category": "reference", "subcategory": "general", "summary": f"Document: {filename}"}
 def route_file(file_path: str, category: str, username: str, subcategory: str = "general") -> str:
-    base = FILED_BASE.get(username, os.path.join(r"C:\\Users\\Sean", "Willow", "Filed"))
+    base = FILED_BASE.get(username, os.path.join(_BASE, "Willow", "Filed"))
     dest_dir = os.path.join(base, category, subcategory)
     os.makedirs(dest_dir, exist_ok=True)
     dest = os.path.join(dest_dir, Path(file_path).name)
@@ -276,7 +295,6 @@ _DB_LOCK = threading.Lock()  # serialize SQLite writes
 
 def scan_and_process(username: str) -> list:
     init_droppings_table()
-    nest_path = get_nest_path(username)
     conn = _connect()
     cur = conn.cursor()
     cur.execute("SELECT filename, file_hash FROM pigeon_droppings WHERE username=?", (username,))
@@ -285,17 +303,25 @@ def scan_and_process(username: str) -> list:
     already_filed_names = {r[0] for r in rows}
     already_filed_hashes = {r[1] for r in rows if r[1]}
 
+    # Collect from root Nest + all per-agent subdirs
+    scan_dirs = [Path(get_nest_path(username))]
+    for agent in AGENT_NAMES:
+        agent_nest = Path(get_agent_nest_path(agent))
+        if agent_nest.exists():
+            scan_dirs.append(agent_nest)
+
     pending = []
-    for item in Path(nest_path).iterdir():
-        if not item.is_file() or item.name.startswith("."):
-            continue
-        if item.name in already_filed_names:
-            continue
-        fh = _file_hash(item)
-        if fh in already_filed_hashes:
-            logger.debug(f"PIGEON: skipping duplicate content: {item.name}")
-            continue
-        pending.append((item, fh))
+    for nest_dir in scan_dirs:
+        for item in nest_dir.iterdir():
+            if not item.is_file() or item.name.startswith("."):
+                continue
+            if item.name in already_filed_names:
+                continue
+            fh = _file_hash(item)
+            if fh in already_filed_hashes:
+                logger.debug(f"PIGEON: skipping duplicate content: {item.name}")
+                continue
+            pending.append((item, fh))
 
     if not pending:
         return []

@@ -42,30 +42,18 @@ echo [OK] Governance Core verified.
 :: echo [*] Igniting AIOS Engine...
 :: start "AIOS ENGINE" python aios_loop.py
 
-:: 4. START KART (Background — fast pre-classifier fallback)
-echo [*] Starting Kartikeya Refinery...
-start "KARTIKEYA REFINERY" python kart.py --user Sweet-Pea-Rudi19
+:: 4. START KART (DEPRECATED — Kart now runs as pulse.py via start_daemons.bat)
+:: echo [*] Starting Kartikeya Refinery...
+:: start "KARTIKEYA REFINERY" python kart.py --user Sweet-Pea-Rudi19
 
-:: 5. START THE VOICE (Foreground — chat interface)
-echo [*] Awakening Interface...
-echo.
-echo ========================================================
-echo   Engine + Refinery running in background windows.
-echo   Chat interface starting below.
-echo   Close this window to stop the interface.
-echo ========================================================
-echo.
-python local_api.py
+:: 5. START THE VOICE (DEPRECATED — now server.py via uvicorn)
+:: echo [*] Awakening Interface...
+:: python local_api.py
 
-:: 6. SHUTDOWN PROTOCOL
+:: USE start_daemons.bat + server.py instead
+echo [*] Use start_daemons.bat to launch all daemons.
+echo [*] Use: uvicorn server:app --host 0.0.0.0 --port 8420 to start Willow.
 echo.
-echo ========================================================
-echo [*] Interface closed.
-echo [?] Kill background processes too? (Y/N)
-set /p kill_bg=
-if /i "%kill_bg%"=="Y" (
-    taskkill /FI "WINDOWTITLE eq AIOS ENGINE" >nul 2>&1
-    taskkill /FI "WINDOWTITLE eq KARTIKEYA REFINERY" >nul 2>&1
-    echo [OK] All engines stopped.
-)
 pause
+
+:: 6. SHUTDOWN — use stop_daemons.bat or KILL_SWITCH.bat

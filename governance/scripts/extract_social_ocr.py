@@ -232,7 +232,7 @@ def main():
     reddit_acct = social.execute("SELECT id FROM accounts WHERE handle='BeneficialBig8372'").fetchone()[0]
 
     # Fetch all social items
-    items = knowledge.execute("""
+    items = loam.execute("""
         SELECT id, title, content_snippet FROM knowledge
         WHERE category='social' ORDER BY id
     """).fetchall()
@@ -340,7 +340,7 @@ def main():
         views_str = f" {v:,}v" if v else ""
         print(f"    r/{sub:<30} {d or '?'} {views_str:<12} {t[:55]}{marker}")
 
-    knowledge.close()
+    loam.close()
     social.close()
 
 

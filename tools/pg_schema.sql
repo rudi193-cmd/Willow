@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS entities (
     entity_type       TEXT NOT NULL,
     description       TEXT,
     mention_count     INTEGER DEFAULT 1,
-    layer             TEXT DEFAULT '1',
+    layer             INTEGER DEFAULT 1,
     reference_string  TEXT,
     first_seen        TEXT,
     last_mentioned    TEXT,
@@ -220,4 +220,63 @@ CREATE TABLE IF NOT EXISTS pigeon_errors (
     filename   TEXT NOT NULL,
     error      TEXT,
     created_at TEXT NOT NULL
+);
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- SCHEMA REGISTRY — tracks which users have their own PG schema
+-- Lives in public schema always (system-level table)
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS schema_registry (
+    id          BIGSERIAL PRIMARY KEY,
+    username    TEXT NOT NULL UNIQUE,
+    schema_name TEXT NOT NULL UNIQUE,
+    created_at  TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS')
+);
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- COMMUNITY LAYER — public schema shared tables (opt-in publishing)
+-- These live in public schema and are read by all users via search_path fallback.
+-- User data stays in their private schema. Community data is published here.
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- ── community_entities ────────────────────────────────────────────────────
+-- Entities a user has opted to share with the local community layer
+CREATE TABLE IF NOT EXISTS community_entities (
+    id              BIGSERIAL PRIMARY KEY,
+    source_username TEXT NOT NULL,
+    source_entity_id BIGINT,
+    name            TEXT NOT NULL,
+    entity_type     TEXT,
+    layer           INTEGER DEFAULT 1,
+    mention_count   INTEGER DEFAULT 1,
+    published_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS'),
+    UNIQUE(source_username, name, entity_type)
+);
+CREATE INDEX IF NOT EXISTS idx_community_entities_name
+    ON community_entities(name, entity_type);
+
+-- ── community_connections ──────────────────────────────────────────────────
+-- Connections between community entities (cross-user graph edges)
+CREATE TABLE IF NOT EXISTS community_connections (
+    id               BIGSERIAL PRIMARY KEY,
+    entity_a_name    TEXT NOT NULL,
+    entity_b_name    TEXT NOT NULL,
+    connection_type  TEXT NOT NULL,
+    weight           REAL DEFAULT 1.0,
+    source_username  TEXT NOT NULL,
+    published_at     TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS'),
+    UNIQUE(entity_a_name, entity_b_name, connection_type, source_username)
+);
+CREATE INDEX IF NOT EXISTS idx_community_connections_entities
+    ON community_connections(entity_a_name, entity_b_name);
+
+-- ── community_knowledge ────────────────────────────────────────────────────
+-- Knowledge atoms published to the community layer
+CREATE TABLE IF NOT EXISTS community_knowledge (
+    id              BIGSERIAL PRIMARY KEY,
+    source_username TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    topic           TEXT,
+    confidence      REAL DEFAULT 1.0,
+    published_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS')
 );

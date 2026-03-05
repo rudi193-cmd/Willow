@@ -196,6 +196,25 @@ def list_proposals(status: str = "pending") -> list[str]:
     return [p.stem for p in proposals]
 
 
+def get_proposal_status(commit_id: str) -> str:
+    """
+    Get the current status of a proposal by commit_id.
+
+    Returns:
+        "pending"   — .pending file exists, awaiting ratification
+        "approved"  — .commit file exists, ratified
+        "rejected"  — .rejected file exists
+        "not_found" — no file found with this commit_id
+    """
+    if (COMMITS_DIR / f"{commit_id}.pending").exists():
+        return "pending"
+    if (COMMITS_DIR / f"{commit_id}.commit").exists():
+        return "approved"
+    if (COMMITS_DIR / f"{commit_id}.rejected").exists():
+        return "rejected"
+    return "not_found"
+
+
 if __name__ == "__main__":
     # CLI usage
     import argparse

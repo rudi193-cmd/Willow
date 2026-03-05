@@ -14,7 +14,7 @@ log = logging.getLogger("seed_packet")
 def save_packet(packet_data, path=None):
     """
     Canonical save logic for SEED_PACKETs.
-    Satisfies import for kart_orchestrator.py.
+    Satisfies import for rings.py.
     """
     if path is None:
         # Default to a timestamped file in the current directory if no path provided
@@ -33,7 +33,7 @@ def save_packet(packet_data, path=None):
 def load_packet(path):
     """
     Loads a SEED_PACKET from disk.
-    Satisfies import for kart_orchestrator.py.
+    Satisfies import for rings.py.
     """
     try:
         with open(path, 'r', encoding='utf-8') as f:
@@ -45,7 +45,7 @@ def load_packet(path):
 def validate_packet(packet_data):
     """
     Verifies the structural integrity and DS=42 checksum.
-    Satisfies import for kart_orchestrator.py.
+    Satisfies import for rings.py.
     """
     # Check for core required fields
     required_fields = ["text", "timestamp", "username"]

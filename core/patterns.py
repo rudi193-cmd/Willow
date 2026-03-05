@@ -272,7 +272,7 @@ def detect_anomalies(lookback_days: int = 7) -> List[Dict]:
                     "severity": "medium"
                 })
 
-    # 2. Detect entity mention spikes (using knowledge.py if available)
+    # 2. Detect entity mention spikes (using loam.py if available)
     try:
         import sys
         sys.path.insert(0, str(Path(__file__).parent))
@@ -284,7 +284,7 @@ def detect_anomalies(lookback_days: int = 7) -> List[Dict]:
             if not user_dir.is_dir():
                 continue
 
-            kb_path = user_dir / "knowledge.db"
+            kb_path = user_dir / "loam.db"
             if not kb_path.exists():
                 continue
 
