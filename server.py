@@ -901,12 +901,18 @@ def skills_status():
     import subprocess, requests as req
     try:
         daemons = {}
+        _is_win = sys.platform == "win32"
         for name in ["WILLOW-GovernanceMonitor", "WILLOW-CoherenceScanner",
                      "WILLOW-TopologyBuilder", "WILLOW-KnowledgeCompactor",
                      "WILLOW-SAFESync", "WILLOW-PersonaScheduler", "WILLOW-InboxWatcher"]:
-            result = subprocess.run(["tasklist", "/FI", f"WINDOWTITLE eq {name}"],
-                                    capture_output=True, text=True, timeout=3)
-            daemons[name] = "python.exe" in result.stdout
+            if _is_win:
+                result = subprocess.run(["tasklist", "/FI", f"WINDOWTITLE eq {name}"],
+                                        capture_output=True, text=True, timeout=3)
+                daemons[name] = "python.exe" in result.stdout
+            else:
+                result = subprocess.run(["pgrep", "-f", name],
+                                        capture_output=True, text=True, timeout=3)
+                daemons[name] = result.returncode == 0
         return {
             "server": True,
             "daemons": daemons,
