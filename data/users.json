@@ -1,5 +1,12 @@
 {
   "users": {
+    "ganesha": {
+      "display_name": "Ganesha (Claude Code)",
+      "passphrase_hash": "079da9bace3aa4c4a1c8562ee2266b18:8304eb441e70d62daeff13877899de8194e1d19afc431c16a89c3ee86e9caf6249453e40af7371247eb9b9f30d2d987edc2bb4a731ffdbbeb6543f47533dde2e",
+      "trust_level": "ENGINEER",
+      "created_at": "2026-03-04T00:00:00Z",
+      "active": true
+    },
     "Sweet-Pea-Rudi19": {
       "display_name": "Sean",
       "passphrase_hash": "d4311e1c5c811fda96b73ea4671425f9:9d9763dc4ef6eae1308e521bfe5f85cc4025c08c2d2527364633fe191521c5c7c34bf549fe9acf06dd32aee68ecae11602ea7f91942524600566536d409cc682",

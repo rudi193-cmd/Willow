@@ -62,10 +62,12 @@ def _sqlite_to_pg(sql: str) -> str:
         table = m.group(1).lower() if m else ""
         conflict = _PG_CONFLICT_TARGETS.get(table, "DO NOTHING")
         s = s.rstrip().rstrip(";") + f" ON CONFLICT {conflict}"
-    # Escape literal % (e.g. in LIKE patterns) before converting ? -> %s.
-    # Otherwise psycopg2 interprets %.% as a format specifier, consuming params.
-    s = s.replace("%", "%%")
-    s = s.replace("?", "%s")
+    # Only translate ? -> %s if the query uses SQLite-style placeholders.
+    # If it already uses %s (Postgres-native), leave it alone — escaping % would
+    # turn %s into %%s and break psycopg2.
+    if "?" in s:
+        s = s.replace("%", "%%")
+        s = s.replace("?", "%s")
     return s
 
 
