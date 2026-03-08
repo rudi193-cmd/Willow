@@ -151,7 +151,7 @@ PROVIDERS = [
     ProviderConfig("Ollama", "PATH", "http://localhost:11434/api/generate", "llama3.2:latest", "free"),  # General purpose
     ProviderConfig("Ollama Minimax", "PATH", "http://localhost:11434/api/generate", "minimax-m2.5:cloud", "free"),  # Cloud via Ollama
     ProviderConfig("Ollama GLM-5", "PATH", "http://localhost:11434/api/generate", "glm-5:cloud", "free"),  # Cloud via Ollama
-    ProviderConfig("Claude CLI", "PATH", "cli://claude", "claude-sonnet-4-6", "free"),  # Claude CLI subprocess — Sonnet quality at free tier
+    # ProviderConfig("Claude CLI", "PATH", "cli://claude", "claude-sonnet-4-6", "free"),  # Disabled — cli:// handler not implemented
     
     # Cloud providers (fallback if Ollama unavailable)
     ProviderConfig("OCI Gemini Pro", "ORACLE_OCI", "https://inference.generativeai.us-phoenix-1.oci.oraclecloud.com", "ocid1.generativeaimodel.oc1.phx.amaaaaaask7dceyaaxukx6phswip5qkz4oeti6gg3mm4vbahum7bfjwzy3da", "free"),
@@ -299,14 +299,6 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
     if preferred_tier in available:
         tier_providers = available[preferred_tier][:]  # Copy list
 
-        # ROUND-ROBIN: Rotate providers in preferred tier
-        if use_round_robin and tier_providers:
-            idx = _round_robin_index[preferred_tier] % len(tier_providers)
-            # Rotate: move providers before idx to the end
-            tier_providers = tier_providers[idx:] + tier_providers[:idx]
-            # Update index for next call
-            _round_robin_index[preferred_tier] = (idx + 1) % len(tier_providers)
-
         priority.extend(tier_providers)
 
     # Fallback cascade to other tiers
@@ -333,7 +325,8 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
             success_rate = health.total_successes / health.total_requests
 
             # Skip providers with catastrophic failure rates
-            if success_rate < 0.2 and health.total_requests > 10:
+            # Require 30+ requests before judging — small initial batches can skew the rate
+            if success_rate < 0.2 and health.total_requests > 30:
                 logging.warning(f"Skipping {p.name} - only {success_rate*100:.1f}% success rate")
                 continue
 
@@ -366,6 +359,13 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
                     healthy_providers.insert(0, healthy_providers.pop(i))
                     logging.info(f"Boosting {best_name} to front (best for {task_type}: {best_for_task['success_rate']*100:.0f}% success)")
                     break
+
+    # ROUND-ROBIN: Rotate starting position through the sorted+healthy list
+    # Applied AFTER sort so all providers get a turn at bat, not just the top scorer
+    if use_round_robin and healthy_providers:
+        idx = _round_robin_index[preferred_tier] % len(healthy_providers)
+        healthy_providers = healthy_providers[idx:] + healthy_providers[:idx]
+        _round_robin_index[preferred_tier] = (idx + 1) % len(healthy_providers)
 
     # Separate Ollama (local fallback) from cloud providers
     ollama_provider = None

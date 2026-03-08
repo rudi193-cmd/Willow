@@ -280,3 +280,58 @@ CREATE TABLE IF NOT EXISTS community_knowledge (
     confidence      REAL DEFAULT 1.0,
     published_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS')
 );
+
+-- ── cube_cells ─────────────────────────────────────────────────────────────
+-- 23³ lattice index — derived from knowledge and entities (safe to rebuild)
+CREATE TABLE IF NOT EXISTS cube_cells (
+    id            BIGSERIAL PRIMARY KEY,
+    node_id       BIGINT NOT NULL,
+    node_type     TEXT NOT NULL CHECK (node_type IN ('knowledge', 'entity')),
+    cx            INTEGER NOT NULL CHECK (cx BETWEEN 0 AND 22),
+    cy            INTEGER NOT NULL CHECK (cy BETWEEN 1 AND 23),
+    cz            INTEGER NOT NULL CHECK (cz BETWEEN 0 AND 22),
+    domain_name   TEXT NOT NULL,
+    temporal_name TEXT NOT NULL,
+    indexed_at    TEXT NOT NULL,
+    UNIQUE (node_id, node_type)
+);
+CREATE INDEX IF NOT EXISTS idx_cube_xyz  ON cube_cells(cx, cy, cz);
+CREATE INDEX IF NOT EXISTS idx_cube_type ON cube_cells(node_type);
+
+-- ── registered_apps ────────────────────────────────────────────────────────
+-- SAFE app registry for consent management
+CREATE TABLE IF NOT EXISTS registered_apps (
+    app_id        TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    version       TEXT,
+    permissions   TEXT,
+    privacy_tier  TEXT,
+    manifest_path TEXT,
+    registered_at TEXT NOT NULL
+);
+
+-- ── app_consent ────────────────────────────────────────────────────────────
+-- Per-user consent for each registered app
+CREATE TABLE IF NOT EXISTS app_consent (
+    id          BIGSERIAL PRIMARY KEY,
+    username    TEXT NOT NULL,
+    app_id      TEXT NOT NULL,
+    consented   INTEGER NOT NULL DEFAULT 0,
+    granted_at  TEXT,
+    revoked_at  TEXT,
+    UNIQUE (username, app_id)
+);
+CREATE INDEX IF NOT EXISTS idx_consent_user ON app_consent(username);
+
+-- ── bus_drops ──────────────────────────────────────────────────────────────
+-- Audit log of safe-app message bus drops
+CREATE TABLE IF NOT EXISTS bus_drops (
+    id         BIGSERIAL PRIMARY KEY,
+    source_app TEXT NOT NULL,
+    topic      TEXT NOT NULL,
+    session_id TEXT,
+    status     TEXT NOT NULL,
+    result     TEXT,
+    created_at TEXT NOT NULL
+);

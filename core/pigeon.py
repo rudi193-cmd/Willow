@@ -339,6 +339,143 @@ def scan_and_process(username: str) -> list:
 
 # ── Bus Drop Intake ────────────────────────────────────────────────────────────────────────────
 
+def init_inbox_table():
+    """Create pigeon_inbox table — cross-app async message queue."""
+    conn = _connect()
+    is_pg = hasattr(conn, 'autocommit')  # psycopg2 connections have autocommit; sqlite3 does not
+    if is_pg:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pigeon_inbox (
+                id          SERIAL PRIMARY KEY,
+                to_app      TEXT NOT NULL,
+                from_app    TEXT NOT NULL,
+                username    TEXT NOT NULL,
+                subject     TEXT NOT NULL,
+                body        TEXT NOT NULL,
+                thread_id   TEXT,
+                sent_at     TEXT NOT NULL,
+                read_at     TEXT
+            )
+        """)
+    else:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pigeon_inbox (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                to_app      TEXT NOT NULL,
+                from_app    TEXT NOT NULL,
+                username    TEXT NOT NULL,
+                subject     TEXT NOT NULL,
+                body        TEXT NOT NULL,
+                thread_id   TEXT,
+                sent_at     TEXT NOT NULL,
+                read_at     TEXT
+            )
+        """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_to ON pigeon_inbox(to_app, read_at)")
+    conn.commit()
+    conn.close()
+
+
+_DRIVE_INBOX_BASE = Path(_BASE) / "My Drive (rudi193@gmail.com)" / "Willow" / "Nest" / "inbox"
+
+# Apps that live in the cloud — replies written to Drive inbox for async pickup
+_CLOUD_APPS = {"oakenscroll"}
+
+
+def _publish_to_drive_inbox(to_app: str, from_app: str, subject: str, body: str,
+                             thread_id, sent_at: str):
+    """Write reply to Drive inbox folder so cloud agents can pick it up via sync."""
+    try:
+        inbox_dir = _DRIVE_INBOX_BASE / to_app
+        inbox_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        fname = inbox_dir / f"msg_{ts}_{from_app}.json"
+        payload = {
+            "from": from_app,
+            "to": to_app,
+            "subject": subject,
+            "body": body,
+            "sent_at": sent_at,
+            "thread_id": thread_id,
+        }
+        fname.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        logger.info(f"PIGEON: drive inbox → {fname.name}")
+    except Exception as e:
+        logger.warning(f"PIGEON: drive inbox write failed: {e}")
+
+
+def send_to_inbox(to_app: str, from_app: str, username: str,
+                  subject: str, body: str, thread_id: str = None) -> int:
+    """Deposit a message into an app's inbox. Returns message id."""
+    init_inbox_table()
+    sent_at = datetime.now(UTC).isoformat()
+    from core.db import is_postgres
+    conn = _connect()
+    if is_postgres():
+        cur = conn.execute(
+            "INSERT INTO pigeon_inbox (to_app, from_app, username, subject, body, thread_id, sent_at) "
+            "VALUES (?,?,?,?,?,?,?) RETURNING id",
+            (to_app, from_app, username, subject, body, thread_id, sent_at)
+        )
+        msg_id = cur.fetchone()[0]
+    else:
+        cur = conn.execute(
+            "INSERT INTO pigeon_inbox (to_app, from_app, username, subject, body, thread_id, sent_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (to_app, from_app, username, subject, body, thread_id, sent_at)
+        )
+        msg_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    logger.info(f"PIGEON: inbox message {msg_id} → {to_app} from {from_app}")
+    # Mirror to Drive inbox for cloud apps
+    if to_app in _CLOUD_APPS:
+        _publish_to_drive_inbox(to_app, from_app, subject, body, thread_id, sent_at)
+    return msg_id
+
+
+def get_inbox(app_id: str, username: str = None, unread_only: bool = True) -> list:
+    """Fetch messages for an app. Returns list of dicts."""
+    init_inbox_table()
+    conn = _connect()
+    if unread_only:
+        rows = conn.execute(
+            "SELECT id, to_app, from_app, username, subject, body, thread_id, sent_at, read_at "
+            "FROM pigeon_inbox WHERE to_app=? AND read_at IS NULL ORDER BY sent_at DESC",
+            (app_id,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, to_app, from_app, username, subject, body, thread_id, sent_at, read_at "
+            "FROM pigeon_inbox WHERE to_app=? ORDER BY sent_at DESC LIMIT 100",
+            (app_id,)
+        ).fetchall()
+    conn.close()
+    keys = ["id", "to_app", "from_app", "username", "subject", "body", "thread_id", "sent_at", "read_at"]
+    return [dict(zip(keys, r)) for r in rows]
+
+
+def mark_inbox_read(app_id: str, message_id: int = None) -> int:
+    """Mark one or all messages as read. Returns count updated."""
+    init_inbox_table()
+    conn = _connect()
+    now = datetime.now(UTC).isoformat()
+    if message_id:
+        cur = conn.execute(
+            "UPDATE pigeon_inbox SET read_at=? WHERE id=? AND to_app=? AND read_at IS NULL",
+            (now, message_id, app_id)
+        )
+    else:
+        cur = conn.execute(
+            "UPDATE pigeon_inbox SET read_at=? WHERE to_app=? AND read_at IS NULL",
+            (now, app_id)
+        )
+    conn.commit()
+    count = cur.rowcount
+    conn.close()
+    return count
+
+
 def init_bus_drops_table():
     """Create bus_drops table for audit logging of safe-app message drops."""
     from core.db import is_postgres
@@ -360,18 +497,41 @@ def init_bus_drops_table():
     conn.close()
 
 
+def _check_app_consent(username: str, app_id: str) -> bool:
+    """Return True if username has consented to app_id, or if app_id is empty (internal)."""
+    if not app_id or app_id == "unknown":
+        return True
+    try:
+        conn = _connect()
+        row = conn.execute(
+            "SELECT consented FROM app_consent WHERE username=? AND app_id=? AND consented=1",
+            (username, app_id)
+        ).fetchone()
+        conn.close()
+        return row is not None
+    except Exception as e:
+        logger.warning(f"PIGEON: consent check failed for {app_id}: {e}")
+        return True  # fail open — don't block on DB errors
+
+
 def receive_drop(dropping: dict) -> dict:
     """Intake a bus drop from a safe-app. Validates schema, logs, routes to message bus.
-    
+
     Pigeon is dumb — no business logic here. Just validate, log, hand off.
     """
     topic = dropping.get("topic") or dropping.get("type")
     app_id = dropping.get("app_id", "unknown")
     session_id = dropping.get("session_id", "")
     payload = dropping.get("payload", {})
+    username = dropping.get("username", "Sweet-Pea-Rudi19")
 
     if not topic:
         return {"ok": False, "error": "missing topic"}
+
+    # Consent gate — external apps must be explicitly consented by the user
+    if not _check_app_consent(username, app_id):
+        logger.warning(f"PIGEON: consent denied for app_id={app_id} username={username}")
+        return {"ok": False, "error": f"App '{app_id}' not consented by user '{username}'"}
 
     init_bus_drops_table()
 

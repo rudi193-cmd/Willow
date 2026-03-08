@@ -69,6 +69,8 @@ def dispatch_to_agent(agent_name: str, dropping: dict) -> dict:
         return _handle_register(payload)
     elif topic == "message":
         return _handle_message(payload, app_id)
+    elif topic == "send":
+        return _handle_send(payload, app_id, dropping.get("username", "Sweet-Pea-Rudi19"))
     else:
         return {"ok": False, "topic": topic, "error": f"unknown topic: {topic}"}
 
@@ -188,6 +190,27 @@ def _handle_message(payload: dict, app_id: str) -> dict:
         return {"ok": True, "topic": "message", "to": to_agent, "from": from_agent}
     except Exception as e:
         return {"ok": False, "topic": "message", "error": str(e)}
+
+
+def _handle_send(payload: dict, from_app: str, username: str) -> dict:
+    """Route a send drop → pigeon_inbox for the target app.
+
+    Payload: {"to": "oakenscroll", "subject": "...", "body": "...", "thread_id": "optional"}
+    """
+    to_app = payload.get("to", "")
+    subject = payload.get("subject", "")
+    body = payload.get("body", "")
+    thread_id = payload.get("thread_id")
+
+    if not to_app or not subject or not body:
+        return {"ok": False, "topic": "send", "error": "missing to, subject, or body"}
+
+    try:
+        from core import pigeon
+        msg_id = pigeon.send_to_inbox(to_app, from_app, username, subject, body, thread_id)
+        return {"ok": True, "topic": "send", "to": to_app, "from": from_app, "message_id": msg_id}
+    except Exception as e:
+        return {"ok": False, "topic": "send", "error": str(e)}
 
 
 def _handle_register(payload: dict) -> dict:

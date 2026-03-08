@@ -780,7 +780,6 @@ def librarian_pass():
             sys.path.insert(0, core_path)
         from librarian import process_and_rebuild
         process_and_rebuild()
-        notify("Librarian", "Master index rebuilt.")
         logging.info("LIBRARIAN: Master index rebuilt.")
     except ImportError:
         logging.debug("LIBRARIAN: die-namic-system core not found, skipping.")

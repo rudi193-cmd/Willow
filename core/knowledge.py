@@ -78,6 +78,9 @@ def _connect(username: str):
 
 def init_db(username: str):
     """Create tables if they don't exist. Idempotent. V2 clean schema."""
+    from core.db import is_postgres
+    if is_postgres():
+        return  # schema managed by pg_schema.sql
     conn = _connect(username)
     cur = conn.cursor()
 
@@ -214,6 +217,65 @@ def init_db(username: str):
     )""")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_cube_xyz  ON cube_cells(cx, cy, cz)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_cube_type ON cube_cells(node_type)")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS registered_apps (
+        app_id        TEXT PRIMARY KEY,
+        name          TEXT NOT NULL,
+        description   TEXT,
+        version       TEXT,
+        permissions   TEXT,
+        privacy_tier  TEXT,
+        manifest_path TEXT,
+        registered_at TEXT NOT NULL
+    )""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS app_consent (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        username    TEXT NOT NULL,
+        app_id      TEXT NOT NULL,
+        consented   INTEGER NOT NULL DEFAULT 0,
+        granted_at  TEXT,
+        revoked_at  TEXT,
+        UNIQUE (username, app_id)
+    )""")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_consent_user ON app_consent(username)")
+
+    # --- Calendar events ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS calendar_events (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        username    TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        description TEXT,
+        start_dt    TEXT NOT NULL,
+        end_dt      TEXT,
+        all_day     INTEGER DEFAULT 0,
+        category    TEXT DEFAULT 'personal',
+        recurrence  TEXT,
+        status      TEXT DEFAULT 'active',
+        source      TEXT DEFAULT 'manual',
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    )""")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cal_username ON calendar_events(username)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cal_start ON calendar_events(start_dt)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cal_status ON calendar_events(status)")
+
+    # --- Personal todos (separate from Ganesha's operational tasks) ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS personal_todos (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        username    TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        description TEXT,
+        due_date    TEXT,
+        priority    TEXT DEFAULT 'normal',
+        status      TEXT DEFAULT 'open',
+        category    TEXT DEFAULT 'personal',
+        source      TEXT DEFAULT 'manual',
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    )""")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_todo_username ON personal_todos(username)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_todo_status ON personal_todos(status)")
 
     conn.commit()
     conn.close()

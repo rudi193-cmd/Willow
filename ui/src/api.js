@@ -75,3 +75,19 @@ export async function paCorrect({ path, destination, text, category }) {
   });
   return res.json();
 }
+
+// --- SAFE App Consent ---
+
+export async function fetchApps() {
+  const res = await fetch(`${BASE}/api/apps`);
+  return res.json();
+}
+
+export async function setAppConsent(appId, consented) {
+  const res = await fetch(`${BASE}/api/apps/${encodeURIComponent(appId)}/consent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ consented }),
+  });
+  return res.json();
+}

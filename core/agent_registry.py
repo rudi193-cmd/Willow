@@ -44,6 +44,13 @@ DEFAULT_AGENTS = [
     ("gerald",   "Gerald",   "WORKER",     "persona", "Acting Dean. Philosophical and governance advisor."),
     ("steve",    "Steve",    "OPERATOR",   "persona", "Prime Node. Cross-system coordinator."),
     ("pigeon",   "The Pigeon", "WORKER",   "persona", "Carrier. Connector. Guide. Dept. of Not Yet & Carrier Services. UTETY. Notices when users need practical help and offers to carry them through it."),
+    # SAFE app agents — registered so they can use the mailbox and pigeon system
+    ("ask-jeles",     "AskJeles",       "WORKER", "app", "Verified-source librarian. Smithsonian, LoC, NASA, NIH."),
+    ("law-gazelle",   "Law Gazelle",    "WORKER", "app", "Legal research. Case summaries, statute analysis."),
+    ("the-binder",    "The Binder",     "WORKER", "app", "Knowledge graph tools and cross-domain linking."),
+    ("nasa-archive",  "NASA Archive",   "WORKER", "app", "Space history and rally documentation."),
+    ("utety-chat",    "UTETY Chat",     "WORKER", "app", "Applied reality engineering courses."),
+    ("grove",         "Grove",          "WORKER", "app", "Community knowledge garden."),
 ]
 
 

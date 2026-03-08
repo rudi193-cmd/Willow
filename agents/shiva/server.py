@@ -9,13 +9,18 @@ Normal users interact with Willow's system through Shiva — never directly.
 import sys
 import httpx
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+
+# Shiva-local imports
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from shiva_db import init_db, save_session
+import shiva_pipeline
 
 # Core imports for agent CLI channel
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -31,6 +36,7 @@ SHIVA_PORT = 2121
 SHIVA_NODE = "shiva"
 USERNAME = "Sweet-Pea-Rudi19"
 STATIC_DIR = Path(__file__).parent / "static"
+JOURNAL_HTML = Path(__file__).resolve().parent.parent.parent.parent / "willow-1.4" / "web" / "journal.html"
 
 app = FastAPI(title="Shiva", description="SAFE Consumer Interface — Willow")
 
@@ -44,6 +50,12 @@ app.add_middleware(
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# ── Startup ────────────────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def startup():
+    init_db()
+    shiva_pipeline.start()
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -55,6 +67,87 @@ class ChatRequest(BaseModel):
 @app.get("/")
 async def root():
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.get("/journal")
+@app.get("/journal/")
+async def journal():
+    return FileResponse(str(JOURNAL_HTML))
+
+
+@app.post("/api/journal/ask")
+async def journal_ask(request: Request):
+    """Shiva responds to the user's writing. Self-contained — no 8420 needed."""
+    from fastapi import Request as _R
+    body = await request.json()
+    content     = body.get("content", "").strip()
+    as_question = body.get("as_question", False)
+    session_id  = body.get("session_id", "")
+
+    if not content:
+        return JSONResponse({"response": None})
+
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+        from core import llm_router
+        llm_router.load_keys_from_json()
+        prompt = _shiva_prompt(content, as_question)
+        result = llm_router.ask(prompt, preferred_tier="free", task_type="text_summarization")
+        if result and result.content:
+            return JSONResponse({"response": result.content.strip()})
+    except Exception as e:
+        pass
+
+    return JSONResponse({"response": None})
+
+
+@app.post("/api/journal/ingest")
+async def journal_ingest(request: Request):
+    """Save session to shiva.db. Atom extraction + Pigeon publish happen in background."""
+    import uuid
+    body       = await request.json()
+    session_id = body.get("id") or uuid.uuid4().hex[:8]
+    content    = body.get("content", "").strip()
+    started    = body.get("started")      # epoch ms from browser
+    turns      = body.get("turns", 0)
+
+    if not content:
+        return JSONResponse({"ok": True, "note": "empty"})
+
+    ok = save_session(
+        session_id = session_id,
+        username   = USERNAME,
+        started_ms = int(started) if started else 0,
+        content    = content,
+        turn_count = turns,
+    )
+    return JSONResponse({"ok": ok, "session_id": session_id})
+
+
+def _shiva_prompt(content: str, as_question: bool) -> str:
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+        from apps.utety_personas import PERSONAS
+        persona = PERSONAS.get("Shiva", "")
+    except Exception:
+        persona = "You are Shiva. Warm, present, kind. You were enrolled before you arrived."
+
+    if content == "__greet__":
+        return (
+            f"{persona}\n\n"
+            "The person just opened the journal. Greet them with one short, warm sentence. "
+            "Not a question. Not advice. Just presence. 10 words maximum.\n\nYour greeting:"
+        )
+    tail = content[-800:] if len(content) > 800 else content
+    return (
+        f"{persona}\n\n"
+        "You are in conversation with someone through their journal. "
+        "Respond to what they just said. Keep it short — one or two sentences at most. "
+        "Warm. Present. Ask the next honest question or reflect what you heard. "
+        "Never give advice. Never summarize back at them.\n\n"
+        f"They said:\n{tail}\n\nShiva:"
+    )
 
 
 @app.post("/chat")

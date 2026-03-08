@@ -62,7 +62,7 @@ from core import agent_registry
 from core import tool_engine, rings, graft
 from core.awareness import on_scan_complete, on_organize_complete, on_coherence_update, on_topology_update, say as willow_say
 from apps.pa import drive_scan, drive_organize
-from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes, auth_routes
+from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes, auth_routes, apps_routes
 
 app = FastAPI(title="Willow", docs_url=None, redoc_url=None)
 
@@ -157,6 +157,7 @@ app.include_router(dating_routes.router)   # Dating wellbeing red flag analysis
 app.include_router(die_namic_routes.router) # Die-namic system state (read-only)
 app.include_router(journal_routes.router)   # Journal sessions + events (Shiva's pipeline)
 app.include_router(auth_routes.router)     # Local-first auth — login/verify/logout
+app.include_router(apps_routes.router)    # SAFE app consent management
 # Governance endpoints already defined in server.py (lines 1023-1155)
 
 
@@ -503,8 +504,8 @@ def knowledge_stats():
             conn = _gc()
             for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
                 try:
-                    row = conn.execute(f"SELECT COUNT(*) AS cnt FROM {table}").fetchone()
-                    stats[table] = row["cnt"] if row else 0
+                    row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                    stats[table] = row[0] if row else 0
                 except Exception:
                     stats[table] = 0
             conn.close()
@@ -3442,10 +3443,10 @@ async def ecosystem_update_stats():
     """Refresh the Architecture section of ECOSYSTEM.md with live DB stats.
     Call after knowledge ingest, connection approval, or any significant state change."""
     try:
-        import sqlite3 as _sq, re as _re
+        import re as _re
         from core import ecosystem_writer as ew
-        db_path = loam._db_path(USERNAME)
-        conn = _sq.connect(db_path)
+        from core.db import get_connection as _gc, is_postgres
+        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
         k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
         e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
         ec = conn.execute("SELECT COUNT(*) FROM entity_connections WHERE confirmed=1").fetchone()[0]
@@ -3489,10 +3490,10 @@ async def ecosystem_append_decision(request: Request):
 async def _ecosystem_refresh():
     """Background task: refresh ECOSYSTEM.md Architecture stats from live DB."""
     try:
-        import sqlite3 as _sq, re as _re
+        import re as _re
         from core import ecosystem_writer as _ew
-        db_path = loam._db_path(USERNAME)
-        conn = _sq.connect(db_path)
+        from core.db import get_connection as _gc, is_postgres
+        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
         k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
         e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
         ec = conn.execute("SELECT COUNT(*) FROM entity_connections WHERE confirmed=1").fetchone()[0]
@@ -3740,6 +3741,43 @@ async def pigeon_drop(request: Request):
         return pigeon.receive_drop(dropping)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get('/api/pigeon/inbox')
+async def pigeon_inbox_get(app_id: str, username: str = 'Sweet-Pea-Rudi19', unread_only: bool = True):
+    """Fetch inbox messages for an app_id.
+    GET /api/pigeon/inbox?app_id=ganesha-cli&unread_only=true
+    """
+    try:
+        from core import pigeon
+        messages = pigeon.get_inbox(app_id, username, unread_only)
+        return {'ok': True, 'app_id': app_id, 'messages': messages, 'count': len(messages)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/pigeon/inbox/{message_id}/read')
+async def pigeon_inbox_mark_read(message_id: int, app_id: str):
+    """Mark a single inbox message as read.
+    POST /api/pigeon/inbox/42/read?app_id=ganesha-cli
+    """
+    try:
+        from core import pigeon
+        count = pigeon.mark_inbox_read(app_id, message_id)
+        return {'ok': True, 'marked': count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/pigeon/inbox/read-all')
+async def pigeon_inbox_mark_all_read(app_id: str):
+    """Mark all inbox messages as read for an app."""
+    try:
+        from core import pigeon
+        count = pigeon.mark_inbox_read(app_id)
+        return {'ok': True, 'marked': count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post('/api/pigeon/scan')
 async def pigeon_scan(username: str = 'Sweet-Pea-Rudi19'):
@@ -4271,6 +4309,198 @@ if NASA_DIST.exists():
 SAFE_WEB = Path(__file__).parent.parent / "SAFE" / "web"
 if SAFE_WEB.exists():
     app.mount("/SAFE/web", StaticFiles(directory=str(SAFE_WEB)), name="safe-web")
+
+# ── Calendar & Personal Todos ──────────────────────────────────────────────────
+
+@app.get("/api/calendar/events")
+def calendar_events_list(
+    username: str = USERNAME,
+    from_dt: str = None,
+    to_dt: str = None,
+    category: str = None,
+):
+    """Events in a date range. Defaults to next 30 days."""
+    from datetime import datetime, timezone, timedelta
+    from core.db import get_connection as _gc, is_postgres
+    now = datetime.now(timezone.utc)
+    start = from_dt or now.date().isoformat()
+    end = to_dt or (now + timedelta(days=30)).date().isoformat()
+    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    try:
+        query = """
+            SELECT * FROM calendar_events
+            WHERE username = ? AND status = 'active'
+              AND date(start_dt) >= date(?) AND date(start_dt) <= date(?)
+        """
+        params = [username, start, end]
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+        query += " ORDER BY start_dt"
+        rows = conn.execute(query, params).fetchall()
+        return {"events": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.get("/api/calendar/upcoming")
+def calendar_upcoming(username: str = USERNAME, days: int = 14):
+    """Next N days of events + open todos with due dates. For agent/Shiva use."""
+    from datetime import datetime, timezone, timedelta
+    from core.db import get_connection as _gc, is_postgres
+    now = datetime.now(timezone.utc)
+    end = (now + timedelta(days=days)).date().isoformat()
+    today = now.date().isoformat()
+    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    try:
+        events = conn.execute("""
+            SELECT id, title, start_dt, end_dt, all_day, category
+            FROM calendar_events
+            WHERE username = ? AND status = 'active'
+              AND date(start_dt) >= date(?) AND date(start_dt) <= date(?)
+            ORDER BY start_dt
+        """, [username, today, end]).fetchall()
+        todos = conn.execute("""
+            SELECT id, title, due_date, priority, category
+            FROM personal_todos
+            WHERE username = ? AND status = 'open'
+              AND due_date IS NOT NULL AND date(due_date) <= date(?)
+            ORDER BY due_date, priority DESC
+        """, [username, end]).fetchall()
+        return {
+            "events": [dict(r) for r in events],
+            "todos": [dict(r) for r in todos],
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/api/calendar/events")
+async def calendar_event_create(request: Request):
+    from datetime import datetime, timezone
+    from core.db import get_connection as _gc, is_postgres
+    body = await request.json()
+    username = body.get("username") or USERNAME
+    now = datetime.now(timezone.utc).isoformat()
+    required = ("title", "start_dt")
+    if not all(body.get(f) for f in required):
+        return JSONResponse({"ok": False, "error": "title and start_dt required"}, status_code=400)
+    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    try:
+        cur = conn.execute("""
+            INSERT INTO calendar_events
+                (username, title, description, start_dt, end_dt, all_day,
+                 category, recurrence, status, source, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+        """, [
+            username, body["title"], body.get("description"),
+            body["start_dt"], body.get("end_dt"), int(body.get("all_day", 0)),
+            body.get("category", "personal"), body.get("recurrence"),
+            body.get("source", "manual"), now, now,
+        ])
+        conn.commit()
+        return {"ok": True, "id": cur.lastrowid}
+    finally:
+        conn.close()
+
+
+@app.patch("/api/calendar/events/{event_id}")
+async def calendar_event_update(event_id: int, request: Request):
+    from datetime import datetime, timezone
+    from core.db import get_connection as _gc, is_postgres
+    body = await request.json()
+    username = body.get("username") or USERNAME
+    now = datetime.now(timezone.utc).isoformat()
+    allowed = {"title", "description", "start_dt", "end_dt", "all_day",
+               "category", "recurrence", "status"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        return JSONResponse({"ok": False, "error": "no valid fields"}, status_code=400)
+    updates["updated_at"] = now
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [event_id, username]
+    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    try:
+        conn.execute(
+            f"UPDATE calendar_events SET {set_clause} WHERE id = ? AND username = ?",
+            values
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.get("/api/calendar/todos")
+def calendar_todos_list(username: str = USERNAME, status: str = "open", category: str = None):
+    from core.db import get_connection as _gc, is_postgres
+    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    try:
+        query = "SELECT * FROM personal_todos WHERE username = ? AND status = ?"
+        params = [username, status]
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+        query += " ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, due_date"
+        rows = conn.execute(query, params).fetchall()
+        return {"todos": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/calendar/todos")
+async def calendar_todo_create(request: Request):
+    from datetime import datetime, timezone
+    from core.db import get_connection as _gc, is_postgres
+    body = await request.json()
+    username = body.get("username") or USERNAME
+    if not body.get("title"):
+        return JSONResponse({"ok": False, "error": "title required"}, status_code=400)
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    try:
+        cur = conn.execute("""
+            INSERT INTO personal_todos
+                (username, title, description, due_date, priority,
+                 status, category, source, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)
+        """, [
+            username, body["title"], body.get("description"),
+            body.get("due_date"), body.get("priority", "normal"),
+            body.get("category", "personal"), body.get("source", "manual"),
+            now, now,
+        ])
+        conn.commit()
+        return {"ok": True, "id": cur.lastrowid}
+    finally:
+        conn.close()
+
+
+@app.patch("/api/calendar/todos/{todo_id}")
+async def calendar_todo_update(todo_id: int, request: Request):
+    from datetime import datetime, timezone
+    from core.db import get_connection as _gc, is_postgres
+    body = await request.json()
+    username = body.get("username") or USERNAME
+    now = datetime.now(timezone.utc).isoformat()
+    allowed = {"title", "description", "due_date", "priority", "status", "category"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        return JSONResponse({"ok": False, "error": "no valid fields"}, status_code=400)
+    updates["updated_at"] = now
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [todo_id, username]
+    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    try:
+        conn.execute(
+            f"UPDATE personal_todos SET {set_clause} WHERE id = ? AND username = ?",
+            values
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
 
 # --- Static file serving (production) — must be last to avoid shadowing API routes ---
 if UI_DIST.exists():

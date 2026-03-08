@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 WILLOW_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(WILLOW_ROOT))
 sys.path.insert(0, str(WILLOW_ROOT / "core"))
 
 from user_lattice import DOMAINS, TEMPORAL_STATES
@@ -165,6 +166,15 @@ _DEFAULT_DB = WILLOW_ROOT / "artifacts" / "Sweet-Pea-Rudi19" / "willow_knowledge
 
 
 def connect(db_path=None):
+    """Open DB connection. Uses PostgreSQL pool when configured, else SQLite."""
+    try:
+        from core.db import get_connection as _gc, is_postgres
+        if is_postgres():
+            conn = _gc()
+            conn.row_factory = sqlite3.Row  # triggers RealDictCursor on Postgres
+            return conn
+    except Exception:
+        pass
     path = str(db_path or _DEFAULT_DB)
     conn = sqlite3.connect(path, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -174,6 +184,12 @@ def connect(db_path=None):
 
 
 def _ensure_table(conn):
+    try:
+        from core.db import is_postgres
+        if is_postgres():
+            return  # cube_cells schema managed by pg_schema.sql
+    except Exception:
+        pass
     conn.execute("""CREATE TABLE IF NOT EXISTS cube_cells (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         node_id       INTEGER NOT NULL,

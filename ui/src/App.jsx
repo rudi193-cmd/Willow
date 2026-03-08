@@ -7,6 +7,8 @@ import KnowledgePanel from './components/KnowledgePanel';
 import EmergencyTrigger from './components/EmergencyTrigger';
 import DropZone from './components/DropZone';
 import DrivePanel from './components/DrivePanel';
+import AppsPanel from './components/AppsPanel';
+import CalendarPanel from './components/CalendarPanel';
 import SoftButton from './components/SoftButton';
 
 /**
@@ -21,6 +23,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const [driveOpen, setDriveOpen] = useState(false);
+  const [appsOpen, setAppsOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   function handleSend(text) {
     sendMessage(text, persona);
@@ -50,8 +54,10 @@ export default function App() {
               onPersonaChange={setPersona}
               exchangeCount={exchangeCount}
               piLimit={piLimit}
-              onKnowledgeOpen={() => { setKnowledgeOpen(true); setDriveOpen(false); setSidebarOpen(false); }}
-              onDriveOpen={() => { setDriveOpen(true); setKnowledgeOpen(false); setSidebarOpen(false); }}
+              onKnowledgeOpen={() => { setKnowledgeOpen(true); setDriveOpen(false); setAppsOpen(false); setSidebarOpen(false); }}
+              onDriveOpen={() => { setDriveOpen(true); setKnowledgeOpen(false); setAppsOpen(false); setSidebarOpen(false); }}
+              onAppsOpen={() => { setAppsOpen(true); setKnowledgeOpen(false); setDriveOpen(false); setCalendarOpen(false); setSidebarOpen(false); }}
+              onCalendarOpen={() => { setCalendarOpen(true); setAppsOpen(false); setKnowledgeOpen(false); setDriveOpen(false); setSidebarOpen(false); }}
               onNewSession={handleNewSession}
             />
           </aside>
@@ -109,6 +115,40 @@ export default function App() {
             style={{ zIndex: 50, borderLeft: '1px solid var(--pencil-faint)' }}
           >
             <DrivePanel onClose={() => setDriveOpen(false)} />
+          </aside>
+        </>
+      )}
+
+      {/* Apps panel — slides from right */}
+      {appsOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-page/30 md:hidden"
+            style={{ zIndex: 40 }}
+            onClick={() => setAppsOpen(false)}
+          />
+          <aside
+            className="fixed right-0 md:relative w-80 h-full bg-page"
+            style={{ zIndex: 50, borderLeft: '1px solid var(--pencil-faint)' }}
+          >
+            <AppsPanel onClose={() => setAppsOpen(false)} />
+          </aside>
+        </>
+      )}
+
+      {/* Calendar panel — slides from right */}
+      {calendarOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-page/30 md:hidden"
+            style={{ zIndex: 40 }}
+            onClick={() => setCalendarOpen(false)}
+          />
+          <aside
+            className="fixed right-0 md:relative w-80 h-full bg-page"
+            style={{ zIndex: 50, borderLeft: '1px solid var(--pencil-faint)' }}
+          >
+            <CalendarPanel onClose={() => setCalendarOpen(false)} />
           </aside>
         </>
       )}

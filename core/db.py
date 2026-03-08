@@ -45,6 +45,9 @@ _PG_CONFLICT_TARGETS = {
                     "trust_level=EXCLUDED.trust_level, agent_type=EXCLUDED.agent_type, "
                     "profile_path=EXCLUDED.profile_path, registered_at=EXCLUDED.registered_at, "
                     "last_seen=EXCLUDED.last_seen",
+    "cube_cells":   "(node_id, node_type) DO UPDATE SET cx=EXCLUDED.cx, cy=EXCLUDED.cy, "
+                    "cz=EXCLUDED.cz, domain_name=EXCLUDED.domain_name, "
+                    "temporal_name=EXCLUDED.temporal_name, indexed_at=EXCLUDED.indexed_at",
 }
 
 

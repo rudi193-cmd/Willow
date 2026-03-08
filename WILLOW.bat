@@ -6,6 +6,17 @@ title WILLOW
 if not exist logs mkdir logs
 
 :: ---------------------------------------------------------------
+:: PYTHON — always use venv, never system Python
+:: ---------------------------------------------------------------
+set PYTHON=C:\Users\Sean\.willow-venv\Scripts\python.exe
+if not exist "%PYTHON%" (
+    echo [FATAL] Venv not found: %PYTHON%
+    echo         Run: python -m venv C:\Users\Sean\.willow-venv
+    pause
+    exit /b 1
+)
+
+:: ---------------------------------------------------------------
 :: 0. CLEANUP — kill orphans from any previous run
 :: ---------------------------------------------------------------
 echo Cleaning up previous session...
@@ -80,14 +91,14 @@ echo [3/5] AIOS Engine... (deprecated -- skipped)
 :: 4. KART  (VISIBLE window -- watch what Kart is doing)
 :: ---------------------------------------------------------------
 echo [4/5] Kart...
-start "WILLOW - KART" cmd /k python kart.py
+start "WILLOW - KART" cmd /k "%PYTHON%" kart.py
 echo       REPL started in visible window
 
 :: ---------------------------------------------------------------
 :: 5. SERVER  (VISIBLE window -- see errors when it breaks)
 :: ---------------------------------------------------------------
 echo [5/5] Server...
-start "WILLOW - SERVER" python server.py
+start "WILLOW - SERVER" "%PYTHON%" server.py
 
 echo       waiting for :8420...
 set retries=0
@@ -115,36 +126,40 @@ echo       OK -- http://127.0.0.1:8420
 echo.
 echo   -- optional daemons --
 if exist governance\monitor.py (
-    start "WILLOW-GovernanceMonitor"   /min cmd /c "python governance\monitor.py --interval 60 --daemon       >> logs\governance_monitor.log 2>&1"
+    start "WILLOW-GovernanceMonitor"   /min cmd /c ""%PYTHON%" governance\monitor.py --interval 60 --daemon       >> logs\governance_monitor.log 2>&1"
     echo   governance monitor    logs\governance_monitor.log
 )
 if exist core\coherence_scanner.py (
-    start "WILLOW-CoherenceScanner"    /min cmd /c "python core\coherence_scanner.py --interval 3600 --daemon >> logs\coherence_scanner.log 2>&1"
+    start "WILLOW-CoherenceScanner"    /min cmd /c ""%PYTHON%" core\coherence_scanner.py --interval 3600 --daemon >> logs\coherence_scanner.log 2>&1"
     echo   coherence scanner     logs\coherence_scanner.log
 )
 if exist core\topology_builder.py (
-    start "WILLOW-TopologyBuilder"     /min cmd /c "python core\topology_builder.py --interval 3600 --daemon  >> logs\topology_builder.log 2>&1"
+    start "WILLOW-TopologyBuilder"     /min cmd /c ""%PYTHON%" core\topology_builder.py --interval 3600 --daemon  >> logs\topology_builder.log 2>&1"
     echo   topology builder      logs\topology_builder.log
 )
 if exist core\knowledge_compactor.py (
-    start "WILLOW-KnowledgeCompactor"  /min cmd /c "python core\knowledge_compactor.py --interval 86400 --daemon >> logs\knowledge_compactor.log 2>&1"
+    start "WILLOW-KnowledgeCompactor"  /min cmd /c ""%PYTHON%" core\knowledge_compactor.py --interval 86400 --daemon >> logs\knowledge_compactor.log 2>&1"
     echo   knowledge compactor   logs\knowledge_compactor.log
 )
 if exist core\safe_sync.py (
-    start "WILLOW-SAFESync"            /min cmd /c "python core\safe_sync.py --interval 300 --daemon          >> logs\safe_sync.log 2>&1"
+    start "WILLOW-SAFESync"            /min cmd /c ""%PYTHON%" core\safe_sync.py --interval 300 --daemon          >> logs\safe_sync.log 2>&1"
     echo   safe sync             logs\safe_sync.log
 )
 if exist core\persona_scheduler.py (
-    start "WILLOW-PersonaScheduler"    /min cmd /c "python core\persona_scheduler.py --interval 60 --daemon   >> logs\persona_scheduler.log 2>&1"
+    start "WILLOW-PersonaScheduler"    /min cmd /c ""%PYTHON%" core\persona_scheduler.py --interval 60 --daemon   >> logs\persona_scheduler.log 2>&1"
     echo   persona scheduler     logs\persona_scheduler.log
 )
 if exist apps\watcher.py (
-    start "WILLOW-InboxWatcher"        /min cmd /c "python apps\watcher.py --no-consent                       >> logs\watcher.log 2>&1"
+    start "WILLOW-InboxWatcher"        /min cmd /c ""%PYTHON%" apps\watcher.py --no-consent                       >> logs\watcher.log 2>&1"
     echo   inbox watcher         logs\watcher.log
 )
 if exist core\watcher.py (
-    start "WILLOW-NestWatcher"         /min cmd /c "python core\watcher.py --no-consent                       >> logs\watcher_nest.log 2>&1"
+    start "WILLOW-NestWatcher"         /min cmd /c ""%PYTHON%" core\watcher.py --no-consent                       >> logs\watcher_nest.log 2>&1"
     echo   nest watcher          logs\watcher_nest.log
+)
+if exist core\pigeon_drive_watcher.py (
+    start "WILLOW-DriveWatcher"        /min cmd /c ""%PYTHON%" core\pigeon_drive_watcher.py --watch --interval 10  >> logs\pigeon_drive.log 2>&1"
+    echo   drive watcher         logs\pigeon_drive.log
 )
 
 :: ---------------------------------------------------------------
@@ -192,7 +207,7 @@ echo    Server output: WILLOW - SERVER window
 echo    Daemon logs:   logs\
 echo   ========================================
 echo.
-python apps\tunnel.py
+"%PYTHON%" apps\tunnel.py
 
 :: ---------------------------------------------------------------
 :: SHUTDOWN

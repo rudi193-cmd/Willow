@@ -96,6 +96,13 @@ def _parse_token(token: str) -> dict | None:
 
 # ── Models ───────────────────────────────────────────────────────────────────
 
+class SignupRequest(BaseModel):
+    username: str
+    passphrase: str
+    display_name: str = ""
+    duration_hours: int = DEFAULT_DURATION_HOURS
+
+
 class LoginRequest(BaseModel):
     username: str
     passphrase: str
@@ -107,6 +114,51 @@ class VerifyRequest(BaseModel):
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
+@router.post("/signup")
+async def signup(req: SignupRequest):
+    import re
+    # Validate username: 3-32 chars, alphanumeric + hyphens/underscores only
+    if not re.match(r'^[a-zA-Z0-9_-]{3,32}$', req.username):
+        raise HTTPException(status_code=400, detail="Username must be 3–32 characters: letters, numbers, hyphens, underscores only")
+    if len(req.passphrase) < 8:
+        raise HTTPException(status_code=400, detail="Passphrase must be at least 8 characters")
+
+    # Load existing users — check for conflict
+    users_data = {}
+    if USERS_PATH.exists():
+        users_data = json.loads(USERS_PATH.read_text())
+    users = users_data.get("users", {})
+
+    if req.username in users:
+        raise HTTPException(status_code=409, detail="Username already taken")
+
+    # Hash passphrase with scrypt
+    salt = os.urandom(16)
+    dk = hashlib.scrypt(req.passphrase.encode(), salt=salt, n=16384, r=8, p=1)
+    stored = f"{salt.hex()}:{dk.hex()}"
+
+    # Write new user
+    users[req.username] = {
+        "display_name": req.display_name or req.username,
+        "passphrase_hash": stored,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "active": True,
+    }
+    users_data["users"] = users
+    USERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    USERS_PATH.write_text(json.dumps(users_data, indent=2), encoding="utf-8")
+
+    # Issue token — log them in immediately
+    duration = min(max(1, req.duration_hours), MAX_DURATION_HOURS)
+    token, expires_at = _make_token(req.username, duration)
+    return {
+        "token": token,
+        "username": req.username,
+        "display_name": req.display_name or req.username,
+        "expires_at": expires_at,
+    }
+
 
 @router.post("/login")
 async def login(req: LoginRequest):

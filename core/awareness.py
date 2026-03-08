@@ -267,7 +267,7 @@ def _decide_channels(event_type: str, priority: str) -> List[str]:
     if event_type.startswith("coherence"):
         return ["ntfy"]
 
-    return ["ntfy"]
+    return ["pickup"]
 
 
 # =========================================================================

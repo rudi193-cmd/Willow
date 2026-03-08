@@ -23,8 +23,8 @@ BASE_PATH.mkdir(parents=True, exist_ok=True)
 HEALTH_DB = BASE_PATH / "provider_health.db"
 
 # Health thresholds
-BLACKLIST_AFTER_FAILURES = 5  # Consecutive failures before blacklist
-BLACKLIST_DURATION_MINUTES = 10  # How long to blacklist
+BLACKLIST_AFTER_FAILURES = 10  # Consecutive failures before blacklist (raised from 5 — rate limits shouldn't instantly blacklist)
+BLACKLIST_DURATION_MINUTES = 3   # How long to blacklist (lowered from 10 — recover faster from rate limit bursts)
 HEALTH_CHECK_INTERVAL = 300  # Retry blacklisted providers every 5 min
 
 
@@ -128,7 +128,11 @@ def record_failure(provider: str, error_code: str, error_message: str):
     # Get current failure count
     row = conn.execute("SELECT consecutive_failures FROM provider_health WHERE provider = ?", (provider,)).fetchone()
     current_failures = row[0] if row else 0
-    new_failures = current_failures + 1
+
+    # 429 rate limits are not real failures — provider is healthy, just throttled.
+    # Count toward total_failures but don't increment consecutive_failures or trigger blacklist.
+    is_rate_limit = error_code == "429"
+    new_failures = current_failures if is_rate_limit else current_failures + 1
 
     # Determine new status
     if new_failures >= BLACKLIST_AFTER_FAILURES:
