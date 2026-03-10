@@ -17,12 +17,15 @@ Multi-routing:
 - Screenshots route to: user profile + tracker + (Kart if code) + (other nodes if relevant)
 """
 
+import sys
 import sqlite3
 import shutil
 import hashlib
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, List
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 
 # Storage locations
 BASE_PATH = Path(__file__).parent.parent / "artifacts" / "social-media-tracker"
@@ -36,10 +39,10 @@ SCREENSHOT_DIR.mkdir(exist_ok=True)
 
 def init_db():
     """Initialize social media tracker database."""
-    conn = sqlite3.connect(INDEX_DB)
+    conn = get_connection()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS screenshots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
             filename TEXT NOT NULL,
             filepath TEXT NOT NULL,
             platform TEXT,
@@ -54,7 +57,7 @@ def init_db():
     """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS routing_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
             screenshot_id INTEGER,
             destination TEXT NOT NULL,
             routed_at TEXT NOT NULL,
@@ -98,7 +101,7 @@ def add_screenshot(
     except Exception as e:
         print(f"[social-media-tracker] Copy failed: {e}")
 
-    conn = sqlite3.connect(INDEX_DB)
+    conn = get_connection()
     cursor = conn.cursor()
 
     # Check if already indexed
@@ -135,7 +138,7 @@ def add_screenshot(
 
 def log_routing(screenshot_id: int, destination: str):
     """Log that a screenshot was routed to a destination."""
-    conn = sqlite3.connect(INDEX_DB)
+    conn = get_connection()
     conn.execute("""
         INSERT INTO routing_log (screenshot_id, destination, routed_at)
         VALUES (?, ?, ?)
@@ -157,7 +160,7 @@ def search_screenshots(
     Returns list of dicts with screenshot metadata.
     """
     init_db()
-    conn = sqlite3.connect(INDEX_DB)
+    conn = get_connection()
     conn.row_factory = sqlite3.Row
 
     query = "SELECT * FROM screenshots WHERE 1=1"
@@ -191,7 +194,7 @@ def search_screenshots(
 def get_stats() -> Dict:
     """Get tracker statistics."""
     init_db()
-    conn = sqlite3.connect(INDEX_DB)
+    conn = get_connection()
 
     total = conn.execute("SELECT COUNT(*) FROM screenshots").fetchone()[0]
     by_platform = conn.execute("""
@@ -216,7 +219,7 @@ def get_stats() -> Dict:
 
 def get_routing_destinations(screenshot_id: int) -> List[str]:
     """Get all destinations a screenshot was routed to."""
-    conn = sqlite3.connect(INDEX_DB)
+    conn = get_connection()
     rows = conn.execute("""
         SELECT destination FROM routing_log
         WHERE screenshot_id = ?

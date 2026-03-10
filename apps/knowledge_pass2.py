@@ -1,13 +1,13 @@
-#\!/usr/bin/env python3
+#!/usr/bin/env python3
 """Knowledge Pass 2 -- Fleet-powered summary enrichment.
 Uses llm_router.ask() to generate better summaries.
 Run: python apps/knowledge_pass2.py [--limit N] [--source-type TYPE]
 """
-import sys, os, sqlite3, time, argparse
-sys.path.insert(0, "C:/Users/Sean/Documents/GitHub/Willow/core")
+import sys, os, time, argparse
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-DB = "C:/Users/Sean/Documents/GitHub/Willow/artifacts/Sweet-Pea-Rudi19/willow_knowledge.db"
 
 PRIORITY_SOURCES = [
     "notebooklm_transcript", "notebooklm_artifact", "notebooklm_source",
@@ -37,7 +37,7 @@ def main():
     args = parser.parse_args()
     import llm_router
     llm_router.load_keys_from_json()
-    conn = sqlite3.connect(DB)
+    conn = get_connection()
     unavail = "%Content unavailable%"
     if args.source_type:
         rows = conn.execute(

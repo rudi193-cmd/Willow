@@ -22,7 +22,6 @@ import sys
 import time
 import json
 import hashlib
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
@@ -54,6 +53,7 @@ KNOWN_API_KEYS = {
 
 # --- Extraction module (graceful fallback) ---
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 try:
     from core import extraction
 except ImportError:
@@ -301,10 +301,6 @@ def ingest_to_knowledge(item: Path, text: str, source_type: str, category: str) 
     Insert a file or notebook folder into willow_knowledge.db.
     Returns True if new row inserted, False if already present or error.
     """
-    if not KNOWLEDGE_DB.exists():
-        log_event("DB_MISSING", str(KNOWLEDGE_DB))
-        return False
-
     source_id = hashlib.md5(str(item).encode('utf-8')).hexdigest()
     snippet = (text[:400].replace('\n', ' ')).strip() if text else ""
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -312,7 +308,7 @@ def ingest_to_knowledge(item: Path, text: str, source_type: str, category: str) 
     lattice = classify_lattice(source_type, category, title)
 
     try:
-        conn = sqlite3.connect(KNOWLEDGE_DB, timeout=30)
+        conn = get_connection()
         existing = conn.execute(
             "SELECT id FROM knowledge WHERE source_id=?", (source_id,)
         ).fetchone()

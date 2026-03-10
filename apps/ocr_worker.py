@@ -18,7 +18,6 @@ import sys
 import json
 import base64
 import hashlib
-import sqlite3
 import time
 import argparse
 from datetime import datetime
@@ -26,6 +25,7 @@ from pathlib import Path
 
 # Add Willow root to path for core imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 from core import llm_router
 from apps.watcher import classify_lattice
 
@@ -63,10 +63,6 @@ def log_event(event_type: str, details: str):
 
 def ingest_ocr_result(image_path: str, ocr_text: str) -> bool:
     """Insert OCR result into willow_knowledge.db. Returns True if inserted."""
-    if not KNOWLEDGE_DB.exists():
-        log_event("DB_MISSING", str(KNOWLEDGE_DB))
-        return False
-
     source_id = hashlib.md5(image_path.encode("utf-8")).hexdigest()
     title = Path(image_path).name
     summary = ocr_text[:200].replace("\n", " ").strip()
@@ -75,7 +71,7 @@ def ingest_ocr_result(image_path: str, ocr_text: str) -> bool:
     lattice = classify_lattice("ocr_image", "reference", title)
 
     try:
-        conn = sqlite3.connect(KNOWLEDGE_DB)
+        conn = get_connection()
         existing = conn.execute(
             "SELECT id FROM knowledge WHERE source_id=?", (source_id,)
         ).fetchone()
