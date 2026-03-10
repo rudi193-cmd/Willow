@@ -15,7 +15,6 @@ import hashlib
 import argparse
 import re
 import time
-import sqlite3
 from pathlib import Path
 from datetime import datetime
 
@@ -23,6 +22,7 @@ WILLOW_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(WILLOW_ROOT))
 
 from core.loam import init_db, _connect, _extract_entities_regex, get_ring
+from core.db import get_connection
 
 USERNAME = "Sweet-Pea-Rudi19"
 GDRIVE = Path("C:/Users/Sean/My Drive")
@@ -133,8 +133,7 @@ def direct_insert(db_path: str, filename: str, fhash: str, category: str,
     """Insert knowledge atom directly, no LLM. Opens fresh connection per insert."""
     for attempt in range(retries):
         try:
-            conn = sqlite3.connect(db_path, timeout=5)
-            conn.execute("PRAGMA journal_mode=WAL")
+            conn = get_connection()
             cur = conn.cursor()
 
             if cur.execute("SELECT id FROM knowledge WHERE source_type='file' AND source_id=?",
@@ -162,7 +161,7 @@ def direct_insert(db_path: str, filename: str, fhash: str, category: str,
             conn.commit()
             conn.close()
             return True
-        except sqlite3.OperationalError as e:
+        except Exception as e:
             if "locked" in str(e) and attempt < retries - 1:
                 time.sleep(0.1)
                 continue

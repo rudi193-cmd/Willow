@@ -12,16 +12,17 @@ Run: python ingest_die_namic.py [--dry-run]
 import os
 import re
 import sys
-import sqlite3
 import hashlib
 from datetime import datetime
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-SOCIAL_DB    = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\social\social_media.db"
-KNOWLEDGE_DB = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db"
-DIE_NAMIC    = r"C:\Users\Sean\Documents\GitHub\die-namic-system"
+_WILLOW_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(_WILLOW_ROOT))
+from core.db import get_connection
+
+DIE_NAMIC = str(_WILLOW_ROOT.parent / 'die-namic-system')
 
 CREATIVE_WORKS    = os.path.join(DIE_NAMIC, "docs", "creative_works")
 REDDIT_ANALYTICS  = os.path.join(DIE_NAMIC, "docs", "ops", "reddit_analytics")
@@ -667,12 +668,9 @@ def main():
     print(f"  willow_knowledge.db: {KNOWLEDGE_DB}")
     print(f"  die-namic root:      {DIE_NAMIC}")
 
-    social = sqlite3.connect(SOCIAL_DB)
-    social.execute("PRAGMA foreign_keys=ON")
-    social.execute("PRAGMA journal_mode=WAL")
+    social = get_connection()
 
-    know = sqlite3.connect(KNOWLEDGE_DB)
-    know.execute("PRAGMA journal_mode=WAL")
+    know = get_connection()
 
     try:
         section1_fix_series(social)

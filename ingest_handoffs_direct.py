@@ -6,7 +6,6 @@ Bypasses the API to avoid the queue. Uses 4 threads for parallelism.
 import sys
 import os
 import hashlib
-import sqlite3
 import threading
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,9 +14,9 @@ sys.path.insert(0, r"C:\Users\Sean\Documents\GitHub\Willow")
 sys.path.insert(0, r"C:\Users\Sean\Documents\GitHub\Willow\core")
 
 import loam
+from core.db import get_connection
 
 USERNAME = "Sweet-Pea-Rudi19"
-DB_PATH = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db"
 
 PICKUP_DIR = Path(r"C:\Users\Sean\My Drive\Willow\Auth Users\Sweet-Pea-Rudi19\Pickup")
 FILED_DIR  = Path(r"C:\Users\Sean\Willow\Filed")
@@ -26,7 +25,7 @@ lock = threading.Lock()
 counts = {"ok": 0, "skipped": 0, "error": 0}
 
 def get_existing_hashes():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     rows = conn.execute("SELECT source_id FROM knowledge WHERE source_type='file'").fetchall()
     conn.close()
     return {r[0] for r in rows}
@@ -124,7 +123,7 @@ def main():
     print(f"Done. ok={counts['ok']}  skipped={counts['skipped']}  error={counts['error']}", flush=True)
 
     # Final DB count
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     total = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
     handoffs = conn.execute("SELECT COUNT(*) FROM knowledge WHERE category='handoff'").fetchone()[0]
     conn.close()

@@ -26,13 +26,15 @@ AGENT_AUTH = (
     "from __future__ import annotations\n"
     "\n"
     "import json\n"
-    "import sqlite3\n"
     "import uuid\n"
     "from datetime import datetime, timezone, timedelta\n"
     "from pathlib import Path\n"
     "from typing import Optional\n"
     "\n"
-    'DB_PATH = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "willow_knowledge.db"\n'
+    "import sys\n"
+    "sys.path.insert(0, str(Path(__file__).parent.parent))\n"
+    "from core.db import get_connection\n"
+    "\n"
     'TOKEN_FILE = Path.home() / ".willow" / "agent_tokens.json"\n'
     "TOKEN_TTL_HOURS = 24\n"
     "\n"
@@ -41,8 +43,6 @@ AGENT_AUTH = (
     "    return datetime.now(timezone.utc).isoformat()\n"
     "\n"
     "\n"
-    "def _db() -> sqlite3.Connection:\n"
-    "    return sqlite3.connect(str(DB_PATH))\n"
     "\n"
     "\n"
     "def checkin(agent_name: str) -> dict:\n"
@@ -50,7 +50,7 @@ AGENT_AUTH = (
     "    Validate agent, issue token, record last_seen.\n"
     "    Returns {token, trust_level, expires_at, agent_name} or raises ValueError.\n"
     '    """\n'
-    "    db = _db()\n"
+    "    db = get_connection()\n"
     "    row = db.execute(\n"
     '        "SELECT name, trust_level FROM agents WHERE name = ?", (agent_name,)\n'
     "    ).fetchone()\n"
@@ -86,7 +86,7 @@ AGENT_AUTH = (
     '    """\n'
     "    Validate a token. Returns {agent_name, trust_level} or None if invalid/expired.\n"
     '    """\n'
-    "    db = _db()\n"
+    "    db = get_connection()\n"
     "    row = db.execute(\n"
     '        "SELECT value FROM willow_state WHERE key = ?", (f"agent_token:{token}",)\n'
     "    ).fetchone()\n"

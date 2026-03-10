@@ -9,15 +9,14 @@ and populates social_media.db.
 Run: python extract_social_ocr.py [--dry-run]
 """
 
-import sqlite3
 import re
 import sys
 import json
 from pathlib import Path
 from datetime import datetime
 
-KNOWLEDGE_DB = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db"
-SOCIAL_DB    = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\social\social_media.db"
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from core.db import get_connection
 
 DRY_RUN = "--dry-run" in sys.argv
 
@@ -224,15 +223,15 @@ def insert_milestone(conn, post_id, account_id, milestone_text, achieved_at, met
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 def main():
-    knowledge = sqlite3.connect(KNOWLEDGE_DB)
-    social = sqlite3.connect(SOCIAL_DB)
+    knowledge = get_connection()
+    social = get_connection()
 
     # Load lookup IDs
     reddit_platform = social.execute("SELECT id FROM platforms WHERE name='Reddit'").fetchone()[0]
     reddit_acct = social.execute("SELECT id FROM accounts WHERE handle='BeneficialBig8372'").fetchone()[0]
 
     # Fetch all social items
-    items = loam.execute("""
+    items = knowledge.execute("""
         SELECT id, title, content_snippet FROM knowledge
         WHERE category='social' ORDER BY id
     """).fetchall()
@@ -340,7 +339,7 @@ def main():
         views_str = f" {v:,}v" if v else ""
         print(f"    r/{sub:<30} {d or '?'} {views_str:<12} {t[:55]}{marker}")
 
-    loam.close()
+    knowledge.close()
     social.close()
 
 

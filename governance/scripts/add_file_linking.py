@@ -2,12 +2,14 @@
 """
 Add file-linking tables and seed known hard drive files into social_media.db.
 """
-import sqlite3
+import sys
+from pathlib import Path
 from datetime import datetime
 
-DB = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\social\social_media.db"
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from core.db import get_connection
 
-conn = sqlite3.connect(DB)
+conn = get_connection()
 
 # Create tables
 conn.execute("""
