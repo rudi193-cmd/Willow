@@ -11,12 +11,11 @@ Endpoints:
   GET  /api/safe/health           — system health
 
 Consent is in-memory (sessions lost on server restart — intentional).
-Knowledge queries hit willow_knowledge.db with optional FTS.
+Knowledge queries hit willow_knowledge.db with optional full-text search.
 
 CHECKSUM: ΔΣ=42
 """
 
-import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -24,6 +23,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from core.db import get_connection
 
 # Health monitor (ported from Willow1.1)
 try:
@@ -37,8 +38,6 @@ router = APIRouter(prefix="/api/safe", tags=["safe"])
 # {session_id: {"scope": str, "granted_at": datetime, "expires": datetime}}
 _sessions: dict = {}
 
-DB_PATH = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "willow_knowledge.db"
-
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -47,12 +46,8 @@ CORS_HEADERS = {
 
 
 def _db():
-    """Open a read-only connection to willow_knowledge.db."""
-    if not DB_PATH.exists():
-        raise HTTPException(status_code=503, detail=f"Knowledge DB not found: {DB_PATH}")
-    from core.db import get_connection as _gc, is_postgres; conn = _gc() if is_postgres() else sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Open a connection to the knowledge DB."""
+    return get_connection()
 
 
 def _prune_expired():
@@ -125,53 +120,58 @@ def query_knowledge(
 ):
     try:
         conn = _db()
-    except HTTPException:
-        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Knowledge DB unavailable: {e}")
 
     try:
         if q:
-            # Full-text search via FTS5 virtual table, with optional lattice post-filters
-            conditions = ["knowledge_fts MATCH ?"]
+            # Full-text search via Postgres tsvector, with optional lattice post-filters
+            conditions = [
+                "to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content_snippet,'')) @@ plainto_tsquery('english', %s)"
+            ]
             params: list = [q]
             if lattice_domain:
-                conditions.append("k.lattice_domain = ?")
+                conditions.append("lattice_domain = %s")
                 params.append(lattice_domain)
             if lattice_type:
-                conditions.append("k.lattice_type = ?")
+                conditions.append("lattice_type = %s")
                 params.append(lattice_type)
             if lattice_status:
-                conditions.append("k.lattice_status = ?")
+                conditions.append("lattice_status = %s")
                 params.append(lattice_status)
             sql = f"""
-                SELECT k.id, k.title, k.summary, k.content_snippet,
-                       k.category, k.source_type, k.created_at,
-                       k.lattice_domain, k.lattice_type, k.lattice_status
-                FROM knowledge k
-                JOIN knowledge_fts fts ON k.rowid = fts.rowid
+                SELECT id, title, summary, content_snippet,
+                       category, source_type, created_at,
+                       lattice_domain, lattice_type, lattice_status,
+                       ts_rank(
+                           to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content_snippet,'')),
+                           plainto_tsquery('english', %s)
+                       ) AS rank
+                FROM knowledge
                 WHERE {' AND '.join(conditions)}
-                ORDER BY rank
-                LIMIT ?
+                ORDER BY rank DESC
+                LIMIT %s
             """
-            params.append(limit)
+            params = [q] + params + [limit]
             rows = conn.execute(sql, params).fetchall()
         else:
             # Filter by category / ring / lattice axes
             conditions = ["1=1"]
             params = []
             if category:
-                conditions.append("category = ?")
+                conditions.append("category = %s")
                 params.append(category)
             if ring:
-                conditions.append("ring = ?")
+                conditions.append("ring = %s")
                 params.append(ring)
             if lattice_domain:
-                conditions.append("lattice_domain = ?")
+                conditions.append("lattice_domain = %s")
                 params.append(lattice_domain)
             if lattice_type:
-                conditions.append("lattice_type = ?")
+                conditions.append("lattice_type = %s")
                 params.append(lattice_type)
             if lattice_status:
-                conditions.append("lattice_status = ?")
+                conditions.append("lattice_status = %s")
                 params.append(lattice_status)
             sql = f"""
                 SELECT id, title, summary, content_snippet,
@@ -180,7 +180,7 @@ def query_knowledge(
                 FROM knowledge
                 WHERE {' AND '.join(conditions)}
                 ORDER BY created_at DESC
-                LIMIT ?
+                LIMIT %s
             """
             params.append(limit)
             rows = conn.execute(sql, params).fetchall()
@@ -191,7 +191,7 @@ def query_knowledge(
             headers=CORS_HEADERS,
         )
 
-    except sqlite3.OperationalError as e:
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
     finally:
         conn.close()
@@ -202,20 +202,20 @@ def query_knowledge(
 @router.get("/health")
 def safe_health():
     _prune_expired()
-    db_ok = DB_PATH.exists()
+    db_ok = False
     db_count = 0
-    if db_ok:
-        try:
-            from core.db import get_connection as _gc, is_postgres; conn = _gc() if is_postgres() else sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
-            db_count = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
-            conn.close()
-        except Exception:
-            db_ok = False
+    try:
+        conn = get_connection()
+        db_count = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        conn.close()
+        db_ok = True
+    except Exception:
+        db_ok = False
 
     lattice_domains = {}
     if db_ok:
         try:
-            from core.db import get_connection as _gc, is_postgres; conn = _gc() if is_postgres() else sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+            conn = get_connection()
             for row in conn.execute(
                 "SELECT lattice_domain, COUNT(*) FROM knowledge WHERE lattice_domain IS NOT NULL GROUP BY lattice_domain ORDER BY 2 DESC"
             ):
