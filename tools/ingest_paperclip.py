@@ -22,6 +22,7 @@ from pathlib import Path
 REPO = "/mnt/c/Users/Sean/Documents/GitHub/Willow"
 sys.path.insert(0, REPO)
 
+from core.db import get_connection
 from core import knowledge as kmod
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s", datefmt="%H:%M:%S")
@@ -66,9 +67,7 @@ def _hash(text: str) -> str:
 
 
 def _connect_willow():
-    conn = sqlite3.connect(WILLOW_DB, timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    return get_connection()
 
 
 def _upsert_entity(conn, name: str, etype: str, description: str = None) -> int:
@@ -101,7 +100,7 @@ def _atom_exists(conn, source_id: str) -> bool:
 
 def ingest_scientists():
     log.info("Loading Paperclip DB...")
-    src = sqlite3.connect(PAPERCLIP_DB, timeout=10)
+    src = sqlite3.connect(PAPERCLIP_DB)
     src.row_factory = sqlite3.Row
 
     scientists = src.execute("SELECT * FROM scientists ORDER BY id").fetchall()

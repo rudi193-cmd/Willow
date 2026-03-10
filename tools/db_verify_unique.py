@@ -25,7 +25,7 @@ MAIN_INDEX_DB = ARTIFACTS / "Sweet-Pea-Rudi19" / "database" / ".index.db"
 def get_table_hashes(db_path: Path, table_name: str) -> Set[str]:
     """Get hashes of all rows in a table for comparison."""
     try:
-        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -50,7 +50,7 @@ def get_table_hashes(db_path: Path, table_name: str) -> Set[str]:
 def analyze_database_uniqueness(db_path: Path) -> Dict:
     """Check if database contains any unique data."""
     try:
-        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
 
         # Get all tables

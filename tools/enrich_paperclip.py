@@ -26,6 +26,8 @@ from pathlib import Path
 REPO = "/mnt/c/Users/Sean/Documents/GitHub/Willow"
 sys.path.insert(0, REPO)
 
+from core.db import get_connection
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
@@ -186,8 +188,7 @@ def main():
 
     src = sqlite3.connect(PAPERCLIP_DB)
     src.row_factory = sqlite3.Row
-    wdb = sqlite3.connect(WILLOW_DB, timeout=30)
-    wdb.execute("PRAGMA journal_mode=WAL")
+    wdb = get_connection()
 
     now = datetime.now(UTC).isoformat()
 

@@ -128,8 +128,10 @@ def index_code_file(filepath: Path) -> int:
         chunk_id = hashlib.md5(f"{filepath}:{chunk.get('name', '')}".encode()).hexdigest()
         
         # Embed and store
-        import sqlite3
-        conn = sqlite3.connect(conversation_rag.DB_PATH)
+        import sys as _sys
+        _sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent.parent))
+        from core.db import get_connection as _gc
+        conn = _gc()
         cursor = conn.cursor()
         
         import embeddings

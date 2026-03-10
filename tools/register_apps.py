@@ -12,10 +12,12 @@ Usage:
 
 import argparse
 import json
-import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 
 WILLOW_ROOT = Path(__file__).resolve().parent.parent
 GITHUB_ROOT = WILLOW_ROOT.parent
@@ -40,10 +42,9 @@ FALLBACK_APPS = [
 ]
 
 
-def connect(db_path):
-    conn = sqlite3.connect(str(db_path), timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=10000")
+def connect(db_path=None):
+    import sqlite3
+    conn = get_connection()
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -148,12 +149,7 @@ def main():
     parser.add_argument("--db",   default=None,        help="Path to knowledge DB")
     args = parser.parse_args()
 
-    db_path = Path(args.db) if args.db else DEFAULT_DB
-    if not db_path.exists():
-        print(f"ERROR: DB not found at {db_path}")
-        sys.exit(1)
-
-    conn = connect(db_path)
+    conn = connect()
 
     # Ensure tables exist (in case init_db hasn't been called with new schema yet)
     conn.execute("""CREATE TABLE IF NOT EXISTS registered_apps (
@@ -162,7 +158,7 @@ def main():
         manifest_path TEXT, registered_at TEXT NOT NULL
     )""")
     conn.execute("""CREATE TABLE IF NOT EXISTS app_consent (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
         username TEXT NOT NULL, app_id TEXT NOT NULL,
         consented INTEGER NOT NULL DEFAULT 0,
         granted_at TEXT, revoked_at TEXT,

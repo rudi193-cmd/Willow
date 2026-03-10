@@ -13,7 +13,6 @@ Usage:
 
 import argparse
 import math
-import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -162,49 +161,18 @@ def coords_for_entity(row) -> tuple:
 
 # ── DB connection ─────────────────────────────────────────────────────────────
 
-_DEFAULT_DB = WILLOW_ROOT / "artifacts" / "Sweet-Pea-Rudi19" / "willow_knowledge.db"
-
 
 def connect(db_path=None):
-    """Open DB connection. Uses PostgreSQL pool when configured, else SQLite."""
-    try:
-        from core.db import get_connection as _gc, is_postgres
-        if is_postgres():
-            conn = _gc()
-            conn.row_factory = sqlite3.Row  # triggers RealDictCursor on Postgres
-            return conn
-    except Exception:
-        pass
-    path = str(db_path or _DEFAULT_DB)
-    conn = sqlite3.connect(path, timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=10000")
+    """Open DB connection via core.db PostgreSQL pool."""
+    import sqlite3
+    from core.db import get_connection
+    conn = get_connection()
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _ensure_table(conn):
-    try:
-        from core.db import is_postgres
-        if is_postgres():
-            return  # cube_cells schema managed by pg_schema.sql
-    except Exception:
-        pass
-    conn.execute("""CREATE TABLE IF NOT EXISTS cube_cells (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        node_id       INTEGER NOT NULL,
-        node_type     TEXT NOT NULL CHECK (node_type IN ('knowledge', 'entity')),
-        cx            INTEGER NOT NULL CHECK (cx BETWEEN 0 AND 22),
-        cy            INTEGER NOT NULL CHECK (cy BETWEEN 1 AND 23),
-        cz            INTEGER NOT NULL CHECK (cz BETWEEN 0 AND 22),
-        domain_name   TEXT NOT NULL,
-        temporal_name TEXT NOT NULL,
-        indexed_at    TEXT NOT NULL,
-        UNIQUE (node_id, node_type)
-    )""")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cube_xyz  ON cube_cells(cx, cy, cz)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cube_type ON cube_cells(node_type)")
-    conn.commit()
+    pass  # cube_cells schema managed by pg_schema.sql
 
 
 # ── Indexing functions ────────────────────────────────────────────────────────

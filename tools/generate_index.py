@@ -8,9 +8,12 @@ CHECKSUM: Delta-Sigma=42
 
 import os
 import ast
-import sqlite3
+import sys
 from pathlib import Path
 from collections import defaultdict
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 
 def get_module_docstring(filepath: Path) -> str:
     """Extract module-level docstring."""
@@ -90,24 +93,19 @@ def generate_index_content() -> str:
     lines.append("## Databases")
     lines.append("")
     
-    db_path = Path("data/willow_index.db")
-    if db_path.exists():
-        conn = sqlite3.connect(str(db_path))
+    try:
+        conn = get_connection()
         cursor = conn.cursor()
-        
-        try:
-            file_count = cursor.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-            func_count = cursor.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
-            class_count = cursor.execute("SELECT COUNT(*) FROM classes").fetchone()[0]
-            
-            lines.append(f"**willow_index.db**")
-            lines.append(f"- Files indexed: {file_count}")
-            lines.append(f"- Functions: {func_count}")
-            lines.append(f"- Classes: {class_count}")
-        except:
-            lines.append("**willow_index.db** - Not yet populated")
-        finally:
-            conn.close()
+        file_count = cursor.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        func_count = cursor.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
+        class_count = cursor.execute("SELECT COUNT(*) FROM classes").fetchone()[0]
+        lines.append(f"**willow_index.db**")
+        lines.append(f"- Files indexed: {file_count}")
+        lines.append(f"- Functions: {func_count}")
+        lines.append(f"- Classes: {class_count}")
+        conn.close()
+    except Exception:
+        lines.append("**willow_index.db** - Not yet populated")
     
     lines.append("")
     lines.append("---")

@@ -16,17 +16,17 @@ DS=42
 import sys
 import os
 import argparse
-import sqlite3
 import subprocess
 import json
 import re
 from datetime import datetime
 from statistics import mean
-from typing import Optional, List
+from typing import Optional, List, Any
 
 os.chdir(r"C:\Users\Sean\Documents\GitHub\Willow")
 sys.path.insert(0, r"C:\Users\Sean\Documents\GitHub\Willow\core")
 import llm_router
+from db import get_connection
 
 DB_PATH = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db"
 
@@ -84,7 +84,7 @@ def generate_summary(filename: str, filepath: str, repo: str, commit_msg: str) -
         pass
     return None
 
-def write_file_atom(conn: sqlite3.Connection, repo: str, filepath: str,
+def write_file_atom(conn: Any, repo: str, filepath: str,
                     commit_hash: str, commit_msg: str, summary: Optional[str]):
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     source_id = f"{repo}:{filepath}"
@@ -103,7 +103,7 @@ def write_file_atom(conn: sqlite3.Connection, repo: str, filepath: str,
         (source_id, title, summary, content_snippet, category, ring, now)
     )
 
-def write_pattern_atom(conn: sqlite3.Connection, repo: str, files: List[str],
+def write_pattern_atom(conn: Any, repo: str, files: List[str],
                        commit_hash: str, commit_msg: str):
     if not files:
         return
@@ -153,8 +153,7 @@ def main():
 
         llm_router.load_keys_from_json()
 
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        conn.execute("PRAGMA journal_mode=WAL")
+        conn = get_connection()
 
         for filepath in files:
             filename = os.path.basename(filepath)

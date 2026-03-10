@@ -40,7 +40,7 @@ def analyze_database(db_path: Path) -> Dict:
             }
 
         # Check actual row counts
-        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
 
         # Get all tables

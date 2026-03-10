@@ -14,7 +14,6 @@ TASK 3: Queue all photo files (new + existing) for Windows-side OCR via Pickup f
 import os
 import sys
 import json
-import sqlite3
 import hashlib
 import argparse
 import logging
@@ -25,6 +24,7 @@ from pathlib import Path
 REPO = "/mnt/c/Users/Sean/Documents/GitHub/Willow"
 sys.path.insert(0, REPO)
 
+from core.db import get_connection
 from core import pigeon
 
 logging.basicConfig(
@@ -125,7 +125,7 @@ def _should_skip(path: Path) -> tuple[bool, str]:
 def _dropping_exists_for_filename(filename: str) -> bool:
     """Check pigeon_droppings for an existing record by filename."""
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn = get_connection()
         row = conn.execute(
             "SELECT id FROM pigeon_droppings WHERE filename=? AND username=? LIMIT 1",
             (filename, USERNAME),
@@ -140,7 +140,7 @@ def _dropping_exists_for_filename(filename: str) -> bool:
 def _knowledge_exists_for_hash(file_hash: str) -> bool:
     """Check knowledge table for an existing record by file_hash (source_id)."""
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn = get_connection()
         row = conn.execute(
             "SELECT id FROM knowledge WHERE source_type='file' AND source_id=? LIMIT 1",
             (file_hash,),

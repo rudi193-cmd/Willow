@@ -9,15 +9,16 @@ CHECKSUM: ΔΣ=42
 
 import os
 import ast
-import sqlite3
+import sys
 from pathlib import Path
 from typing import Set, List
 
-DB_PATH = "data/willow_index.db"
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 
 def init_db():
     """Create tables for code metadata."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -118,7 +119,7 @@ def extract_metadata(filepath: Path) -> dict:
 
 def index_file(filepath: Path):
     """Index single file into database."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
     
     # Get metadata
@@ -127,12 +128,13 @@ def index_file(filepath: Path):
     # Insert file
     cursor.execute("""
         INSERT OR REPLACE INTO files (path, module_name, docstring, line_count, last_indexed)
-        VALUES (?, ?, ?, ?, datetime('now'))
+        VALUES (?, ?, ?, ?, ?)
     """, (
         str(filepath),
         filepath.stem,
         metadata['docstring'],
-        sum(1 for _ in open(filepath, 'r', encoding='utf-8', errors='ignore'))
+        sum(1 for _ in open(filepath, 'r', encoding='utf-8', errors='ignore')),
+        __import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     ))
     
     # Get file_id (works for both INSERT and REPLACE)
@@ -179,7 +181,7 @@ def populate_all():
             print(f"Error: {filepath}: {e}")
     
     # Get final counts
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
     stats['functions'] = cursor.execute("SELECT COUNT(*) FROM functions").fetchone()[0]
     stats['classes'] = cursor.execute("SELECT COUNT(*) FROM classes").fetchone()[0]
