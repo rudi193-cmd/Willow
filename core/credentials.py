@@ -2,13 +2,13 @@
 credentials.py - Fernet-encrypted SQLite credential vault
 Key: ~/.willow_master.key (0600)  DB: ~/.willow_creds.db
 """
-import json, os, sqlite3, stat
+import json, os, stat
+import sqlite3  # row_factory compat
+from core.db import get_connection
 from datetime import datetime, timezone
 from pathlib import Path
 
 KEY_PATH = Path.home() / ".willow_master.key"
-DB_PATH  = Path.home() / ".willow_creds.db"
-
 
 def _load_or_create_key():
     try:
@@ -27,15 +27,15 @@ def _fernet():
     return Fernet(_load_or_create_key())
 
 def _get_conn():
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_connection()
     conn.execute(
         "CREATE TABLE IF NOT EXISTS credentials ("
-        "name TEXT PRIMARY KEY, value_enc BLOB NOT NULL, "
+        "name TEXT PRIMARY KEY, value_enc BYTEA NOT NULL, "
         "env_key TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
     )
     conn.execute(
         "CREATE TABLE IF NOT EXISTS audit_log ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, "
+        "id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY, action TEXT NOT NULL, "
         "name TEXT NOT NULL, timestamp TEXT NOT NULL, "
         "actor TEXT DEFAULT 'claude-code')"
     )

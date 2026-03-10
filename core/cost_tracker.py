@@ -17,10 +17,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from dataclasses import dataclass
 
-# Database location
-BASE_PATH = Path(__file__).parent.parent / "artifacts" / "willow"
-BASE_PATH.mkdir(parents=True, exist_ok=True)
-DB_PATH = BASE_PATH / "cost_tracker.db"
+from core.db import get_connection
 
 # Provider pricing (per 1M tokens)
 PROVIDER_PRICING = {
@@ -77,7 +74,7 @@ class UsageRecord:
 
 def init_db():
     """Initialize the cost tracking database."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_connection()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS usage (
             id INTEGER PRIMARY KEY,
@@ -109,7 +106,7 @@ def log_usage(
     if cost is None:
         cost = calculate_cost(provider, model, tokens_in, tokens_out)
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_connection()
     conn.execute("""
         INSERT INTO usage (timestamp, provider, model, task_type, tokens_in, tokens_out, cost, prompt_preview)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -129,7 +126,7 @@ def log_usage(
 
 def get_usage(days: int = 1, provider: str = None, task_type: str = None):
     """Get usage records for the last N days."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_connection()
     conn.row_factory = sqlite3.Row
 
     since = (datetime.now() - timedelta(days=days)).isoformat()
@@ -154,7 +151,7 @@ def get_usage(days: int = 1, provider: str = None, task_type: str = None):
 
 def get_summary_by_provider(days: int = 1):
     """Get cost summary grouped by provider."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_connection()
     conn.row_factory = sqlite3.Row
 
     since = (datetime.now() - timedelta(days=days)).isoformat()
@@ -178,7 +175,7 @@ def get_summary_by_provider(days: int = 1):
 
 def get_summary_by_task(days: int = 1):
     """Get cost summary grouped by task type."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_connection()
     conn.row_factory = sqlite3.Row
 
     since = (datetime.now() - timedelta(days=days)).isoformat()
@@ -202,20 +199,20 @@ def get_summary_by_task(days: int = 1):
 
 def get_daily_summary(days: int = 7):
     """Get daily cost summary."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_connection()
     conn.row_factory = sqlite3.Row
 
     since = (datetime.now() - timedelta(days=days)).isoformat()
 
     rows = conn.execute("""
         SELECT
-            date(timestamp) as day,
+            DATE(timestamp) as day,
             COUNT(*) as calls,
             SUM(tokens_in + tokens_out) as total_tokens,
             SUM(cost) as total_cost
         FROM usage
         WHERE timestamp > ?
-        GROUP BY date(timestamp)
+        GROUP BY DATE(timestamp)
         ORDER BY day DESC
     """, (since,)).fetchall()
 

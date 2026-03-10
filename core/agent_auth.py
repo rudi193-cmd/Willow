@@ -25,6 +25,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
+import sqlite3  # row_factory compat
 from core.db import get_connection as _get_connection
 TOKEN_FILE = Path.home() / ".willow" / "agent_tokens.json"
 TOKEN_TTL_HOURS = 24
@@ -36,12 +37,12 @@ def _fetch_pending() -> list:
     if not CONTEXT_STORE_DB.exists():
         return []
     try:
-        conn = sqlite3.connect(str(CONTEXT_STORE_DB))
+        conn = _get_connection(str(CONTEXT_STORE_DB))
         rows = conn.execute(
             """
             SELECT key, result FROM context_items
             WHERE key LIKE 'governance:pending_apply:%'
-              AND datetime(created_at, '+' || CAST(ttl_hours AS TEXT) || ' hours') > datetime('now')
+              AND created_at + (ttl_hours * interval '1 hour') > NOW()
             ORDER BY created_at DESC LIMIT 10
             """
         ).fetchall()
