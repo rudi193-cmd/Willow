@@ -12,7 +12,6 @@ Functions:
 - find_connections(): Cross-node pattern detection
 """
 
-import sqlite3
 import json
 import requests
 from pathlib import Path
@@ -24,27 +23,21 @@ from collections import Counter, defaultdict
 NTFY_TOPIC = "willow-ds42"
 NTFY_URL = f"https://ntfy.sh/{NTFY_TOPIC}"
 
-# Storage
-BASE_PATH = Path(__file__).parent.parent / "artifacts" / "willow"
-BASE_PATH.mkdir(parents=True, exist_ok=True)
-PATTERNS_DB = BASE_PATH / "patterns.db"
-
 
 def _connect():
-    """Connect to patterns database."""
-    conn = sqlite3.connect(PATTERNS_DB, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    from core.db import get_connection
+    return get_connection()
 
 
 def init_db():
-    """Initialize pattern recognition database."""
+    """No-op — schema managed by pg_schema.sql."""
+    return
     conn = _connect()
 
     # Routing history - every routing decision
     conn.execute("""
         CREATE TABLE IF NOT EXISTS routing_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             timestamp TEXT NOT NULL,
             filename TEXT NOT NULL,
             file_type TEXT,
@@ -59,7 +52,7 @@ def init_db():
     # Learned preferences - extracted rules
     conn.execute("""
         CREATE TABLE IF NOT EXISTS learned_preferences (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             pattern_type TEXT NOT NULL,  -- file_type_routing, entity_routing, time_pattern
             pattern_value TEXT NOT NULL,
             destination TEXT NOT NULL,
@@ -73,7 +66,7 @@ def init_db():
     # Anomalies - detected unusual patterns
     conn.execute("""
         CREATE TABLE IF NOT EXISTS anomalies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             detected_at TEXT NOT NULL,
             anomaly_type TEXT NOT NULL,  -- spike, gap, conflict, unusual_routing
             description TEXT,
@@ -87,7 +80,7 @@ def init_db():
     # Cross-node connections - patterns across nodes
     conn.execute("""
         CREATE TABLE IF NOT EXISTS cross_node_patterns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             detected_at TEXT NOT NULL,
             pattern_type TEXT NOT NULL,  -- shared_entity, temporal_cluster, topic_correlation
             nodes_involved TEXT NOT NULL,  -- JSON array
@@ -100,7 +93,7 @@ def init_db():
     # Provider performance - track LLM provider stats
     conn.execute("""
         CREATE TABLE IF NOT EXISTS provider_performance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             timestamp TEXT NOT NULL,
             provider TEXT NOT NULL,
             file_type TEXT,

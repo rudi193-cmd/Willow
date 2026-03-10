@@ -66,27 +66,19 @@ def _db_path(username: str) -> str:
 
 
 def _connect(username: str):
-    """Open knowledge DB. Uses PostgreSQL pool when configured, else per-user SQLite."""
-    from core.db import get_connection as _gc, is_postgres
-    if is_postgres():
-        return _gc()
-    path = _db_path(username)
-    conn = _gc(path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    from core.db import get_connection
+    return get_connection()
 
 
 def init_db(username: str):
-    """Create tables if they don't exist. Idempotent. V2 clean schema."""
-    from core.db import is_postgres
-    if is_postgres():
-        return  # schema managed by pg_schema.sql
+    """No-op — schema managed by pg_schema.sql."""
+    return
     conn = _connect(username)
     cur = conn.cursor()
 
     # --- Schema version tracking ---
     cur.execute("""CREATE TABLE IF NOT EXISTS schema_versions (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         version     TEXT NOT NULL,
         description TEXT,
         applied_at  TEXT NOT NULL
@@ -94,7 +86,7 @@ def init_db(username: str):
 
     # --- Knowledge atoms (V2: all columns in initial CREATE TABLE) ---
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         source_type     TEXT NOT NULL,
         source_id       TEXT NOT NULL,
         title           TEXT NOT NULL,
@@ -142,7 +134,7 @@ def init_db(username: str):
 
     # --- Entities (V2: all columns in initial CREATE TABLE) ---
     cur.execute("""CREATE TABLE IF NOT EXISTS entities (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         name              TEXT NOT NULL UNIQUE,
         entity_type       TEXT NOT NULL,
         description       TEXT,
@@ -169,7 +161,7 @@ def init_db(username: str):
 
     # --- Conversation memory ---
     cur.execute("""CREATE TABLE IF NOT EXISTS conversation_memory (
-        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         knowledge_id       INTEGER REFERENCES knowledge(id),
         persona            TEXT,
         user_input         TEXT,
@@ -182,7 +174,7 @@ def init_db(username: str):
 
     # --- Knowledge gaps (the loss function) ---
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_gaps (
-        id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+        id                       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         query                    TEXT NOT NULL,
         source                   TEXT NOT NULL,
         gap_type                 TEXT NOT NULL,
@@ -204,7 +196,7 @@ def init_db(username: str):
 
     # 23³ Cube Index — derived spatial index (see CUBE_INDEX_SPEC.md)
     cur.execute("""CREATE TABLE IF NOT EXISTS cube_cells (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         node_id       INTEGER NOT NULL,
         node_type     TEXT NOT NULL CHECK (node_type IN ('knowledge', 'entity')),
         cx            INTEGER NOT NULL CHECK (cx BETWEEN 0 AND 22),
@@ -230,7 +222,7 @@ def init_db(username: str):
     )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS app_consent (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         username    TEXT NOT NULL,
         app_id      TEXT NOT NULL,
         consented   INTEGER NOT NULL DEFAULT 0,
@@ -242,7 +234,7 @@ def init_db(username: str):
 
     # --- Calendar events ---
     cur.execute("""CREATE TABLE IF NOT EXISTS calendar_events (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         username    TEXT NOT NULL,
         title       TEXT NOT NULL,
         description TEXT,
@@ -262,7 +254,7 @@ def init_db(username: str):
 
     # --- Personal todos (separate from Ganesha's operational tasks) ---
     cur.execute("""CREATE TABLE IF NOT EXISTS personal_todos (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         username    TEXT NOT NULL,
         title       TEXT NOT NULL,
         description TEXT,
@@ -387,10 +379,13 @@ def _upsert_entities(conn: sqlite3.Connection, knowledge_id: int, entities: List
         # Upsert entity
         cur.execute(
             "INSERT INTO entities (name, entity_type, mention_count) VALUES (?, ?, 1) "
-            "ON CONFLICT(name) DO UPDATE SET mention_count = mention_count + 1",
+            "ON CONFLICT(name) DO UPDATE SET mention_count = entities.mention_count + 1",
             (name, etype)
         )
-        entity_id = cur.execute("SELECT id FROM entities WHERE name = ?", (name,)).fetchone()[0]
+        row = cur.execute("SELECT id FROM entities WHERE name = ?", (name,)).fetchone()
+        if not row:
+            continue
+        entity_id = row[0]
 
         # Link to knowledge atom
         cur.execute(
@@ -466,35 +461,43 @@ def ingest_file_knowledge(
 
     # --- DB transaction: fast writes only, no slow I/O inside ---
     conn = _connect(username)
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
 
-    # Skip if already ingested
-    existing = cur.execute(
-        "SELECT id FROM knowledge WHERE source_type='file' AND source_id=?",
-        (file_hash,)
-    ).fetchone()
-    if existing:
+        # Check if already ingested — if so, recover entities in case they failed before
+        existing = cur.execute(
+            "SELECT id FROM knowledge WHERE source_type='file' AND source_id=?",
+            (file_hash,)
+        ).fetchone()
+        if existing:
+            knowledge_id = existing[0]
+            if entities:
+                _upsert_entities(conn, knowledge_id, entities)
+            conn.commit()
+            return
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ring = get_ring(category, "file", filename)
+        cur.execute(
+            """INSERT OR IGNORE INTO knowledge
+               (source_type, source_id, title, summary, content_snippet, category, ring, created_at)
+               VALUES ('file', ?, ?, ?, ?, ?, ?, ?)""",
+            (file_hash, filename, summary, snippet, category, ring, now)
+        )
+        knowledge_id = cur.lastrowid
+
+        if knowledge_id:
+            _upsert_entities(conn, knowledge_id, entities)
+            if embed_vec:
+                conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (embed_vec, knowledge_id))
+
+        conn.commit()
+        logging.info(f"KNOWLEDGE: Ingested file '{filename}' (summary={'yes' if summary else 'backfill'})")
+    except Exception as e:
+        logging.warning(f"KNOWLEDGE: ingest_file_knowledge failed for '{filename}': {e}")
+        raise
+    finally:
         conn.close()
-        return
-
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    ring = get_ring(category, "file", filename)
-    cur.execute(
-        """INSERT OR IGNORE INTO knowledge
-           (source_type, source_id, title, summary, content_snippet, category, ring, created_at)
-           VALUES ('file', ?, ?, ?, ?, ?, ?, ?)""",
-        (file_hash, filename, summary, snippet, category, ring, now)
-    )
-    knowledge_id = cur.lastrowid
-
-    if knowledge_id:
-        _upsert_entities(conn, knowledge_id, entities)
-        if embed_vec:
-            conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (embed_vec, knowledge_id))
-
-    conn.commit()
-    conn.close()
-    logging.info(f"KNOWLEDGE: Ingested file '{filename}' (summary={'yes' if summary else 'backfill'})")
 
 
 def ingest_conversation(
@@ -642,7 +645,7 @@ def search(username: str, query: str, max_results: int = 10) -> List[Dict]:
             ORDER BY rank
             LIMIT ?
         """, (fts_expr, max_results)).fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         # FTS match syntax error — fall back to simple LIKE
         rows = cur.execute("""
             SELECT id, source_type, title, summary,

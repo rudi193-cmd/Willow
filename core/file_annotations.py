@@ -6,23 +6,14 @@ User can mark a routing decision as correct/wrong and explain WHY.
 This builds a knowledge base of edge cases for pattern learning.
 """
 
-import sqlite3
 import json
-from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict
 
-# Database path
-BASE_PATH = Path(__file__).parent.parent / "artifacts" / "willow"
-BASE_PATH.mkdir(parents=True, exist_ok=True)
-ANNOTATIONS_DB = BASE_PATH / "file_annotations.db"
-
 
 def _connect():
-    """Connect to annotations database."""
-    conn = sqlite3.connect(ANNOTATIONS_DB, timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+    from core.db import get_connection
+    return get_connection()
 
 
 def init_annotations_db():
@@ -31,7 +22,7 @@ def init_annotations_db():
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS file_annotations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             routing_id INTEGER NOT NULL,
             filename TEXT NOT NULL,
             routed_to TEXT NOT NULL,

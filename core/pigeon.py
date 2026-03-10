@@ -57,20 +57,19 @@ def get_agent_nest_path(agent_name: str) -> str:
 
 
 def _connect():
-    from core.db import get_connection as _gc, is_postgres
-    if is_postgres():
-        return _gc()
-    return _gc(DB_PATH)
+    from core.db import get_connection
+    return get_connection()
 
 
 def init_droppings_table():
-    from core.db import is_postgres
-    if is_postgres():
-        return  # tables created by pg_schema.sql
+    pass  # tables created by pg_schema.sql
+
+
+def _init_droppings_table_UNUSED():
     conn = _connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS pigeon_droppings (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             username      TEXT NOT NULL,
             filename      TEXT NOT NULL,
             file_hash     TEXT,
@@ -81,14 +80,9 @@ def init_droppings_table():
             created_at    TEXT NOT NULL
         )
     """)
-    # Add file_hash column to existing tables that predate this schema
-    try:
-        conn.execute("ALTER TABLE pigeon_droppings ADD COLUMN file_hash TEXT")
-    except Exception:
-        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS pigeon_errors (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             username   TEXT NOT NULL,
             filename   TEXT NOT NULL,
             error      TEXT,
@@ -250,41 +244,16 @@ def sweep_all(username: str) -> int:
 
 
 def _process_one(item: Path, username: str, file_hash: str = None):
-    """Process a single file: classify, route, record. Returns dropping dict or None on error."""
+    """Stage a single file into the Nest review queue. File stays put until user confirms."""
     try:
-        snippet = _read_snippet(str(item))
-        result = classify_file(item.name, snippet)
-        filed_to = None
-        dropping_id = None
-        # _DB_LOCK: only covers file-move + pigeon DB write (fast).
-        # ingest_file_knowledge runs OUTSIDE the lock — it manages its own connection.
-        with _DB_LOCK:
-            filed_to = route_file(str(item), result["category"], username, result.get("subcategory", "general"))
-            try:
-                dropping_id = create_dropping(
-                    username, item.name, str(item), filed_to,
-                    result["category"], result["summary"], file_hash=file_hash
-                )
-            except Exception as db_err:
-                # Rollback: move file back to Nest if DB write fails
-                try:
-                    shutil.move(filed_to, str(item))
-                    logger.warning(f"PIGEON: DB write failed for {item.name}, rolled back to Nest: {db_err}")
-                except Exception as rb_err:
-                    logger.error(f"PIGEON: rollback failed for {item.name}: {rb_err}")
-                raise db_err
-        # Knowledge ingest runs outside _DB_LOCK — uses get_connection() with busy_timeout
-        try:
-            import knowledge as kmod
-            kmod.ingest_file_knowledge(username=username, filename=item.name, file_hash=file_hash or "",
-                                       category=result["category"], content_text=snippet, provider="pigeon")
-        except Exception as ke:
-            logger.warning(f"PIGEON: knowledge ingest failed for {item.name}: {ke}")
-        logger.info(f"PIGEON: filed {item.name} -> {result['category']}/")
-        return {"id": dropping_id, "filename": item.name,
-                "category": result["category"], "summary": result["summary"], "filed_to": filed_to}
+        from core.nest_intake import stage_file
+        result = stage_file(username, str(item), file_hash)
+        logger.info(f"PIGEON: staged {item.name} → review queue #{result['id']}")
+        return {"id": result["id"], "filename": item.name,
+                "category": result["proposed_category"], "summary": result["proposed_summary"],
+                "filed_to": None, "staged_for_review": True}
     except Exception as e:
-        logger.error(f"PIGEON: error processing {item.name}: {e}")
+        logger.error(f"PIGEON: error staging {item.name}: {e}")
         _log_error(username, item.name, e)
         return None
 
@@ -299,9 +268,26 @@ def scan_and_process(username: str) -> list:
     cur = conn.cursor()
     cur.execute("SELECT filename, file_hash FROM pigeon_droppings WHERE username=?", (username,))
     rows = cur.fetchall()
-    conn.close()
     already_filed_names = {r[0] for r in rows}
     already_filed_hashes = {r[1] for r in rows if r[1]}
+
+    # Also skip files already staged in the review queue (not yet filed)
+    # CRITICAL: if this check fails, abort scan entirely — staging without dedup creates duplicates
+    try:
+        cur.execute(
+            "SELECT filename, file_hash FROM nest_review_queue WHERE username=?",
+            (username,)
+        )
+        for r in cur.fetchall():
+            already_filed_names.add(r[0])
+            if r[1]:
+                already_filed_hashes.add(r[1])
+    except Exception as e:
+        logger.error(f"PIGEON: nest_review_queue dedup check failed: {e} — aborting scan to prevent duplicates")
+        conn.close()
+        return []
+
+    conn.close()
 
     # Collect from root Nest + all per-agent subdirs
     scan_dirs = [Path(get_nest_path(username))]
@@ -340,40 +326,7 @@ def scan_and_process(username: str) -> list:
 # ── Bus Drop Intake ────────────────────────────────────────────────────────────────────────────
 
 def init_inbox_table():
-    """Create pigeon_inbox table — cross-app async message queue."""
-    conn = _connect()
-    is_pg = hasattr(conn, 'autocommit')  # psycopg2 connections have autocommit; sqlite3 does not
-    if is_pg:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS pigeon_inbox (
-                id          SERIAL PRIMARY KEY,
-                to_app      TEXT NOT NULL,
-                from_app    TEXT NOT NULL,
-                username    TEXT NOT NULL,
-                subject     TEXT NOT NULL,
-                body        TEXT NOT NULL,
-                thread_id   TEXT,
-                sent_at     TEXT NOT NULL,
-                read_at     TEXT
-            )
-        """)
-    else:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS pigeon_inbox (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                to_app      TEXT NOT NULL,
-                from_app    TEXT NOT NULL,
-                username    TEXT NOT NULL,
-                subject     TEXT NOT NULL,
-                body        TEXT NOT NULL,
-                thread_id   TEXT,
-                sent_at     TEXT NOT NULL,
-                read_at     TEXT
-            )
-        """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_to ON pigeon_inbox(to_app, read_at)")
-    conn.commit()
-    conn.close()
+    pass  # table created by pg_schema.sql
 
 
 _DRIVE_INBOX_BASE = Path(_BASE) / "My Drive (rudi193@gmail.com)" / "Willow" / "Nest" / "inbox"
@@ -409,22 +362,13 @@ def send_to_inbox(to_app: str, from_app: str, username: str,
     """Deposit a message into an app's inbox. Returns message id."""
     init_inbox_table()
     sent_at = datetime.now(UTC).isoformat()
-    from core.db import is_postgres
     conn = _connect()
-    if is_postgres():
-        cur = conn.execute(
-            "INSERT INTO pigeon_inbox (to_app, from_app, username, subject, body, thread_id, sent_at) "
-            "VALUES (?,?,?,?,?,?,?) RETURNING id",
-            (to_app, from_app, username, subject, body, thread_id, sent_at)
-        )
-        msg_id = cur.fetchone()[0]
-    else:
-        cur = conn.execute(
-            "INSERT INTO pigeon_inbox (to_app, from_app, username, subject, body, thread_id, sent_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (to_app, from_app, username, subject, body, thread_id, sent_at)
-        )
-        msg_id = cur.lastrowid
+    cur = conn.execute(
+        "INSERT INTO pigeon_inbox (to_app, from_app, username, subject, body, thread_id, sent_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (to_app, from_app, username, subject, body, thread_id, sent_at)
+    )
+    msg_id = cur.lastrowid
     conn.commit()
     conn.close()
     logger.info(f"PIGEON: inbox message {msg_id} → {to_app} from {from_app}")
@@ -477,14 +421,15 @@ def mark_inbox_read(app_id: str, message_id: int = None) -> int:
 
 
 def init_bus_drops_table():
-    """Create bus_drops table for audit logging of safe-app message drops."""
-    from core.db import is_postgres
-    if is_postgres():
-        return
+    pass  # table created by pg_schema.sql
+
+
+def _init_bus_drops_table_UNUSED():
+    """Legacy SQLite init — kept for reference only."""
     conn = _connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS bus_drops (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             source_app TEXT NOT NULL,
             topic      TEXT NOT NULL,
             session_id TEXT,

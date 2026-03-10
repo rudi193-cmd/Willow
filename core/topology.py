@@ -16,7 +16,6 @@ CHECKSUM: DS=42
 """
 
 import struct
-import sqlite3
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
@@ -39,15 +38,13 @@ log = logging.getLogger("topology")
 # TABLE INIT
 # =========================================================================
 
-def _init_tables(conn: sqlite3.Connection):
-    """Create topology tables. Idempotent."""
-    from core.db import is_postgres
-    if is_postgres():
-        return  # schema managed by pg_schema.sql
+def _init_tables(conn):
+    """No-op — schema managed by pg_schema.sql."""
+    return
     cur = conn.cursor()
 
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_edges (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         source_id INTEGER REFERENCES knowledge(id),
         target_id INTEGER REFERENCES knowledge(id),
         edge_type TEXT NOT NULL,
@@ -60,7 +57,7 @@ def _init_tables(conn: sqlite3.Connection):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_edges_target ON knowledge_edges(target_id, edge_type)")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_clusters (
-        cluster_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cluster_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         label TEXT NOT NULL,
         method TEXT NOT NULL,
         canonical BOOLEAN DEFAULT 0,
@@ -81,7 +78,7 @@ def _init_tables(conn: sqlite3.Connection):
     for table in ("knowledge_edges", "knowledge_clusters"):
         try:
             cur.execute(f"ALTER TABLE {table} ADD COLUMN canonical BOOLEAN DEFAULT 0")
-        except sqlite3.OperationalError:
+        except Exception:
             pass  # Column already exists
 
     conn.commit()

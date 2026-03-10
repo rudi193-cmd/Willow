@@ -13,7 +13,6 @@ Functions:
 - get_health_report(): Comprehensive system health snapshot
 """
 
-import sqlite3
 import os
 import shutil
 import subprocess
@@ -26,17 +25,10 @@ from typing import Dict, List, Optional, Tuple
 NTFY_TOPIC = "willow-ds42"
 NTFY_URL = f"https://ntfy.sh/{NTFY_TOPIC}"
 
-# Storage
-BASE_PATH = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19"
-BASE_PATH.mkdir(parents=True, exist_ok=True)
-HEALTH_DB = BASE_PATH / "health.db"
-
 
 def _connect():
-    """Connect to health monitoring database."""
-    conn = sqlite3.connect(HEALTH_DB, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    from core.db import get_connection
+    return get_connection()
 
 
 def init_db():
@@ -46,7 +38,7 @@ def init_db():
     # Health checks log
     conn.execute("""
         CREATE TABLE IF NOT EXISTS health_checks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             timestamp TEXT NOT NULL,
             check_type TEXT NOT NULL,  -- node, queue, api, storage
             target TEXT NOT NULL,  -- node name, API name, etc.
@@ -59,7 +51,7 @@ def init_db():
     # Issues detected
     conn.execute("""
         CREATE TABLE IF NOT EXISTS health_issues (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             detected_at TEXT NOT NULL,
             issue_type TEXT NOT NULL,  -- stale_node, queue_backlog, api_down, storage_full
             target TEXT NOT NULL,
@@ -74,7 +66,7 @@ def init_db():
     # Self-healing actions
     conn.execute("""
         CREATE TABLE IF NOT EXISTS healing_actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             timestamp TEXT NOT NULL,
             issue_id INTEGER,
             action_type TEXT NOT NULL,  -- retry, route_around, alert, restart
@@ -373,18 +365,15 @@ def check_storage_health() -> Dict:
         if not user_dir.is_dir():
             continue
 
-        kb_path = user_dir / "willow_knowledge.db"
-        if not kb_path.exists():
-            continue
-
         try:
-            # Quick integrity check
-            conn = sqlite3.connect(kb_path, timeout=5)
-            conn.execute("PRAGMA integrity_check").fetchone()
+            # Quick connectivity check against Postgres
+            from core.db import get_connection
+            conn = get_connection()
+            conn.execute("SELECT 1").fetchone()
             conn.close()
         except Exception as e:
             db_issues += 1
-            _log_issue("db_corruption", user_dir.name, f"Integrity check failed: {e}", "high")
+            _log_issue("db_corruption", user_dir.name, f"DB check failed: {e}", "high")
 
     if db_issues > 0:
         storage_health["databases"] = {

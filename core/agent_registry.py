@@ -63,10 +63,8 @@ def _conn(username):
 
 
 def init_agent_tables(username):
-    """Add agent tables to existing knowledge DB."""
-    from core.db import is_postgres
-    if is_postgres():
-        return  # schema managed by pg_schema.sql
+    """No-op — schema managed by pg_schema.sql."""
+    return
     conn = _conn(username)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS agents (
@@ -81,7 +79,7 @@ def init_agent_tables(username):
             server_type TEXT DEFAULT 'persona'
         );
         CREATE TABLE IF NOT EXISTS agent_mailbox (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             from_agent TEXT NOT NULL,
             to_agent TEXT NOT NULL,
             subject TEXT,
@@ -190,10 +188,8 @@ def mark_read(username, message_id):
 
 
 def init_state_table(username):
-    """Add willow_state key-value table to agent DB."""
-    from core.db import is_postgres
-    if is_postgres():
-        return  # schema managed by pg_schema.sql
+    """No-op — schema managed by pg_schema.sql."""
+    return
     conn = _conn(username)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS willow_state (

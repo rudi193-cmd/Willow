@@ -42,15 +42,10 @@ def _get_db_path(username: str) -> str:
     """Returns the specific database file path for a user."""
     return os.path.join(DB_DIR, f"{username}.db")
 
-def _get_connection(username: str) -> sqlite3.Connection:
-    """Establishes connection to the user's database."""
-    _ensure_db_dir()
-    db_path = _get_db_path(username)
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA busy_timeout=10000")
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.row_factory = sqlite3.Row
-    return conn
+def _get_connection(username: str):
+    """Returns a Postgres connection."""
+    from core.db import get_connection
+    return get_connection()
 
 def _init_schema(conn: sqlite3.Connection):
     """Initializes the lattice schema if it does not exist."""
@@ -58,7 +53,7 @@ def _init_schema(conn: sqlite3.Connection):
     # Enforce 23-cubed structure via unique constraint on lattice coordinates
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS nodes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             username TEXT NOT NULL,
             domain TEXT NOT NULL,
             depth INTEGER NOT NULL,
