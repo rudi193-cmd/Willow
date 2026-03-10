@@ -12,11 +12,16 @@ CHECKSUM: ΔΣ=42
 
 import logging
 from typing import Optional
-import litellm
 
-# Suppress LiteLLM's verbose logging
-litellm.suppress_debug_info = True
-logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+try:
+    import litellm
+    litellm.suppress_debug_info = True
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    _LITELLM_AVAILABLE = True
+except ImportError:
+    litellm = None
+    _LITELLM_AVAILABLE = False
+    logging.getLogger(__name__).info("litellm not installed — fallback adapter disabled. llm_router fleet handles routing.")
 
 
 def litellm_fallback(provider_name: str, model: str, prompt: str,
@@ -37,6 +42,9 @@ def litellm_fallback(provider_name: str, model: str, prompt: str,
     Returns:
         Response text or None on failure
     """
+    if not _LITELLM_AVAILABLE:
+        return None
+
     try:
         # Build kwargs for litellm.completion()
         kwargs = {
