@@ -10,20 +10,21 @@ Step 3: Generate proposed knowledge_edges for human review
 Run: python tools/binder_absurd.py [--dry-run]
 """
 
-import sqlite3, struct, math, sys, json, io
+import struct, math, sys, json, io
+import sqlite3  # kept for row_factory only
 from pathlib import Path
 from datetime import datetime
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-DB = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "willow_knowledge.db"
 DRY_RUN = "--dry-run" in sys.argv
 
 
 def connect():
-    conn = sqlite3.connect(str(DB))
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
+    conn = get_connection(schema='Sweet-Pea-Rudi19')
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -47,15 +48,15 @@ def find_entity_bridges(conn) -> list[dict]:
     rows = conn.execute("""
         SELECT e.id, e.name, e.entity_type,
                COUNT(DISTINCT k.category) as cat_count,
-               GROUP_CONCAT(DISTINCT k.category) as categories,
-               GROUP_CONCAT(DISTINCT k.id) as atom_ids
+               STRING_AGG(DISTINCT k.category::text, ',') as categories,
+               STRING_AGG(DISTINCT k.id::text, ',') as atom_ids
         FROM entities e
         JOIN knowledge_entities ke ON e.id = ke.entity_id
         JOIN knowledge k ON ke.knowledge_id = k.id
         WHERE k.category NOT IN ('merged')
           AND e.name NOT IN ('Willow', 'Sean', 'Claude', 'Ganesha', 'system', 'file')
         GROUP BY e.id
-        HAVING cat_count >= 3
+        HAVING COUNT(DISTINCT k.category) >= 3
         ORDER BY cat_count DESC, COUNT(DISTINCT k.id) DESC
         LIMIT 40
     """).fetchall()
@@ -84,17 +85,17 @@ def find_cross_category_similar(conn, sample_per_cat=50, threshold=0.65) -> list
     """
     # Load atoms with embeddings, one sample per category
     atoms_by_cat = {}
-    cats = [r[0] for r in conn.execute(
+    cats = [r['category'] for r in conn.execute(
         "SELECT DISTINCT category FROM knowledge WHERE category NOT IN ('merged') AND embedding IS NOT NULL"
     ).fetchall()]
 
     for cat in cats:
         rows = conn.execute(
             "SELECT id, title, category, embedding FROM knowledge "
-            "WHERE category=? AND embedding IS NOT NULL AND category NOT IN ('merged') LIMIT ?",
+            "WHERE category=%s AND embedding IS NOT NULL AND category NOT IN ('merged') LIMIT %s",
             (cat, sample_per_cat)
         ).fetchall()
-        atoms_by_cat[cat] = [(r['id'], r['title'], r['category'], r['embedding']) for r in rows]
+        atoms_by_cat[cat] = [(r['id'], r['title'], r['category'], bytes(r['embedding']) if r['embedding'] is not None else None) for r in rows]
 
     # Find surprising cross-category pairs
     # Limited to categories with high embedding coverage (>75%)
@@ -141,7 +142,7 @@ def find_cross_category_similar(conn, sample_per_cat=50, threshold=0.65) -> list
 
 def edge_exists(conn, src: int, tgt: int, etype: str) -> bool:
     return conn.execute(
-        "SELECT 1 FROM knowledge_edges WHERE source_id=? AND target_id=? AND edge_type=?",
+        "SELECT 1 FROM knowledge_edges WHERE source_id=%s AND target_id=%s AND edge_type=%s",
         (src, tgt, etype)
     ).fetchone() is not None
 
@@ -157,7 +158,7 @@ def propose_edges(conn, bridges: list, similar_pairs: list) -> list[dict]:
         # Only propose edges between atoms from different categories
         atoms_by_cat = {}
         for aid in atom_ids:
-            row = conn.execute("SELECT id, category, title FROM knowledge WHERE id=?", (aid,)).fetchone()
+            row = conn.execute("SELECT id, category, title FROM knowledge WHERE id=%s", (aid,)).fetchone()
             if row:
                 atoms_by_cat.setdefault(row['category'], []).append((row['id'], row['title']))
 
@@ -198,9 +199,12 @@ def apply_edges(conn, proposals: list) -> int:
     for p in proposals:
         try:
             conn.execute(
-                "INSERT OR IGNORE INTO knowledge_edges "
-                "(source_id, target_id, edge_type, weight, canonical, created_at) VALUES (?,?,?,?,0,?)",
-                (p['source_id'], p['target_id'], p['edge_type'], p['weight'], now)
+                "INSERT INTO knowledge_edges "
+                "(source_id, target_id, edge_type, weight, canonical, created_at) "
+                "SELECT %s,%s,%s,%s,0,%s WHERE NOT EXISTS "
+                "(SELECT 1 FROM knowledge_edges WHERE source_id=%s AND target_id=%s AND edge_type=%s)",
+                (p['source_id'], p['target_id'], p['edge_type'], p['weight'], now,
+                 p['source_id'], p['target_id'], p['edge_type'])
             )
             applied += 1
         except Exception as e:
@@ -243,7 +247,7 @@ def main():
         print(f"\n[DRY RUN] Would create {len(proposals)} edges. Re-run without --dry-run to apply.")
     else:
         applied = apply_edges(conn, proposals)
-        total_edges = conn.execute("SELECT COUNT(*) FROM knowledge_edges").fetchone()[0]
+        total_edges = conn.execute("SELECT COUNT(*) as cnt FROM knowledge_edges").fetchone()['cnt']
         print(f"\nApplied {applied} new edges. Total knowledge_edges: {total_edges:,}")
 
         # Update cube index after writing new edges
@@ -255,6 +259,7 @@ def main():
         except Exception as _ci_err:
             print(f"[cube_indexer] skipped: {_ci_err}")
 
+    conn.commit()
     conn.close()
 
 
