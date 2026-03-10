@@ -1,24 +1,25 @@
 import argparse
-import sqlite3
 import sys
+from pathlib import Path
 
-DB_PATH = "C:/Users/Sean/Documents/GitHub/Willow/core/rag.db"
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 
 def search(query, limit=10, repo=None):
     results = []
     try:
-        conn = sqlite3.connect(DB_PATH)
-        sql = "SELECT file_path, repo, text FROM chunks WHERE text LIKE ?"
+        conn = get_connection()
+        sql = "SELECT file_path, repo, text FROM chunks WHERE text LIKE %s"
         params = [f"%{query}%"]
         if repo:
-            sql += " AND repo = ?"
+            sql += " AND repo = %s"
             params.append(repo)
-        sql += " LIMIT ?"
+        sql += " LIMIT %s"
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
         conn.close()
         for row in rows:
-            results.append({"file_path": row[0], "repo": row[1], "text": row[2]})
+            results.append({"file_path": row["file_path"], "repo": row["repo"], "text": row["text"]})
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
     return results

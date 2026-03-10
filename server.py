@@ -62,7 +62,7 @@ from core import agent_registry
 from core import tool_engine, rings, graft
 from core.awareness import on_scan_complete, on_organize_complete, on_coherence_update, on_topology_update, say as willow_say
 from apps.pa import drive_scan, drive_organize
-from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes, auth_routes, apps_routes
+from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes, auth_routes, apps_routes, nest_routes
 
 app = FastAPI(title="Willow", docs_url=None, redoc_url=None)
 
@@ -158,6 +158,7 @@ app.include_router(die_namic_routes.router) # Die-namic system state (read-only)
 app.include_router(journal_routes.router)   # Journal sessions + events (Shiva's pipeline)
 app.include_router(auth_routes.router)     # Local-first auth — login/verify/logout
 app.include_router(apps_routes.router)    # SAFE app consent management
+app.include_router(nest_routes.router)    # Nest review queue
 # Governance endpoints already defined in server.py (lines 1023-1155)
 
 
@@ -312,20 +313,19 @@ def status():
     # Knowledge stats
     stats = {"atoms": 0, "conversations": 0, "entities": 0, "gaps": 0}
     try:
-        import sqlite3
-        db_path = loam._db_path(USERNAME)
-        if Path(db_path).exists():
-            conn = sqlite3.connect(db_path)
-            cur = conn.cursor()
-            for table, key in [("knowledge", "atoms"), ("conversation_memory", "conversations"),
-                               ("entities", "entities"), ("knowledge_gaps", "gaps")]:
-                try:
-                    cur.execute(f"SELECT COUNT(*) FROM {table}")
-                    stats[key] = cur.fetchone()[0]
-                except:
-                    pass
-            conn.close()
-    except:
+        from core.db import get_connection as _gc
+        conn = _gc()
+        cur = conn.cursor()
+        for table, key in [("knowledge", "atoms"), ("conversation_memory", "conversations"),
+                           ("entities", "entities"), ("knowledge_gaps", "gaps")]:
+            try:
+                cur.execute(f"SELECT COUNT(*) FROM {table}")
+                row = cur.fetchone()
+                stats[key] = row[0] if row else 0
+            except Exception:
+                pass
+        conn.close()
+    except Exception:
         pass
 
     return {

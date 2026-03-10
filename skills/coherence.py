@@ -8,20 +8,17 @@ Calculates ΔE (delta entropy) for knowledge atoms to detect drift.
 import json
 import sys
 import argparse
-import sqlite3
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 
 def check_coherence(username: str = "Sweet-Pea-Rudi19",
                    topic: str = None,
                    threshold: float = 0.5) -> dict:
     """Check coherence across knowledge base."""
-    db_path = Path(__file__).parent.parent / "data" / f"{username}_knowledge.db"
-
-    if not db_path.exists():
-        return {"error": "Knowledge database not found"}
-
     try:
-        conn = sqlite3.connect(db_path)
+        conn = get_connection()
         cursor = conn.cursor()
 
         # Get recent atoms
@@ -47,16 +44,16 @@ def check_coherence(username: str = "Sweet-Pea-Rudi19",
         # Analyze coherence
         high_drift = []
         for atom in atoms:
-            if atom[2] and atom[2] > threshold:
+            if atom.get("delta_e") and atom["delta_e"] > threshold:
                 high_drift.append({
-                    "id": atom[0],
-                    "content_preview": atom[1][:100] + "..." if len(atom[1]) > 100 else atom[1],
-                    "delta_e": atom[2],
-                    "category": atom[3],
-                    "created_at": atom[4]
+                    "id": atom["id"],
+                    "content_preview": atom["content"][:100] + "..." if len(atom["content"]) > 100 else atom["content"],
+                    "delta_e": atom["delta_e"],
+                    "category": atom["category"],
+                    "created_at": atom["created_at"]
                 })
 
-        avg_delta_e = sum(a[2] for a in atoms if a[2]) / len(atoms) if atoms else 0.0
+        avg_delta_e = sum(a["delta_e"] for a in atoms if a.get("delta_e")) / len(atoms) if atoms else 0.0
 
         return {
             "total_atoms": len(atoms),

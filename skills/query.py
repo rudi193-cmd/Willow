@@ -7,41 +7,38 @@ Searches knowledge database for matching entries.
 
 import json
 import sys
-import sqlite3
 import argparse
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.db import get_connection
 
 def query_knowledge(query: str, username: str = "Sweet-Pea-Rudi19",
                    limit: int = 10) -> list:
     """Query knowledge database."""
-    db_path = Path(__file__).parent.parent / "data" / f"{username}_knowledge.db"
-
-    if not db_path.exists():
-        return []
-
     try:
-        conn = sqlite3.connect(db_path)
+        conn = get_connection()
         cursor = conn.cursor()
 
         # Search in content and summary
         cursor.execute("""
             SELECT id, content, summary, category, source_type, created_at, delta_e
             FROM knowledge
-            WHERE content LIKE ? OR summary LIKE ?
+            WHERE content LIKE %s OR summary LIKE %s
             ORDER BY created_at DESC
-            LIMIT ?
+            LIMIT %s
         """, (f"%{query}%", f"%{query}%", limit))
 
         results = []
         for row in cursor.fetchall():
             results.append({
-                "id": row[0],
-                "content": row[1][:200] + "..." if len(row[1]) > 200 else row[1],
-                "summary": row[2],
-                "category": row[3],
-                "source_type": row[4],
-                "created_at": row[5],
-                "delta_e": row[6]
+                "id": row["id"],
+                "content": row["content"][:200] + "..." if row["content"] and len(row["content"]) > 200 else (row["content"] or ""),
+                "summary": row["summary"],
+                "category": row["category"],
+                "source_type": row["source_type"],
+                "created_at": str(row["created_at"]) if row["created_at"] else None,
+                "delta_e": row["delta_e"]
             })
 
         conn.close()
