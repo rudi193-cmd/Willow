@@ -18,7 +18,6 @@ Fix vs llm_router.py:
 
 import json
 import os
-import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta
@@ -28,6 +27,7 @@ from pathlib import Path
 # Import SAFE OS hook generator so fleet events become observable system events
 WILLOW_CORE = Path(__file__).parent.parent / "core"
 sys.path.insert(0, str(WILLOW_CORE))
+from db import get_connection
 try:
     from hook_generator import ClaudeCLIHookGenerator
     _hook_gen = ClaudeCLIHookGenerator()
@@ -98,9 +98,9 @@ def inject_env(creds: dict):
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 def health_conn():
-    HEALTH_DB.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(HEALTH_DB, timeout=10)
-    conn.row_factory = sqlite3.Row
+    import sqlite3 as _sqlite3
+    conn = get_connection()
+    conn.row_factory = _sqlite3.Row
     conn.execute("""
         CREATE TABLE IF NOT EXISTS provider_health (
             provider TEXT PRIMARY KEY,
@@ -116,21 +116,17 @@ def health_conn():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Migrate: add avg_latency_ms if table was created before this column existed
-    existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(provider_health)").fetchall()}
-    if 'avg_latency_ms' not in existing_cols:
-        conn.execute("ALTER TABLE provider_health ADD COLUMN avg_latency_ms REAL DEFAULT 0")
     conn.commit()
     return conn
 
 
 def patterns_conn():
-    PATTERNS_DB.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(PATTERNS_DB, timeout=10)
-    conn.row_factory = sqlite3.Row
+    import sqlite3 as _sqlite3
+    conn = get_connection()
+    conn.row_factory = _sqlite3.Row
     conn.execute("""
         CREATE TABLE IF NOT EXISTS provider_performance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             timestamp TEXT,
             provider TEXT,
             file_type TEXT,

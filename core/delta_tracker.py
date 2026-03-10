@@ -10,7 +10,10 @@ VERSION: 1.0
 CHECKSUM: ΔΣ=42
 """
 
-import sqlite3
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).parent.parent))
+from core.db import get_connection
 import json
 from pathlib import Path
 from datetime import datetime
@@ -22,15 +25,13 @@ class DeltaTracker:
 
     def __init__(self, username: str):
         self.username = username
-        self.db_path = Path("artifacts/kart/deltas.db")
         self.delta_dir = Path("artifacts/kart/deltas")
         self.delta_dir.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _init_db(self):
-        """Initialize SQLite database."""
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.db_path)
+        """Initialize database schema."""
+        conn = get_connection()
         conn.execute("""
             CREATE TABLE IF NOT EXISTS deltas (
                 delta_id TEXT PRIMARY KEY,
@@ -135,12 +136,17 @@ total_entropy_delta: {total_entropy:.3f}
                    timestamp: str, changes: List[Dict], entropy_delta: float,
                    coherence_score: float):
         """Save delta to database."""
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         conn.execute("""
-            INSERT OR REPLACE INTO deltas
+            INSERT INTO deltas
             (delta_id, thread_from, thread_to, timestamp, state_before,
              state_after, changes, entropy_delta, coherence_score)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (delta_id) DO UPDATE SET
+                thread_from=EXCLUDED.thread_from, thread_to=EXCLUDED.thread_to,
+                timestamp=EXCLUDED.timestamp, state_before=EXCLUDED.state_before,
+                state_after=EXCLUDED.state_after, changes=EXCLUDED.changes,
+                entropy_delta=EXCLUDED.entropy_delta, coherence_score=EXCLUDED.coherence_score
         """, (delta_id, thread_from, thread_to, timestamp,
               thread_from, thread_to, json.dumps(changes),
               entropy_delta, coherence_score))
@@ -149,7 +155,7 @@ total_entropy_delta: {total_entropy:.3f}
 
     def get_latest_delta(self) -> Optional[Dict]:
         """Get most recent delta."""
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         cursor = conn.execute("""
             SELECT delta_id, thread_from, thread_to, timestamp,
                    entropy_delta, coherence_score
@@ -174,7 +180,7 @@ total_entropy_delta: {total_entropy:.3f}
 
     def list_deltas(self, limit: int = 10) -> List[Dict]:
         """List recent deltas."""
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         cursor = conn.execute("""
             SELECT delta_id, thread_from, thread_to, timestamp,
                    entropy_delta, coherence_score

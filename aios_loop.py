@@ -24,7 +24,7 @@ import json
 import base64
 import requests
 import pickle
-import sqlite3
+from core.db import get_connection
 import hashlib
 import subprocess
 import unicodedata
@@ -614,12 +614,9 @@ def _file_hash(filepath):
     return h.hexdigest()
 
 
-def _safe_connect(db_path):
-    """SQLite connection with WAL mode and busy timeout for concurrent access."""
-    conn = sqlite3.connect(db_path, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    return conn
+def _safe_connect(db_path=None):
+    """Return a Postgres connection (db_path ignored — kept for call-site compatibility)."""
+    return get_connection()
 
 
 def _catalog_db(folder_path):
@@ -651,9 +648,13 @@ def catalog_file(folder_path, filename, category, source, provider):
         fhash = _file_hash(filepath)
         conn = _catalog_db(folder_path)
         conn.execute(
-            """INSERT OR REPLACE INTO file_registry
+            """INSERT INTO file_registry
                (file_hash, filename, ingest_date, category, status, source, provider)
-               VALUES (?, ?, ?, ?, 'active', ?, ?)""",
+               VALUES (%s, %s, %s, %s, 'active', %s, %s)
+               ON CONFLICT (file_hash) DO UPDATE SET
+                   filename=EXCLUDED.filename, ingest_date=EXCLUDED.ingest_date,
+                   category=EXCLUDED.category, source=EXCLUDED.source,
+                   provider=EXCLUDED.provider""",
             (fhash, filename, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
              category, source, provider)
         )
@@ -677,7 +678,7 @@ def log_admin_error(username, error_type, detail):
     try:
         conn = _safe_connect(ADMIN_ERRORS_DB)
         conn.execute("""CREATE TABLE IF NOT EXISTS admin_errors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             timestamp TEXT,
             username TEXT,
             error_type TEXT,
@@ -686,7 +687,7 @@ def log_admin_error(username, error_type, detail):
             resolution TEXT
         )""")
         conn.execute(
-            "INSERT INTO admin_errors (timestamp, username, error_type, detail) VALUES (?, ?, ?, ?)",
+            "INSERT INTO admin_errors (timestamp, username, error_type, detail) VALUES (%s, %s, %s, %s)",
             (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), username, error_type, detail)
         )
         conn.commit()
@@ -729,9 +730,13 @@ def sync_to_master(filename, fhash, category, source, provider, username):
             retain_context INTEGER DEFAULT 1
         )""")
         conn.execute(
-            """INSERT OR REPLACE INTO file_registry
+            """INSERT INTO file_registry
                (file_hash, filename, ingest_date, category, status, source, provider)
-               VALUES (?, ?, ?, ?, 'active', ?, ?)""",
+               VALUES (%s, %s, %s, %s, 'active', %s, %s)
+               ON CONFLICT (file_hash) DO UPDATE SET
+                   filename=EXCLUDED.filename, ingest_date=EXCLUDED.ingest_date,
+                   category=EXCLUDED.category, source=EXCLUDED.source,
+                   provider=EXCLUDED.provider""",
             (fhash, filename, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
              category, source, provider)
         )

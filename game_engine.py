@@ -7,7 +7,10 @@ PBtA (Powered by the Apocalypse) primary system.
 SAFE: All data local-first, user-consented, session-deletable.
 """
 
-import sqlite3
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).parent))
+from core.db import get_connection
 import json
 import random
 import hashlib
@@ -20,11 +23,8 @@ GAME_DB_PATH = Path(__file__).parent / "artifacts" / "willow" / "game.db"
 # ── Schema ────────────────────────────────────────────────────────────────────
 
 def _init_db():
-    GAME_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(GAME_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS game_sessions (
+    conn = get_connection()
+    conn.execute("""CREATE TABLE IF NOT EXISTS game_sessions (
             id TEXT PRIMARY KEY,
             player_name TEXT NOT NULL,
             game_type TEXT DEFAULT 'pbta',
@@ -37,8 +37,8 @@ def _init_db():
             persist_across_sessions INTEGER DEFAULT 0,
             created_at TEXT,
             updated_at TEXT
-        );
-        CREATE TABLE IF NOT EXISTS game_characters (
+        )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS game_characters (
             id TEXT PRIMARY KEY,
             session_id TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -53,9 +53,9 @@ def _init_db():
             xp INTEGER DEFAULT 0,
             created_at TEXT,
             FOREIGN KEY (session_id) REFERENCES game_sessions(id)
-        );
-        CREATE TABLE IF NOT EXISTS game_rolls (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS game_rolls (
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             session_id TEXT NOT NULL,
             dice TEXT NOT NULL,
             individual_results TEXT NOT NULL,
@@ -66,16 +66,15 @@ def _init_db():
             context TEXT,
             timestamp TEXT,
             hash TEXT
-        );
-        CREATE TABLE IF NOT EXISTS game_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS game_history (
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             session_id TEXT NOT NULL,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             metadata_json TEXT DEFAULT '{}',
             timestamp TEXT
-        );
-    """)
+        )""")
     conn.commit()
     conn.close()
 
@@ -93,8 +92,9 @@ def _char_id(session_id: str, name: str) -> str:
 
 def _get_conn():
     _init_db()
-    conn = sqlite3.connect(GAME_DB_PATH)
-    conn.row_factory = sqlite3.Row
+    import sqlite3 as _sqlite3
+    conn = get_connection()
+    conn.row_factory = _sqlite3.Row
     return conn
 
 # ── Dice Engine ───────────────────────────────────────────────────────────────
@@ -293,9 +293,14 @@ def create_character(
 
     conn = _get_conn()
     conn.execute(
-        """INSERT OR REPLACE INTO game_characters
+        """INSERT INTO game_characters
            (id, session_id, name, playbook, game_type, stats_json, moves_json, hp, hp_max, gear_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (id) DO UPDATE SET
+               session_id=EXCLUDED.session_id, name=EXCLUDED.name, playbook=EXCLUDED.playbook,
+               game_type=EXCLUDED.game_type, stats_json=EXCLUDED.stats_json,
+               moves_json=EXCLUDED.moves_json, hp=EXCLUDED.hp, hp_max=EXCLUDED.hp_max,
+               gear_json=EXCLUDED.gear_json""",
         (cid, session_id, name, playbook, game_type, json.dumps(stats), json.dumps(moves), hp, hp, json.dumps(gear), _ts())
     )
     conn.commit()

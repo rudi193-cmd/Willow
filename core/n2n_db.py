@@ -10,7 +10,10 @@ VERSION: 1.0
 CHECKSUM: ΔΣ=42
 """
 
-import sqlite3
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).parent.parent))
+from core.db import get_connection
 import json
 from pathlib import Path
 from datetime import datetime
@@ -22,13 +25,11 @@ class N2NDatabase:
 
     def __init__(self, username: str):
         self.username = username
-        self.db_path = Path(f"artifacts/{username}/n2n.db")
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _init_db(self):
         """Initialize database schema."""
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         conn.execute("""
             CREATE TABLE IF NOT EXISTS packets (
                 packet_id TEXT PRIMARY KEY,
@@ -61,7 +62,7 @@ class N2NDatabase:
         # Generate packet ID
         packet_id = f"{header['source_node']}-{header['target_node']}-{timestamp}"
 
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         conn.execute("""
             INSERT INTO packets
             (packet_id, packet_type, source_node, target_node,
@@ -92,7 +93,7 @@ class N2NDatabase:
         Returns:
             List of packet dicts
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         cursor = conn.execute("""
             SELECT packet_id, packet_type, source_node, target_node,
                    payload, timestamp, status
@@ -121,7 +122,7 @@ class N2NDatabase:
     def mark_received(self, packet_id: str):
         """Mark packet as received."""
         timestamp = datetime.utcnow().isoformat() + "Z"
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         conn.execute("""
             UPDATE packets
             SET status = 'RECEIVED', received_at = ?
@@ -133,7 +134,7 @@ class N2NDatabase:
     def mark_acknowledged(self, packet_id: str):
         """Mark packet as acknowledged."""
         timestamp = datetime.utcnow().isoformat() + "Z"
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         conn.execute("""
             UPDATE packets
             SET status = 'ACKNOWLEDGED', acknowledged_at = ?
@@ -144,7 +145,7 @@ class N2NDatabase:
 
     def get_packet(self, packet_id: str) -> Optional[Dict]:
         """Get packet by ID."""
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         cursor = conn.execute("""
             SELECT packet_id, packet_type, source_node, target_node,
                    payload, timestamp, status
@@ -170,7 +171,7 @@ class N2NDatabase:
 
     def list_packets(self, limit: int = 50) -> List[Dict]:
         """List recent packets."""
-        conn = sqlite3.connect(self.db_path)
+        conn = get_connection()
         cursor = conn.execute("""
             SELECT packet_id, packet_type, source_node, target_node,
                    timestamp, status
