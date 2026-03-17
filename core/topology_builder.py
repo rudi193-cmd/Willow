@@ -2,11 +2,16 @@
 """
 Topology Builder Daemon
 
-Runs build_edges + cluster_atoms on a schedule so the Möbius strip
-stays connected as new knowledge atoms arrive.
+Builds edges + clusters on a schedule so the knowledge graph stays connected.
+Edges and clusters are structural — they reshape how knowledge relates.
+
+Governance: edges/clusters are proposed (logged), not silently applied.
+All writes logged to topology_build.log for audit.
 
 Launched by WILLOW.bat step 8:
-    python core\topology_builder.py --interval 3600 --daemon
+    python core/topology_builder.py --interval 3600 --daemon
+
+ΔΣ=42
 """
 import argparse
 import logging
@@ -14,10 +19,9 @@ import sys
 import time
 from pathlib import Path
 
-# Ensure Willow root is on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core import topology, knowledge
+from core import topology, knowledge, loam
 
 LOG_FILE = Path(__file__).parent / "topology_build.log"
 DEFAULT_INTERVAL = 3600  # 1 hour
@@ -31,8 +35,22 @@ logging.basicConfig(
 log = logging.getLogger("topology_builder")
 
 
+def _flush_pool():
+    """Return all idle connections and clear dirty transaction state."""
+    try:
+        from core.db import _get_pg_pool
+        pool = _get_pg_pool()
+        conn = pool.getconn()
+        try:
+            conn.rollback()
+        finally:
+            pool.putconn(conn)
+    except Exception:
+        pass
+
+
 def run_cycle():
-    """One build cycle: edges then clusters."""
+    """One build cycle: edges then clusters. All changes logged."""
     try:
         edges = topology.build_edges(USERNAME, batch_size=200)
         log.info(f"Edges built: {edges}")
@@ -40,11 +58,25 @@ def run_cycle():
         log.error(f"build_edges failed: {e}")
         edges = 0
 
+    _flush_pool()
+
     try:
         clusters = topology.cluster_atoms(USERNAME, n_clusters=15)
         log.info(f"Clusters created: {len(clusters)}")
     except Exception as e:
         log.error(f"cluster_atoms failed: {e}")
+
+    _flush_pool()
+
+    # Entity promotion: layer 1→2 for entities that meet evidence thresholds
+    # Observational — pattern detection, not executive decision.
+    try:
+        result = loam.promote_entities(USERNAME, dry_run=False)
+        if result["promoted"]:
+            log.info(f"Promoted {len(result['promoted'])} entities to layer 2 "
+                     f"(skipped {result['skipped']} chrome/blocked)")
+    except Exception as e:
+        log.error(f"promote_entities failed: {e}")
 
     # Update cube spatial index after topology changes
     try:

@@ -54,7 +54,7 @@ def _call_kart(message: str, context: str = None) -> dict:
     if context:
         payload["context"] = context
 
-    submit = _call("POST", "/api/agents/chat/kart", timeout=15, json=payload)
+    submit = _call("POST", "/api/agent-chat/kart", timeout=15, json=payload)
     job_id = submit.get("job_id")
     if not job_id:
         return submit  # error or unexpected response
@@ -63,7 +63,7 @@ def _call_kart(message: str, context: str = None) -> dict:
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         time.sleep(2)
-        result = _call("GET", f"/api/agents/chat/job/{job_id}", timeout=10)
+        result = _call("GET", f"/api/agent-chat/job/{job_id}", timeout=10)
         status = result.get("status")
         if status in ("done", "completed", "error", "failed"):
             return result
@@ -258,7 +258,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             payload = {"message": message}
             if context:
                 payload["context"] = context
-            result = _call("POST", f"/api/agents/chat/{agent}", timeout=30, json=payload)
+            result = _call("POST", f"/api/agent-chat/{agent}", timeout=30, json=payload)
 
     elif name == "willow_knowledge_search":
         params = f"?q={arguments.get('query', '')}&limit={arguments.get('limit', 10)}"
@@ -268,8 +268,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 
     elif name == "willow_knowledge_ingest":
         payload = {
-            "content": arguments.get("content", ""),
-            "title": arguments.get("title", ""),
+            "content_text": arguments.get("content", ""),
+            "filename": arguments.get("title", "mcp_ingest"),
         }
         if "category" in arguments:
             payload["category"] = arguments["category"]

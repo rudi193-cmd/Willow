@@ -101,7 +101,8 @@ def main():
     parser = argparse.ArgumentParser(description="Persona Scheduler Daemon")
     parser.add_argument("--interval", type=int, default=60,
                         help="Interval between checks in seconds (default: 60)")
-    parser.add_argument("--config", type=Path, default="data/personas.json",
+    _default_config = Path(__file__).parent.parent / "data" / "personas.json"
+    parser.add_argument("--config", type=Path, default=_default_config,
                         help="Path to persona config file (default: data/personas.json)")
     parser.add_argument("--daemon", action="store_true",
                         help="Run as a daemon (background process)")

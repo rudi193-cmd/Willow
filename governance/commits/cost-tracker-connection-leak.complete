@@ -1,0 +1,114 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-10T15:40 CST
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Fix connection pool leaks in `core/cost_tracker.py`. Every function that calls
+`get_connection()` uses a bare `conn = get_connection()` / `conn.close()` pattern
+with no try/finally. If any DB operation raises an exception, `conn.close()` is
+never called, the connection is returned to the pool in an aborted-transaction
+state, and all subsequent callers that receive that connection fail with:
+
+    current transaction is aborted, commands ignored until end of transaction block
+
+This is the root cause of the provider health ratchet: pool-poisoned connections
+cause `record_success()`/`record_failure()` to fail, accumulating false failure
+counts against providers until they fall below the 20% threshold and get skipped.
+
+## Proposed Changes
+
+File: `core/cost_tracker.py`
+
+Convert all six functions from bare open/close to `with get_connection() as conn:`
+context manager. `_PgConn.__exit__` already does `rollback() + putconn()` — this
+is the correct cleanup path.
+
+Functions affected:
+- `init_db()` — also currently returns the open connection (leak on every CLI call)
+- `log_usage()` — primary hotspot; called after every fleet call
+- `get_usage()`
+- `get_summary_by_provider()`
+- `get_summary_by_task()`
+- `get_daily_summary()`
+
+### Diff (unified)
+
+```diff
+-def init_db():
+-    """Initialize the cost tracking database."""
+-    conn = get_connection()
+-    conn.execute("""
++def init_db():
++    """Initialize the cost tracking database."""
++    with get_connection() as conn:
++        conn.execute("""
+             CREATE TABLE IF NOT EXISTS usage (
+                 id INTEGER PRIMARY KEY,
+                 timestamp TEXT,
+                 provider TEXT,
+                 model TEXT,
+                 task_type TEXT,
+                 tokens_in INTEGER,
+                 tokens_out INTEGER,
+                 cost REAL,
+                 prompt_preview TEXT
+             )
+-    """)
+-    conn.commit()
+-    return conn
++        """)
++        conn.commit()
+
+
+-def log_usage(...):
+-    ...
+-    conn = get_connection()
+-    conn.execute("""INSERT INTO usage ...""", (...))
+-    conn.commit()
+-    conn.close()
++def log_usage(...):
++    ...
++    with get_connection() as conn:
++        conn.execute("""INSERT INTO usage ...""", (...))
++        conn.commit()
+
+
+-def get_usage(...):
+-    conn = get_connection()
+-    conn.row_factory = sqlite3.Row
+-    ...
+-    rows = conn.execute(...).fetchall()
+-    conn.close()
+-    return [dict(r) for r in rows]
++def get_usage(...):
++    with get_connection() as conn:
++        conn.row_factory = sqlite3.Row
++        ...
++        rows = conn.execute(...).fetchall()
++    return [dict(r) for r in rows]
+
+# (same pattern for get_summary_by_provider, get_summary_by_task, get_daily_summary)
+```
+
+## Rationale
+
+The `_PgConn` context manager (`__exit__`) calls `rollback()` then `putconn()`
+unconditionally, which is exactly what's needed: committed transactions roll back
+as a no-op, aborted transactions get cleared. Using `with` makes the cleanup
+guaranteed regardless of exceptions.
+
+This is a pure connection hygiene fix. No logic changes. No schema changes.
+No behavior changes on the happy path.
+
+## Risk Assessment
+
+Risk Level: MINIMAL
+Reversible: YES
+Dependencies: none
+
+The fix uses the existing `_PgConn` context manager, which is already used
+correctly throughout the rest of the codebase. `init_db()` currently returns
+the open connection, which callers don't use (checked: all call sites just call
+`init_db()` for side effects). Removing the return value is safe.

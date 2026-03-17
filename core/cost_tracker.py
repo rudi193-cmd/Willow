@@ -11,7 +11,6 @@ Usage:
 """
 
 import sys
-import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
@@ -74,22 +73,21 @@ class UsageRecord:
 
 def init_db():
     """Initialize the cost tracking database."""
-    conn = get_connection()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS usage (
-            id INTEGER PRIMARY KEY,
-            timestamp TEXT,
-            provider TEXT,
-            model TEXT,
-            task_type TEXT,
-            tokens_in INTEGER,
-            tokens_out INTEGER,
-            cost REAL,
-            prompt_preview TEXT
-        )
-    """)
-    conn.commit()
-    return conn
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS usage (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT,
+                provider TEXT,
+                model TEXT,
+                task_type TEXT,
+                tokens_in INTEGER,
+                tokens_out INTEGER,
+                cost REAL,
+                prompt_preview TEXT
+            )
+        """)
+        conn.commit()
 
 
 def log_usage(
@@ -106,29 +104,25 @@ def log_usage(
     if cost is None:
         cost = calculate_cost(provider, model, tokens_in, tokens_out)
 
-    conn = get_connection()
-    conn.execute("""
-        INSERT INTO usage (timestamp, provider, model, task_type, tokens_in, tokens_out, cost, prompt_preview)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        datetime.now().isoformat(),
-        provider,
-        model,
-        task_type,
-        tokens_in,
-        tokens_out,
-        cost,
-        prompt[:100] if prompt else ""
-    ))
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO usage (timestamp, provider, model, task_type, tokens_in, tokens_out, cost, prompt_preview)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.now().isoformat(),
+            provider,
+            model,
+            task_type,
+            tokens_in,
+            tokens_out,
+            cost,
+            prompt[:100] if prompt else ""
+        ))
+        conn.commit()
 
 
 def get_usage(days: int = 1, provider: str = None, task_type: str = None):
     """Get usage records for the last N days."""
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-
     since = (datetime.now() - timedelta(days=days)).isoformat()
 
     query = "SELECT * FROM usage WHERE timestamp > ?"
@@ -143,80 +137,75 @@ def get_usage(days: int = 1, provider: str = None, task_type: str = None):
 
     query += " ORDER BY timestamp DESC"
 
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    with get_connection() as conn:
+        # row_factory handled by db.py
+        rows = conn.execute(query, params).fetchall()
 
     return [dict(r) for r in rows]
 
 
 def get_summary_by_provider(days: int = 1):
     """Get cost summary grouped by provider."""
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-
     since = (datetime.now() - timedelta(days=days)).isoformat()
 
-    rows = conn.execute("""
-        SELECT
-            provider,
-            COUNT(*) as calls,
-            SUM(tokens_in) as total_tokens_in,
-            SUM(tokens_out) as total_tokens_out,
-            SUM(cost) as total_cost
-        FROM usage
-        WHERE timestamp > ?
-        GROUP BY provider
-        ORDER BY total_cost DESC
-    """, (since,)).fetchall()
+    with get_connection() as conn:
+        # row_factory handled by db.py
+        rows = conn.execute("""
+            SELECT
+                provider,
+                COUNT(*) as calls,
+                SUM(tokens_in) as total_tokens_in,
+                SUM(tokens_out) as total_tokens_out,
+                SUM(cost) as total_cost
+            FROM usage
+            WHERE timestamp > ?
+            GROUP BY provider
+            ORDER BY total_cost DESC
+        """, (since,)).fetchall()
 
-    conn.close()
     return [dict(r) for r in rows]
 
 
 def get_summary_by_task(days: int = 1):
     """Get cost summary grouped by task type."""
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-
     since = (datetime.now() - timedelta(days=days)).isoformat()
 
-    rows = conn.execute("""
-        SELECT
-            task_type,
-            COUNT(*) as calls,
-            SUM(tokens_in) as total_tokens_in,
-            SUM(tokens_out) as total_tokens_out,
-            SUM(cost) as total_cost
-        FROM usage
-        WHERE timestamp > ?
-        GROUP BY task_type
-        ORDER BY total_cost DESC
-    """, (since,)).fetchall()
+    with get_connection() as conn:
+        # row_factory handled by db.py
+        rows = conn.execute("""
+            SELECT
+                task_type,
+                COUNT(*) as calls,
+                SUM(tokens_in) as total_tokens_in,
+                SUM(tokens_out) as total_tokens_out,
+                SUM(cost) as total_cost
+            FROM usage
+            WHERE timestamp > ?
+            GROUP BY task_type
+            ORDER BY total_cost DESC
+        """, (since,)).fetchall()
 
-    conn.close()
     return [dict(r) for r in rows]
 
 
 def get_daily_summary(days: int = 7):
     """Get daily cost summary."""
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-
     since = (datetime.now() - timedelta(days=days)).isoformat()
 
-    rows = conn.execute("""
-        SELECT
-            DATE(timestamp) as day,
-            COUNT(*) as calls,
-            SUM(tokens_in + tokens_out) as total_tokens,
-            SUM(cost) as total_cost
-        FROM usage
-        WHERE timestamp > ?
-        GROUP BY DATE(timestamp)
-        ORDER BY day DESC
-    """, (since,)).fetchall()
+    with get_connection() as conn:
+        # row_factory handled by db.py
+        rows = conn.execute("""
+            SELECT
+                DATE(timestamp) as day,
+                COUNT(*) as calls,
+                SUM(tokens_in + tokens_out) as total_tokens,
+                SUM(cost) as total_cost
+            FROM usage
+            WHERE timestamp > ?
+            GROUP BY DATE(timestamp)
+            ORDER BY day DESC
+        """, (since,)).fetchall()
 
-    conn.close()
     return [dict(r) for r in rows]
 
 

@@ -2,77 +2,154 @@ import React, { useState } from 'react';
 import useChat from './hooks/useChat';
 import useEmergencyDetection from './hooks/useEmergencyDetection';
 import ChatPanel from './components/ChatPanel';
-import Sidebar from './components/Sidebar';
-import KnowledgePanel from './components/KnowledgePanel';
 import EmergencyTrigger from './components/EmergencyTrigger';
 import DropZone from './components/DropZone';
-import DrivePanel from './components/DrivePanel';
-import AppsPanel from './components/AppsPanel';
-import CalendarPanel from './components/CalendarPanel';
+import BreathingRing from './components/BreathingRing';
 import SoftButton from './components/SoftButton';
+import DashboardView from './components/DashboardView';
 
 /**
- * App — JournalShell.
- * Two-zone layout: main chat + slide-in panels.
- * 314 exchange π harmonic limit. Emergency trigger always present.
+ * App — Simple pathname router.
+ *   /           → Shiva (chat interface)
+ *   /dashboard  → Postboard (tile grid)
  */
+
+function getRoute() {
+  const path = window.location.pathname;
+  if (path === '/dashboard' || path === '/dashboard/') return 'dashboard';
+  return 'shiva';
+}
+
+function navigate(path) {
+  window.history.pushState({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
 export default function App() {
+  const [route, setRoute] = useState(getRoute);
+
+  // Listen for popstate (back/forward)
+  React.useEffect(() => {
+    function onPop() { setRoute(getRoute()); }
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  if (route === 'dashboard') {
+    return <DashboardView onNavigate={navigate} />;
+  }
+
+  return <ShivaChat onNavigate={navigate} />;
+}
+
+/**
+ * ShivaChat — The chat interface.
+ * Always Shiva persona. Breathing ring landing → chat.
+ * Hamburger on RIGHT for app menu.
+ */
+function ShivaChat({ onNavigate }) {
   const { messages, isStreaming, exchangeCount, piLimit, coherence, sendMessage, clearMessages, atLimit } = useChat();
   const { isDistressed, check: checkEmergency } = useEmergencyDetection();
-  const [persona, setPersona] = useState('Willow');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
-  const [driveOpen, setDriveOpen] = useState(false);
-  const [appsOpen, setAppsOpen] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [chatActive, setChatActive] = useState(false);
 
   function handleSend(text) {
-    sendMessage(text, persona);
+    setChatActive(true);
+    sendMessage(text, 'Shiva_Consumer');
   }
 
   function handleNewSession() {
     clearMessages();
-    setSidebarOpen(false);
+    setChatActive(false);
+    setMenuOpen(false);
   }
 
+  const showLanding = !chatActive && messages.length === 0;
+
   return (
-    <div className="h-screen flex bg-page">
-      {/* Sidebar — slides from left */}
-      {sidebarOpen && (
+    <div className="h-screen flex flex-col bg-page relative">
+      {/* Hamburger — top right */}
+      <div className="absolute top-4 right-5" style={{ zIndex: 50 }}>
+        <SoftButton onClick={() => setMenuOpen(!menuOpen)} className="text-2xl">
+          {menuOpen ? '\u2715' : '\u2261'}
+        </SoftButton>
+      </div>
+
+      {/* Dropdown menu — right-aligned */}
+      {menuOpen && (
         <>
           <div
-            className="fixed inset-0 bg-page/50 md:hidden"
-            style={{ zIndex: 40 }}
-            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0"
+            style={{ zIndex: 39 }}
+            onClick={() => setMenuOpen(false)}
           />
-          <aside
-            className="fixed md:relative w-64 h-full bg-page pencil-line"
-            style={{ zIndex: 50, borderRight: '1px solid var(--pencil-faint)' }}
+          <div
+            className="absolute top-12 right-4 py-3 px-5"
+            style={{
+              zIndex: 50,
+              background: 'var(--page)',
+              border: '1px solid var(--pencil)',
+              minWidth: 180,
+            }}
           >
-            <Sidebar
-              persona={persona}
-              onPersonaChange={setPersona}
-              exchangeCount={exchangeCount}
-              piLimit={piLimit}
-              onKnowledgeOpen={() => { setKnowledgeOpen(true); setDriveOpen(false); setAppsOpen(false); setSidebarOpen(false); }}
-              onDriveOpen={() => { setDriveOpen(true); setKnowledgeOpen(false); setAppsOpen(false); setSidebarOpen(false); }}
-              onAppsOpen={() => { setAppsOpen(true); setKnowledgeOpen(false); setDriveOpen(false); setCalendarOpen(false); setSidebarOpen(false); }}
-              onCalendarOpen={() => { setCalendarOpen(true); setAppsOpen(false); setKnowledgeOpen(false); setDriveOpen(false); setSidebarOpen(false); }}
-              onNewSession={handleNewSession}
+            <span
+              className="font-ernie text-xs block mb-3"
+              style={{ color: 'var(--bark)', opacity: 0.5 }}
+            >
+              apps
+            </span>
+
+            <MenuLink
+              label="dashboard"
+              onClick={() => { setMenuOpen(false); onNavigate('/dashboard'); }}
             />
-          </aside>
+            <MenuLink
+              label="nest"
+              onClick={() => { setMenuOpen(false); onNavigate('/dashboard'); }}
+            />
+            <MenuLink
+              label="fleet"
+              onClick={() => { setMenuOpen(false); onNavigate('/dashboard'); }}
+            />
+
+            <div className="pencil-line-faint my-3" />
+
+            <span
+              className="font-ernie text-xs block mb-2"
+              style={{ color: 'var(--bark)', opacity: 0.5 }}
+            >
+              session
+            </span>
+            <div className="font-ernie text-xs mb-2" style={{ opacity: 0.4 }}>
+              {exchangeCount} / {piLimit} exchanges
+            </div>
+            <MenuLink label="new session" onClick={handleNewSession} />
+          </div>
         </>
       )}
 
-      {/* Main chat area */}
-      <main className="flex-1 h-full relative">
-        {/* Menu toggle — top left, faint */}
-        <div className="absolute top-4 left-4" style={{ zIndex: 30 }}>
-          <SoftButton onClick={() => setSidebarOpen(!sidebarOpen)}>
-            {sidebarOpen ? '\u2190' : '\u2261'}
-          </SoftButton>
+      {showLanding ? (
+        /* Landing — wordmark + breathing ring */
+        <div className="h-full flex flex-col items-center justify-center select-none">
+          <h1
+            className="font-ernie text-4xl mb-8"
+            style={{ color: 'var(--bark, #6b5b4e)', opacity: 0.7 }}
+          >
+            shiva
+          </h1>
+          <BreathingRing
+            size={200}
+            onClick={() => setChatActive(true)}
+          />
+          <p
+            className="font-ernie text-sm mt-8"
+            style={{ color: 'var(--bark, #6b5b4e)', opacity: 0.4 }}
+          >
+            click to begin, or just start typing
+          </p>
         </div>
-
+      ) : (
+        /* Chat view */
         <DropZone>
           <ChatPanel
             messages={messages}
@@ -83,78 +160,22 @@ export default function App() {
             onCheckEmergency={checkEmergency}
           />
         </DropZone>
-      </main>
-
-      {/* Knowledge panel — slides from right */}
-      {knowledgeOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-page/30 md:hidden"
-            style={{ zIndex: 40 }}
-            onClick={() => setKnowledgeOpen(false)}
-          />
-          <aside
-            className="fixed right-0 md:relative w-80 h-full bg-page"
-            style={{ zIndex: 50, borderLeft: '1px solid var(--pencil-faint)' }}
-          >
-            <KnowledgePanel onClose={() => setKnowledgeOpen(false)} />
-          </aside>
-        </>
       )}
 
-      {/* Drive panel — slides from right */}
-      {driveOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-page/30 md:hidden"
-            style={{ zIndex: 40 }}
-            onClick={() => setDriveOpen(false)}
-          />
-          <aside
-            className="fixed right-0 md:relative w-80 h-full bg-page"
-            style={{ zIndex: 50, borderLeft: '1px solid var(--pencil-faint)' }}
-          >
-            <DrivePanel onClose={() => setDriveOpen(false)} />
-          </aside>
-        </>
-      )}
-
-      {/* Apps panel — slides from right */}
-      {appsOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-page/30 md:hidden"
-            style={{ zIndex: 40 }}
-            onClick={() => setAppsOpen(false)}
-          />
-          <aside
-            className="fixed right-0 md:relative w-80 h-full bg-page"
-            style={{ zIndex: 50, borderLeft: '1px solid var(--pencil-faint)' }}
-          >
-            <AppsPanel onClose={() => setAppsOpen(false)} />
-          </aside>
-        </>
-      )}
-
-      {/* Calendar panel — slides from right */}
-      {calendarOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-page/30 md:hidden"
-            style={{ zIndex: 40 }}
-            onClick={() => setCalendarOpen(false)}
-          />
-          <aside
-            className="fixed right-0 md:relative w-80 h-full bg-page"
-            style={{ zIndex: 50, borderLeft: '1px solid var(--pencil-faint)' }}
-          >
-            <CalendarPanel onClose={() => setCalendarOpen(false)} />
-          </aside>
-        </>
-      )}
-
-      {/* Emergency trigger — always present, never disabled */}
+      {/* Emergency trigger — always present */}
       <EmergencyTrigger isDistressed={isDistressed} />
     </div>
+  );
+}
+
+/** Menu link — Ernie font, pencil opacity */
+function MenuLink({ label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="font-ernie text-sm bg-transparent border-0 cursor-pointer block w-full text-left py-1 opacity-pencil hover:opacity-active transition-opacity duration-200"
+    >
+      {label}
+    </button>
   );
 }

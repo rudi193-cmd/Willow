@@ -18,7 +18,6 @@ DS=42
 """
 
 import re
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -30,10 +29,10 @@ from pydantic import BaseModel
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 import credentials as _vault
+from core.db import get_connection
 
 router = APIRouter(prefix="/api/social/workflow", tags=["social-workflow"])
 
-SOCIAL_DB = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "social" / "social_media.db"
 DRAFTS_DIR = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "social" / "drafts"
 
 CORS_HEADERS = {
@@ -44,10 +43,7 @@ CORS_HEADERS = {
 
 
 def _db():
-    if not SOCIAL_DB.exists():
-        raise HTTPException(status_code=503, detail=f"Social DB not found: {SOCIAL_DB}")
-    conn = sqlite3.connect(str(SOCIAL_DB))
-    conn.row_factory = sqlite3.Row
+    conn = get_connection()
     return conn
 
 
@@ -95,12 +91,13 @@ def next_post():
                    s.title as series, s.slug as series_slug,
                    c.name as community, p.created_at,
                    COUNT(p2.id) as series_total
-            FROM posts p
-            LEFT JOIN series s ON s.id = p.series_id
-            LEFT JOIN communities c ON c.id = p.community_id
-            LEFT JOIN posts p2 ON p2.series_id = p.series_id
+            FROM social_posts p
+            LEFT JOIN social_series s ON s.id = p.series_id
+            LEFT JOIN social_communities c ON c.id = p.community_id
+            LEFT JOIN social_posts p2 ON p2.series_id = p.series_id
             WHERE p.status = 'manuscript'
-            GROUP BY p.id
+            GROUP BY p.id, p.title, p.notes, p.series_notes, p.draft_path,
+                     s.title, s.slug, c.name, p.created_at
             ORDER BY series_total ASC, p.id ASC
             LIMIT 1
         """).fetchone()
@@ -109,11 +106,7 @@ def next_post():
             return JSONResponse({"post": None, "message": "Queue is empty"}, headers=CORS_HEADERS)
 
         post_dict = dict(post)
-        files = conn.execute(
-            "SELECT file_path, file_type, notes FROM post_files WHERE post_id = ?",
-            (post["id"],)
-        ).fetchall()
-        post_dict["files"] = [dict(f) for f in files]
+        post_dict["files"] = []
 
         return JSONResponse({"post": post_dict}, headers=CORS_HEADERS)
     finally:
@@ -131,10 +124,10 @@ def series_order():
             SELECT s.id, s.title, s.slug,
                    SUM(CASE WHEN p.status='manuscript' THEN 1 ELSE 0 END) as manuscript_count,
                    COUNT(p.id) as total_posts
-            FROM series s
-            LEFT JOIN posts p ON p.series_id = s.id
+            FROM social_series s
+            LEFT JOIN social_posts p ON p.series_id = s.id
             GROUP BY s.id
-            HAVING manuscript_count > 0
+            HAVING SUM(CASE WHEN p.status='manuscript' THEN 1 ELSE 0 END) > 0
             ORDER BY manuscript_count DESC, total_posts ASC
         """).fetchall()
 
@@ -142,7 +135,7 @@ def series_order():
         for row in rows:
             r = dict(row)
             next_p = conn.execute(
-                "SELECT id, title FROM posts WHERE series_id = ? AND status = 'manuscript' ORDER BY id LIMIT 1",
+                "SELECT id, title FROM social_posts WHERE series_id = ? AND status = 'manuscript' ORDER BY id LIMIT 1",
                 (row["id"],)
             ).fetchone()
             r["next_post"] = dict(next_p) if next_p else None
@@ -161,7 +154,7 @@ def preview_draft(post_id: int):
     conn = _db()
     try:
         post = conn.execute(
-            "SELECT id, title, status, notes, draft_path FROM posts WHERE id = ?",
+            "SELECT id, title, status, notes, draft_path FROM social_posts WHERE id = ?",
             (post_id,)
         ).fetchone()
 
@@ -199,7 +192,7 @@ def save_draft(post_id: int, body: DraftBody):
     conn = _db()
     try:
         post = conn.execute(
-            "SELECT id, title FROM posts WHERE id = ?", (post_id,)
+            "SELECT id, title FROM social_posts WHERE id = ?", (post_id,)
         ).fetchone()
         if not post:
             raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
@@ -212,11 +205,10 @@ def save_draft(post_id: int, body: DraftBody):
         draft_file.write_text(content, encoding="utf-8")
 
         draft_path = str(draft_file)
-        snippet = content[:500] if content else None
 
         conn.execute(
-            "UPDATE posts SET draft_path = ?, body_snippet = ?, status = 'draft' WHERE id = ?",
-            (draft_path, snippet, post_id)
+            "UPDATE social_posts SET draft_path = ?, status = 'draft' WHERE id = ?",
+            (draft_path, post_id)
         )
         conn.commit()
 
@@ -235,13 +227,13 @@ def publish_post(post_id: int, body: PublishBody):
     """Mark a post as posted with its URL."""
     conn = _db()
     try:
-        post = conn.execute("SELECT id FROM posts WHERE id = ?", (post_id,)).fetchone()
+        post = conn.execute("SELECT id FROM social_posts WHERE id = ?", (post_id,)).fetchone()
         if not post:
             raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
 
         posted_at = datetime.now().isoformat()
         conn.execute(
-            "UPDATE posts SET url = ?, posted_at = ?, status = 'posted' WHERE id = ?",
+            "UPDATE social_posts SET url = ?, posted_at = ?, status = 'posted' WHERE id = ?",
             (body.url, posted_at, post_id)
         )
         conn.commit()
@@ -316,10 +308,10 @@ def post_to_reddit(post_id: int, body: RedditPostBody):
     conn = _db()
     try:
         row = conn.execute("""
-            SELECT p.id, p.title, p.draft_path, p.body_snippet,
+            SELECT p.id, p.title, p.draft_path,
                    c.name as subreddit
-            FROM posts p
-            LEFT JOIN communities c ON c.id = p.community_id
+            FROM social_posts p
+            LEFT JOIN social_communities c ON c.id = p.community_id
             WHERE p.id = ?
         """, (post_id,)).fetchone()
 
@@ -385,7 +377,7 @@ def post_to_reddit(post_id: int, body: RedditPostBody):
         reddit_url = f"https://reddit.com{submission.permalink}"
         posted_at  = datetime.now().isoformat()
         conn.execute(
-            "UPDATE posts SET url = ?, posted_at = ?, status = 'posted' WHERE id = ?",
+            "UPDATE social_posts SET url = ?, posted_at = ?, status = 'posted' WHERE id = ?",
             (reddit_url, posted_at, post_id)
         )
         conn.commit()
@@ -445,8 +437,8 @@ def reddit_pull(limit: int = 100):
         # Build local lookup: normalized_title → post row
         db_posts = conn.execute("""
             SELECT p.id, p.title, p.url, p.status, c.name as subreddit
-            FROM posts p
-            LEFT JOIN communities c ON c.id = p.community_id
+            FROM social_posts p
+            LEFT JOIN social_communities c ON c.id = p.community_id
         """).fetchall()
 
         title_index = {}
@@ -470,23 +462,21 @@ def reddit_pull(limit: int = 100):
                 # Backfill URL and status if missing
                 if not db_post["url"]:
                     conn.execute(
-                        "UPDATE posts SET url = ?, posted_at = ?, status = 'posted' WHERE id = ?",
+                        "UPDATE social_posts SET url = ?, posted_at = ?, status = 'posted' WHERE id = ?",
                         (reddit_url, created_at, db_post["id"])
                     )
 
                 # Snapshot metrics
                 conn.execute("""
-                    INSERT INTO post_metrics
-                      (post_id, snapshot_at, views_total, upvotes, upvote_ratio, comments, crossposts, awards)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO social_post_metrics
+                      (post_id, snapshot_at, views_total, upvotes, upvote_ratio, comments)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     db_post["id"], now,
                     getattr(sub, "view_count", None),
                     sub.score,
                     sub.upvote_ratio,
                     sub.num_comments,
-                    sub.num_crossposts,
-                    getattr(sub, "total_awards_received", 0),
                 ))
 
                 matched.append({

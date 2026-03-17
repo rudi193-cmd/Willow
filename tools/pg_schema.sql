@@ -185,6 +185,60 @@ CREATE TABLE IF NOT EXISTS knowledge_gaps (
     UNIQUE(query, source)
 );
 
+-- ── atom_gaps (ΔΣ: acknowledged unknowns per knowledge atom) ────────────
+CREATE TABLE IF NOT EXISTS atom_gaps (
+    id              BIGSERIAL PRIMARY KEY,
+    knowledge_id    BIGINT REFERENCES knowledge(id) ON DELETE CASCADE,
+    gap_text        TEXT NOT NULL,
+    gap_type        TEXT NOT NULL,
+    specificity     REAL DEFAULT 0.5,
+    registered_by   TEXT NOT NULL,
+    registered_at   TEXT NOT NULL,
+    resolved        INTEGER DEFAULT 0,
+    resolved_at     TEXT,
+    resolved_by     TEXT,
+    witness_id      TEXT,
+    UNIQUE(knowledge_id, gap_text)
+);
+CREATE INDEX IF NOT EXISTS idx_atom_gaps_kid ON atom_gaps(knowledge_id);
+CREATE INDEX IF NOT EXISTS idx_atom_gaps_resolved ON atom_gaps(resolved);
+
+-- ── entity_gaps (ΔΣ: acknowledged unknowns per entity) ─────────────────
+CREATE TABLE IF NOT EXISTS entity_gaps (
+    id              BIGSERIAL PRIMARY KEY,
+    entity_id       BIGINT REFERENCES entities(id) ON DELETE CASCADE,
+    gap_text        TEXT NOT NULL,
+    gap_type        TEXT NOT NULL,
+    specificity     REAL DEFAULT 0.5,
+    registered_by   TEXT NOT NULL,
+    registered_at   TEXT NOT NULL,
+    resolved        INTEGER DEFAULT 0,
+    resolved_at     TEXT,
+    resolved_by     TEXT,
+    witness_id      TEXT,
+    UNIQUE(entity_id, gap_text)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_gaps_eid ON entity_gaps(entity_id);
+CREATE INDEX IF NOT EXISTS idx_entity_gaps_resolved ON entity_gaps(resolved);
+
+-- ── edge_gaps (ΔΣ: acknowledged unknowns per edge) ─────────────────────
+CREATE TABLE IF NOT EXISTS edge_gaps (
+    id              BIGSERIAL PRIMARY KEY,
+    edge_id         BIGINT REFERENCES knowledge_edges(id) ON DELETE CASCADE,
+    gap_text        TEXT NOT NULL,
+    gap_type        TEXT NOT NULL,
+    specificity     REAL DEFAULT 0.5,
+    registered_by   TEXT NOT NULL,
+    registered_at   TEXT NOT NULL,
+    resolved        INTEGER DEFAULT 0,
+    resolved_at     TEXT,
+    resolved_by     TEXT,
+    witness_id      TEXT,
+    UNIQUE(edge_id, gap_text)
+);
+CREATE INDEX IF NOT EXISTS idx_edge_gaps_eid ON edge_gaps(edge_id);
+CREATE INDEX IF NOT EXISTS idx_edge_gaps_resolved ON edge_gaps(resolved);
+
 -- ── conversation_memory ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS conversation_memory (
     id                 BIGSERIAL PRIMARY KEY,
@@ -335,3 +389,378 @@ CREATE TABLE IF NOT EXISTS bus_drops (
     result     TEXT,
     created_at TEXT NOT NULL
 );
+
+-- ── nest_review_queue ──────────────────────────────────────────────────────
+-- Files staged from Nest awaiting user review before graph ingest
+CREATE TABLE IF NOT EXISTS nest_review_queue (
+    id                 BIGSERIAL PRIMARY KEY,
+    username           TEXT NOT NULL,
+    filename           TEXT NOT NULL,
+    original_path      TEXT NOT NULL,
+    file_hash          TEXT,
+    ocr_text           TEXT,
+    proposed_summary   TEXT,
+    proposed_category  TEXT,
+    proposed_path      TEXT,
+    matched_entities   TEXT,
+    status             TEXT NOT NULL DEFAULT 'pending',
+    user_summary       TEXT,
+    user_category      TEXT,
+    user_path          TEXT,
+    dispose_file       INTEGER NOT NULL DEFAULT 0,
+    dispose_data       INTEGER NOT NULL DEFAULT 0,
+    staged_at          TEXT NOT NULL,
+    reviewed_at        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_nest_queue_user_status
+    ON nest_review_queue(username, status, staged_at);
+
+-- ── file_annotations ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS file_annotations (
+    id                    BIGSERIAL PRIMARY KEY,
+    routing_id            BIGINT,
+    filename              TEXT NOT NULL,
+    routed_to             TEXT NOT NULL,
+    is_correct            BOOLEAN NOT NULL,
+    annotation_notes      TEXT NOT NULL,
+    corrected_destination TEXT,
+    annotated_by          TEXT DEFAULT 'user',
+    annotated_at          TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_routing   ON file_annotations(routing_id);
+CREATE INDEX IF NOT EXISTS idx_annotations_correct   ON file_annotations(is_correct);
+CREATE INDEX IF NOT EXISTS idx_annotations_timestamp ON file_annotations(annotated_at);
+
+-- ── fleet_feedback ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS fleet_feedback (
+    id               BIGSERIAL PRIMARY KEY,
+    provider         TEXT NOT NULL,
+    task_type        TEXT NOT NULL,
+    prompt           TEXT NOT NULL,
+    output           TEXT NOT NULL,
+    quality_rating   INTEGER CHECK(quality_rating BETWEEN 1 AND 5),
+    issues           TEXT,
+    feedback_notes   TEXT,
+    corrected_output TEXT,
+    timestamp        TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_provider  ON fleet_feedback(provider, task_type);
+CREATE INDEX IF NOT EXISTS idx_feedback_quality   ON fleet_feedback(quality_rating);
+CREATE INDEX IF NOT EXISTS idx_feedback_timestamp ON fleet_feedback(timestamp);
+
+-- ── health_checks ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS health_checks (
+    id         BIGSERIAL PRIMARY KEY,
+    timestamp  TEXT NOT NULL,
+    check_type TEXT NOT NULL,
+    target     TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    details    TEXT,
+    latency_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_health_timestamp ON health_checks(timestamp);
+CREATE INDEX IF NOT EXISTS idx_health_status    ON health_checks(status);
+
+-- ── health_issues ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS health_issues (
+    id          BIGSERIAL PRIMARY KEY,
+    detected_at TEXT NOT NULL,
+    issue_type  TEXT NOT NULL,
+    target      TEXT NOT NULL,
+    description TEXT,
+    severity    TEXT,
+    resolved    BOOLEAN DEFAULT FALSE,
+    resolved_at TEXT,
+    resolution  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_issues_resolved ON health_issues(resolved);
+
+-- ── healing_actions ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS healing_actions (
+    id          BIGSERIAL PRIMARY KEY,
+    timestamp   TEXT NOT NULL,
+    issue_id    BIGINT REFERENCES health_issues(id),
+    action_type TEXT NOT NULL,
+    target      TEXT,
+    description TEXT,
+    success     BOOLEAN
+);
+
+-- ── routing_history ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS routing_history (
+    id              BIGSERIAL PRIMARY KEY,
+    timestamp       TEXT NOT NULL,
+    filename        TEXT NOT NULL,
+    file_type       TEXT,
+    content_summary TEXT,
+    routed_to       TEXT NOT NULL,
+    reason          TEXT,
+    confidence      REAL,
+    user_corrected  BOOLEAN DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS idx_routing_timestamp   ON routing_history(timestamp);
+CREATE INDEX IF NOT EXISTS idx_routing_destination ON routing_history(routed_to);
+
+-- ── learned_preferences ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS learned_preferences (
+    id             BIGSERIAL PRIMARY KEY,
+    pattern_type   TEXT NOT NULL,
+    pattern_value  TEXT NOT NULL,
+    destination    TEXT NOT NULL,
+    confidence     REAL,
+    occurrences    INTEGER DEFAULT 1,
+    last_seen      TEXT,
+    user_confirmed BOOLEAN DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS idx_preference_pattern ON learned_preferences(pattern_type, pattern_value);
+
+-- ── anomalies ─────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS anomalies (
+    id             BIGSERIAL PRIMARY KEY,
+    detected_at    TEXT NOT NULL,
+    anomaly_type   TEXT NOT NULL,
+    description    TEXT,
+    affected_nodes TEXT,
+    severity       TEXT,
+    resolved       BOOLEAN DEFAULT FALSE,
+    resolution     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_anomaly_type ON anomalies(anomaly_type);
+
+-- ── cross_node_patterns ───────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cross_node_patterns (
+    id             BIGSERIAL PRIMARY KEY,
+    detected_at    TEXT NOT NULL,
+    pattern_type   TEXT NOT NULL,
+    nodes_involved TEXT NOT NULL,
+    description    TEXT,
+    strength       REAL,
+    examples       TEXT
+);
+
+-- ── usage (cost tracker) ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS usage (
+    id             BIGSERIAL PRIMARY KEY,
+    timestamp      TEXT,
+    provider       TEXT,
+    model          TEXT,
+    task_type      TEXT,
+    tokens_in      INTEGER,
+    tokens_out     INTEGER,
+    cost           REAL,
+    prompt_preview TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage(timestamp);
+CREATE INDEX IF NOT EXISTS idx_usage_provider  ON usage(provider, task_type);
+
+-- ── provider_performance ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS provider_performance (
+    id               BIGSERIAL PRIMARY KEY,
+    timestamp        TEXT NOT NULL,
+    provider         TEXT NOT NULL,
+    file_type        TEXT,
+    category         TEXT,
+    response_time_ms INTEGER,
+    success          BOOLEAN,
+    error_type       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_provider_perf ON provider_performance(provider, file_type, success);
+
+-- ── provider_health ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS provider_health (
+    provider             TEXT PRIMARY KEY,
+    status               TEXT DEFAULT 'healthy',
+    consecutive_failures INTEGER DEFAULT 0,
+    last_success         TEXT,
+    last_failure         TEXT,
+    blacklisted_until    TEXT,
+    total_requests       INTEGER DEFAULT 0,
+    total_successes      INTEGER DEFAULT 0,
+    total_failures       INTEGER DEFAULT 0,
+    error_types          TEXT,
+    created_at           TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ── health_events ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS health_events (
+    id               BIGSERIAL PRIMARY KEY,
+    timestamp        TEXT NOT NULL,
+    provider         TEXT NOT NULL,
+    event_type       TEXT NOT NULL,
+    error_code       TEXT,
+    error_message    TEXT,
+    response_time_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_health_events_provider ON health_events(provider, timestamp);
+CREATE INDEX IF NOT EXISTS idx_health_events_type     ON health_events(event_type);
+
+-- ── tasks ─────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS tasks (
+    id           BIGSERIAL PRIMARY KEY,
+    username     TEXT NOT NULL,
+    task_id      TEXT NOT NULL,
+    subject      TEXT NOT NULL,
+    description  TEXT NOT NULL,
+    status       TEXT DEFAULT 'pending',
+    agent        TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    completed_at TEXT,
+    metadata     TEXT,
+    UNIQUE(username, task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_agent    ON tasks(agent);
+CREATE INDEX IF NOT EXISTS idx_tasks_username ON tasks(username, status);
+
+-- ── task_log ──────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS task_log (
+    id        BIGSERIAL PRIMARY KEY,
+    username  TEXT NOT NULL,
+    task_id   TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    action    TEXT NOT NULL,
+    agent     TEXT NOT NULL,
+    details   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_log_task ON task_log(username, task_id);
+
+-- ── pigeon_inbox ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS pigeon_inbox (
+    id        BIGSERIAL PRIMARY KEY,
+    to_app    TEXT NOT NULL,
+    from_app  TEXT NOT NULL,
+    username  TEXT NOT NULL,
+    subject   TEXT NOT NULL,
+    body      TEXT NOT NULL,
+    thread_id TEXT,
+    sent_at   TEXT NOT NULL,
+    read_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_to ON pigeon_inbox(to_app, read_at);
+
+-- ── calendar_events ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id          BIGSERIAL PRIMARY KEY,
+    username    TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT,
+    start_dt    TEXT NOT NULL,
+    end_dt      TEXT,
+    all_day     INTEGER DEFAULT 0,
+    category    TEXT DEFAULT 'personal',
+    recurrence  TEXT,
+    status      TEXT DEFAULT 'active',
+    source      TEXT DEFAULT 'manual',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cal_username ON calendar_events(username);
+CREATE INDEX IF NOT EXISTS idx_cal_start    ON calendar_events(start_dt);
+CREATE INDEX IF NOT EXISTS idx_cal_status   ON calendar_events(status);
+
+-- ── personal_todos ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS personal_todos (
+    id          BIGSERIAL PRIMARY KEY,
+    username    TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT,
+    due_date    TEXT,
+    priority    TEXT DEFAULT 'normal',
+    status      TEXT DEFAULT 'open',
+    category    TEXT DEFAULT 'personal',
+    source      TEXT DEFAULT 'manual',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_todo_username ON personal_todos(username);
+CREATE INDEX IF NOT EXISTS idx_todo_status   ON personal_todos(status);
+
+-- ── Law Gazelle: Cases ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS gazelle_cases (
+    id              BIGSERIAL PRIMARY KEY,
+    username        TEXT NOT NULL,
+    case_number     TEXT NOT NULL,
+    court           TEXT,
+    case_type       TEXT NOT NULL,
+    case_subtype    TEXT,
+    status          TEXT DEFAULT 'open',
+    title           TEXT,
+    parties_json    TEXT DEFAULT '{}',
+    filed_date      TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    UNIQUE(username, case_number)
+);
+CREATE INDEX IF NOT EXISTS idx_gazelle_cases_user ON gazelle_cases(username, status);
+
+-- ── Law Gazelle: Case Documents ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS gazelle_case_documents (
+    id              BIGSERIAL PRIMARY KEY,
+    case_id         BIGINT REFERENCES gazelle_cases(id) ON DELETE CASCADE,
+    username        TEXT NOT NULL,
+    doc_type        TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    source          TEXT,
+    source_file     TEXT,
+    content_text    TEXT,
+    parsed_summary  TEXT,
+    action_required INTEGER DEFAULT 0,
+    action_type     TEXT,
+    deadline        TEXT,
+    status          TEXT DEFAULT 'unreviewed',
+    knowledge_id    BIGINT,
+    nest_queue_id   BIGINT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gazelle_docs_case ON gazelle_case_documents(case_id, doc_type);
+CREATE INDEX IF NOT EXISTS idx_gazelle_docs_deadline ON gazelle_case_documents(deadline, action_required);
+
+-- ── Law Gazelle: Deadlines ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS gazelle_deadlines (
+    id              BIGSERIAL PRIMARY KEY,
+    case_id         BIGINT REFERENCES gazelle_cases(id) ON DELETE CASCADE,
+    document_id     BIGINT REFERENCES gazelle_case_documents(id) ON DELETE SET NULL,
+    username        TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    deadline_date   TEXT NOT NULL,
+    status          TEXT DEFAULT 'pending',
+    priority        TEXT DEFAULT 'normal',
+    notes           TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gazelle_deadlines_case ON gazelle_deadlines(case_id, status);
+CREATE INDEX IF NOT EXISTS idx_gazelle_deadlines_date ON gazelle_deadlines(deadline_date, status);
+
+-- ── BASE 17 Compact Context Store ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS compact_contexts (
+    id              TEXT PRIMARY KEY,
+    content         TEXT NOT NULL,
+    category        TEXT NOT NULL DEFAULT 'pattern',
+    label           TEXT,
+    agent           TEXT,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at      TIMESTAMP,
+    access_count    INTEGER DEFAULT 0,
+    last_accessed   TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_compact_category ON compact_contexts (category);
+CREATE INDEX IF NOT EXISTS idx_compact_label ON compact_contexts (label);
+CREATE INDEX IF NOT EXISTS idx_compact_expires ON compact_contexts (expires_at);
+
+-- ── compact_id on all incoming-message tables ───────────────────────────────
+ALTER TABLE pigeon_inbox ADD COLUMN IF NOT EXISTS compact_id TEXT;
+ALTER TABLE nest_review_queue ADD COLUMN IF NOT EXISTS compact_id TEXT;
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS compact_id TEXT;
+ALTER TABLE pigeon_droppings ADD COLUMN IF NOT EXISTS compact_id TEXT;
+ALTER TABLE conversation_memory ADD COLUMN IF NOT EXISTS compact_id TEXT;
+ALTER TABLE agent_mailbox ADD COLUMN IF NOT EXISTS compact_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_pigeon_inbox_compact ON pigeon_inbox (compact_id);
+CREATE INDEX IF NOT EXISTS idx_nest_review_compact ON nest_review_queue (compact_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_compact ON knowledge (compact_id);
+CREATE INDEX IF NOT EXISTS idx_droppings_compact ON pigeon_droppings (compact_id);
+CREATE INDEX IF NOT EXISTS idx_convo_compact ON conversation_memory (compact_id);
+CREATE INDEX IF NOT EXISTS idx_mailbox_compact ON agent_mailbox (compact_id);

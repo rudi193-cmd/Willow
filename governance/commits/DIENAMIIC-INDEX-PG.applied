@@ -1,0 +1,34 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-12T09:10:00
+**Type:** Assessment / Deferred
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Assessment of die-namic-system/indexer.py SQLite usage. RECOMMENDATION: Leave as SQLite. Do not migrate.
+
+## Rationale
+
+die-namic-system/indexer.py writes to `.index.db` — a LOCAL FILE SEARCH INDEX for the die-namic-system repository itself. This is a dev tool:
+- Indexes .md, .py, .json files in the repo for fast keyword search
+- Used by willow_cli.py for local repo search
+- Not user session data, not knowledge, not operational state
+- DB lives at `die-namic-system/.index.db` (repo-local, gitignored)
+- No user-specific data, no PII, no cross-session state
+
+Migrating this to Postgres would:
+- Require network round-trips for a local file index
+- Add Postgres dependency to a standalone CLI tool
+- Provide no meaningful benefit (the index is transient, rebuilt on demand)
+- Make die-namic-system non-portable
+
+## Decision
+DEFER — keep as SQLite. File-search indexes are a valid SQLite use case.
+This is NOT a Willow data integrity issue.
+
+## Action Required
+None. Mark as reviewed.
+
+## Risk Assessment
+  Risk Level: MINIMAL
+  Reversible: N/A
+  Dependencies: none

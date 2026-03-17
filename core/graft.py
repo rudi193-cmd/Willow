@@ -10,64 +10,19 @@ VERSION: 1.0
 CHECKSUM: ΔΣ=42
 """
 
-import sqlite3
 import json
 from datetime import datetime
-from pathlib import Path
 from typing import List, Dict, Optional, Any
 
-# Database path per user
-def _db_path(username: str) -> Path:
-    """Get path to user's graft database."""
-    base = Path.cwd() / "artifacts" / username
-    base.mkdir(parents=True, exist_ok=True)
-    return base / "graft.db"
 
-
-def _connect(username: str) -> sqlite3.Connection:
-    """Open connection to graft database."""
-    path = _db_path(username)
-    conn = sqlite3.connect(path, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
+def _connect(username: str = None):
+    from core.db import get_connection
+    conn = get_connection()
     return conn
 
 
 def init_db(username: str):
-    """Initialize graft database schema."""
-    conn = _connect(username)
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id TEXT UNIQUE NOT NULL,
-            subject TEXT NOT NULL,
-            description TEXT NOT NULL,
-            status TEXT DEFAULT 'pending',
-            agent TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            completed_at TEXT,
-            metadata TEXT
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-        CREATE INDEX IF NOT EXISTS idx_tasks_agent ON tasks(agent);
-        CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
-
-        CREATE TABLE IF NOT EXISTS task_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            action TEXT NOT NULL,
-            agent TEXT NOT NULL,
-            details TEXT
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_log_task ON task_log(task_id);
-    """)
-    conn.commit()
-    conn.close()
+    pass  # tables created by pg_schema.sql
 
 
 def create_task(username: str, subject: str, description: str, agent: str, metadata: Optional[Dict] = None) -> str:
@@ -88,7 +43,7 @@ def create_task(username: str, subject: str, description: str, agent: str, metad
     conn = _connect(username)
 
     # Generate task ID
-    cursor = conn.execute("SELECT COUNT(*) FROM tasks")
+    cursor = conn.execute("SELECT COUNT(*) FROM tasks WHERE username = ?", (username,))
     count = cursor.fetchone()[0]
     task_id = f"task-{count + 1:03d}"
 
@@ -96,15 +51,15 @@ def create_task(username: str, subject: str, description: str, agent: str, metad
 
     # Insert task
     conn.execute("""
-        INSERT INTO tasks (task_id, subject, description, status, agent, created_at, updated_at, metadata)
-        VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
-    """, (task_id, subject, description, agent, now, now, json.dumps(metadata) if metadata else None))
+        INSERT INTO tasks (username, task_id, subject, description, status, agent, created_at, updated_at, metadata)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+    """, (username, task_id, subject, description, agent, now, now, json.dumps(metadata) if metadata else None))
 
     # Log creation
     conn.execute("""
-        INSERT INTO task_log (task_id, timestamp, action, agent, details)
-        VALUES (?, ?, 'created', ?, ?)
-    """, (task_id, now, agent, f"Created task: {subject}"))
+        INSERT INTO task_log (username, task_id, timestamp, action, agent, details)
+        VALUES (?, ?, ?, 'created', ?, ?)
+    """, (username, task_id, now, agent, f"Created task: {subject}"))
 
     conn.commit()
     conn.close()
@@ -122,7 +77,7 @@ def get_task(username: str, task_id: str) -> Optional[Dict[str, Any]]:
     init_db(username)
     conn = _connect(username)
 
-    row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+    row = conn.execute("SELECT * FROM tasks WHERE username = ? AND task_id = ?", (username, task_id)).fetchone()
     conn.close()
 
     if row:
@@ -148,19 +103,15 @@ def list_tasks(username: str, agent: Optional[str] = None, status: Optional[str]
     init_db(username)
     conn = _connect(username)
 
-    query = "SELECT * FROM tasks"
-    params = []
+    query = "SELECT * FROM tasks WHERE username = ?"
+    params = [username]
 
-    filters = []
     if agent:
-        filters.append("agent = ?")
+        query += " AND agent = ?"
         params.append(agent)
     if status:
-        filters.append("status = ?")
+        query += " AND status = ?"
         params.append(status)
-
-    if filters:
-        query += " WHERE " + " AND ".join(filters)
 
     query += " ORDER BY created_at DESC"
 
@@ -195,7 +146,7 @@ def update_task(username: str, task_id: str, status: str, agent: str, metadata: 
     conn = _connect(username)
 
     # Check task exists
-    row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+    row = conn.execute("SELECT * FROM tasks WHERE username = ? AND task_id = ?", (username, task_id)).fetchone()
     if not row:
         conn.close()
         return False
@@ -207,20 +158,20 @@ def update_task(username: str, task_id: str, status: str, agent: str, metadata: 
         conn.execute("""
             UPDATE tasks
             SET status = ?, updated_at = ?, completed_at = ?, metadata = ?
-            WHERE task_id = ?
-        """, (status, now, now, json.dumps(metadata) if metadata else row['metadata'], task_id))
+            WHERE username = ? AND task_id = ?
+        """, (status, now, now, json.dumps(metadata) if metadata else row['metadata'], username, task_id))
     else:
         conn.execute("""
             UPDATE tasks
             SET status = ?, updated_at = ?, metadata = ?
-            WHERE task_id = ?
-        """, (status, now, json.dumps(metadata) if metadata else row['metadata'], task_id))
+            WHERE username = ? AND task_id = ?
+        """, (status, now, json.dumps(metadata) if metadata else row['metadata'], username, task_id))
 
     # Log update
     conn.execute("""
-        INSERT INTO task_log (task_id, timestamp, action, agent, details)
-        VALUES (?, ?, 'status_changed', ?, ?)
-    """, (task_id, now, agent, f"Status changed to: {status}"))
+        INSERT INTO task_log (username, task_id, timestamp, action, agent, details)
+        VALUES (?, ?, ?, 'status_changed', ?, ?)
+    """, (username, task_id, now, agent, f"Status changed to: {status}"))
 
     conn.commit()
     conn.close()
@@ -234,8 +185,8 @@ def get_task_log(username: str, task_id: str) -> List[Dict[str, Any]]:
     conn = _connect(username)
 
     rows = conn.execute("""
-        SELECT * FROM task_log WHERE task_id = ? ORDER BY timestamp DESC
-    """, (task_id,)).fetchall()
+        SELECT * FROM task_log WHERE username = ? AND task_id = ? ORDER BY timestamp DESC
+    """, (username, task_id)).fetchall()
 
     conn.close()
 
@@ -252,12 +203,11 @@ def delete_task(username: str, task_id: str) -> bool:
     init_db(username)
     conn = _connect(username)
 
-    cursor = conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+    cursor = conn.execute("DELETE FROM tasks WHERE username = ? AND task_id = ?", (username, task_id))
     deleted = cursor.rowcount > 0
 
     if deleted:
-        # Also delete log entries
-        conn.execute("DELETE FROM task_log WHERE task_id = ?", (task_id,))
+        conn.execute("DELETE FROM task_log WHERE username = ? AND task_id = ?", (username, task_id))
 
     conn.commit()
     conn.close()
@@ -281,11 +231,11 @@ def get_stats(username: str, agent: Optional[str] = None) -> Dict[str, Any]:
     init_db(username)
     conn = _connect(username)
 
-    query_base = "SELECT status, COUNT(*) as count FROM tasks"
-    params = []
+    query_base = "SELECT status, COUNT(*) as count FROM tasks WHERE username = ?"
+    params = [username]
 
     if agent:
-        query_base += " WHERE agent = ?"
+        query_base += " AND agent = ?"
         params.append(agent)
 
     query = query_base + " GROUP BY status"

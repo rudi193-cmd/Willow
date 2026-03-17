@@ -61,6 +61,10 @@ def extract_text_from_image_ocr(file_path: Path) -> str:
     try:
         from PIL import Image
         import pytesseract
+        import os
+        # WSL: use Windows tesseract via interop; Linux: use system binary
+        if os.path.exists("/mnt/c/Program Files/Tesseract-OCR/tesseract.exe"):
+            pytesseract.pytesseract.tesseract_cmd = "/mnt/c/Program Files/Tesseract-OCR/tesseract.exe"
 
         image = Image.open(file_path)
         text = pytesseract.image_to_string(image)
@@ -268,12 +272,20 @@ Respond in this exact JSON format:
 
         response = llm_router.ask(prompt, preferred_tier="free")
 
+        if not response or not response.content:
+            return {
+                "suggested_destination": "unknown",
+                "confidence": 0.0,
+                "reasoning": "Fleet unavailable",
+                "keywords": []
+            }
+
         # Parse JSON response
         import json
         import re
 
         # Try to extract JSON from response
-        json_match = re.search(r'\{[^}]+\}', response, re.DOTALL)
+        json_match = re.search(r'\{[^}]+\}', response.content, re.DOTALL)
         if json_match:
             result = json.loads(json_match.group())
             return {

@@ -6,7 +6,7 @@ import SoftButton from './SoftButton';
  * Sidebar — Persona picker, system status, nav.
  * Faint pencil dividers between sections.
  */
-export default function Sidebar({ persona, onPersonaChange, exchangeCount, piLimit, onKnowledgeOpen, onDriveOpen, onAppsOpen, onCalendarOpen, onNewSession }) {
+export default function Sidebar({ persona, onPersonaChange, exchangeCount, piLimit, onKnowledgeOpen, onDriveOpen, onAppsOpen, onCalendarOpen, onNestOpen, onNewSession }) {
   const [personas, setPersonas] = useState({});
   const [status, setStatus] = useState(null);
 
@@ -61,6 +61,9 @@ export default function Sidebar({ persona, onPersonaChange, exchangeCount, piLim
         </SoftButton>
         <SoftButton onClick={onCalendarOpen} className="block text-left">
           calendar
+        </SoftButton>
+        <SoftButton onClick={onNestOpen} className="block text-left">
+          nest
         </SoftButton>
         <SoftButton onClick={onNewSession} className="block text-left">
           new session

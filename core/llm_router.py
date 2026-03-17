@@ -50,6 +50,40 @@ try:
 except ImportError:
     import fleet_feedback
 
+# Import compact context resolver (BASE 17)
+try:
+    from . import compact as _compact
+except ImportError:
+    try:
+        import compact as _compact
+    except ImportError:
+        _compact = None
+
+import re as _re
+_CTX_ID_PATTERN = _re.compile(r'\[CTX:([0-9ACEHKLNRTXZ]{5})\]')
+_CTX_LABEL_PATTERN = _re.compile(r'\[CTX:label=([^\]]+)\]')
+
+def _resolve_compact_refs(prompt: str) -> str:
+    """Resolve [CTX:XXXXX] and [CTX:label=name] references in prompts.
+    Missing refs become explicit gap markers — anti-hallucination by design."""
+    if not _compact or '[CTX:' not in prompt:
+        return prompt
+    def _replace_id(m):
+        cid = m.group(1)
+        ctx = _compact.resolve(cid)
+        if ctx:
+            return f"[CTX:{cid}:{ctx['category']}]\n{ctx['content']}"
+        return f"[MISSING:{cid}] — Context not found. Do NOT fabricate. Acknowledge this gap."
+    def _replace_label(m):
+        label = m.group(1)
+        ctx = _compact.find_by_label(label)
+        if ctx:
+            return f"[CTX:{ctx['id']}:{ctx['category']}]\n{ctx['content']}"
+        return f"[MISSING:label={label}] — Context not found. Do NOT fabricate. Acknowledge this gap."
+    prompt = _CTX_ID_PATTERN.sub(_replace_id, prompt)
+    prompt = _CTX_LABEL_PATTERN.sub(_replace_label, prompt)
+    return prompt
+
 # Round-robin state
 _round_robin_index = {"free": 0, "cheap": 0, "paid": 0}
 
@@ -111,6 +145,7 @@ def load_keys_from_json():
             "NOVITA_API_KEY", "NOVITA_API_KEY_2", "NOVITA_API_KEY_3",
             "TOGETHER_API_KEY", "OPENROUTER_API_KEY",
             "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+            "XAI_API_KEY",
         ]
         
         loaded_count = 0
@@ -179,6 +214,7 @@ PROVIDERS = [
     # ProviderConfig("Baseten2", "BASETEN_API_KEY_2", "https://inference.baseten.co/v1/chat/completions", "moonshotai/Kimi-K2.5", "free"),
     ProviderConfig("Novita", "NOVITA_API_KEY", "https://api.novita.ai/v3/openai/chat/completions", "meta-llama/llama-3.1-8b-instruct", "free"),
     ProviderConfig("Novita2", "NOVITA_API_KEY_2", "https://api.novita.ai/v3/openai/chat/completions", "meta-llama/llama-3.1-8b-instruct", "free"),
+    # ProviderConfig("Grok", "XAI_API_KEY", "https://api.x.ai/v1/chat/completions", "grok-3-mini", "free"),  # Disabled - no valid key
 
     # --- TIER 2: CHEAP (High Performance / Low Cost) ---
     # ProviderConfig("DeepSeek", "DEEPSEEK_API_KEY", "https://api.deepseek.com/chat/completions", "deepseek-chat", "cheap"),  # Disabled - requires deposit
@@ -206,6 +242,9 @@ def _estimate_tokens(text: str) -> int:
 def _log_and_return(response_text: str, provider_name: str, provider_tier: str,
                    provider_model: str, prompt: str, task_type: str) -> RouterResponse:
     """Log cost and return RouterResponse."""
+    # Strip NUL bytes — Postgres rejects \x00 in string literals (common in vision responses)
+    prompt = prompt.replace("\x00", "") if prompt else prompt
+    response_text = response_text.replace("\x00", "") if response_text else response_text
     # Estimate tokens
     tokens_in = _estimate_tokens(prompt)
     tokens_out = _estimate_tokens(response_text)
@@ -268,7 +307,7 @@ def get_provider_count() -> Dict[str, int]:
         "total": sum(len(v) for v in avail.values())
     }
 
-def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True, task_type: str = None) -> Optional[RouterResponse]:
+def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True, task_type: str = None, max_tokens: int = 2048) -> Optional[RouterResponse]:
     """
     Route the prompt to a provider.
 
@@ -278,12 +317,19 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
         use_round_robin: If True, rotates through providers to distribute load
         task_type: Optional explicit task category override (e.g. "text_summarization").
                    If None, inferred automatically from prompt content.
+        max_tokens: Maximum output tokens (default 2048, increase for long generation).
 
     Returns:
         RouterResponse or None if all providers fail
     """
     # Infer task type from original prompt (before enhancement), or use explicit override
     task_type = task_type or _infer_task_type(prompt)
+
+    # Resolve BASE 17 compact context references [CTX:XXXXX] before sending
+    try:
+        prompt = _resolve_compact_refs(prompt)
+    except Exception as e:
+        logging.warning(f"Failed to resolve compact refs: {e}")
 
     # Enhance prompt with learned corrections from past feedback
     try:
@@ -309,25 +355,26 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
     if not priority:
         return None
 
-    # Get provider success rates from health database
+    # Get provider success rates from RECENT health events (rolling 6hr window)
+    # NOT lifetime totals — those never recover from early failures (the ratchet bug)
     provider_names = [p.name for p in priority]
-    health_data = provider_health.get_all_health_status()
+    recent_rates = provider_health.get_recent_success_rates(window_hours=6)
 
     # Calculate success rates and filter bad providers
     provider_scores = {}
     for p in priority:
-        health = health_data.get(p.name)
+        recent = recent_rates.get(p.name)
 
-        if not health or health.total_requests == 0:
-            # No data yet - give benefit of doubt, neutral score
+        if not recent or recent['recent_requests'] < 5:
+            # No recent data or too few samples — give benefit of doubt
             provider_scores[p.name] = 0.5
         else:
-            success_rate = health.total_successes / health.total_requests
+            success_rate = recent['success_rate']
 
-            # Skip providers with catastrophic failure rates
-            # Require 30+ requests before judging — small initial batches can skew the rate
-            if success_rate < 0.2 and health.total_requests > 30:
-                logging.warning(f"Skipping {p.name} - only {success_rate*100:.1f}% success rate")
+            # Skip providers with catastrophic RECENT failure rates
+            # Require 10+ recent requests before judging
+            if success_rate < 0.1 and recent['recent_requests'] >= 10:
+                logging.warning(f"Skipping {p.name} - only {success_rate*100:.1f}% success rate (last 6hrs: {recent['recent_successes']}/{recent['recent_requests']})")
                 continue
 
             provider_scores[p.name] = success_rate
@@ -419,7 +466,7 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
                         serving_mode=OnDemandServingMode(model_id=provider.model),
                         chat_request=GenericChatRequest(
                             messages=[UserMessage(content=[TextContent(text=enhanced_prompt)])],
-                            max_tokens=2048
+                            max_tokens=max_tokens
                         )
                     ))
 
@@ -474,15 +521,17 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
                     continue
 
             # --- OPENAI-COMPATIBLE ADAPTER (Groq, DeepSeek, Cerebras, Fireworks, etc) ---
-            elif provider.name in ["Groq", "DeepSeek", "Cerebras", "SambaNova", "Together.ai", "OpenRouter", "OpenAI", "Fireworks", "Mistral",
-                                    "Baseten", "Baseten2", "Novita", "Novita2", "Novita3"]:
+            elif provider.name in ["Groq", "Groq2", "Groq3", "DeepSeek", "Cerebras", "Cerebras2", "Cerebras3",
+                                    "SambaNova", "SambaNova2", "SambaNova3", "Together.ai", "OpenRouter", "OpenAI",
+                                    "Fireworks", "Mistral", "Baseten", "Baseten2", "Novita", "Novita2", "Novita3"]:
                 headers = {"Authorization": f"Bearer {os.environ.get(provider.env_key)}"}
                 if provider.name == "OpenRouter":
                     headers["HTTP-Referer"] = "https://github.com/die-namic"
 
                 payload = {
                     "model": provider.model,
-                    "messages": [{"role": "user", "content": enhanced_prompt}]
+                    "messages": [{"role": "user", "content": enhanced_prompt}],
+                    "max_tokens": max_tokens,
                 }
 
                 resp = requests.post(provider.base_url, json=payload, headers=headers, timeout=30)
@@ -515,7 +564,7 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
                     continue
 
             # --- GEMINI ADAPTER ---
-            elif provider.name == "Google Gemini":
+            elif provider.name.startswith("Google Gemini"):
                 url = f"{provider.base_url}{provider.model}:generateContent?key={os.environ.get(provider.env_key)}"
                 payload = {"contents": [{"parts": [{"text": enhanced_prompt}]}]}
                 resp = requests.post(url, json=payload, timeout=30)
@@ -555,7 +604,7 @@ def ask(prompt: str, preferred_tier: str = "free", use_round_robin: bool = True,
                 }
                 payload = {
                     "model": provider.model,
-                    "max_tokens": 2048,
+                    "max_tokens": max_tokens,
                     "messages": [{"role": "user", "content": enhanced_prompt}]
                 }
                 resp = requests.post(provider.base_url, json=payload, headers=headers, timeout=30)

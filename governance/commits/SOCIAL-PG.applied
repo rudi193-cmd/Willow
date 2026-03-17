@@ -1,0 +1,285 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-12T09:05:00
+**Type:** Bug Fix / Migration
+**Trust Level:** ENGINEER (3)
+
+## Summary
+Migrate social_routes.py and social_workflow_routes.py from sqlite3.connect() to get_connection() (Postgres). The social_media.db SQLite file doesn't exist (empty social/ dir), so every social API call currently returns 503. This fix creates the social tables in Postgres on first use and makes the routes functional.
+
+## Proposed Changes
+
+### File: api/social_routes.py
+Change from:
+```python
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+router = APIRouter(prefix="/api/social", tags=["social"])
+
+SOCIAL_DB = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "social" / "social_media.db"
+
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+}
+
+
+def _db():
+    if not SOCIAL_DB.exists():
+        raise HTTPException(status_code=503, detail=f"Social DB not found: {SOCIAL_DB}")
+    conn = sqlite3.connect(str(SOCIAL_DB))
+    conn.row_factory = sqlite3.Row
+    return conn
+```
+To:
+```python
+import sqlite3  # kept for row_factory compatibility with _PgConn
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+from core.db import get_connection
+
+router = APIRouter(prefix="/api/social", tags=["social"])
+
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+}
+
+_tables_created = False
+
+def _ensure_social_tables(conn):
+    global _tables_created
+    if _tables_created:
+        return
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_platforms (
+            id         SERIAL PRIMARY KEY,
+            name       TEXT NOT NULL UNIQUE,
+            url        TEXT,
+            type       TEXT,
+            notes      TEXT,
+            created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_accounts (
+            id           SERIAL PRIMARY KEY,
+            platform_id  INTEGER REFERENCES social_platforms(id),
+            handle       TEXT NOT NULL,
+            display_name TEXT,
+            profile_url  TEXT,
+            karma        INTEGER,
+            followers    INTEGER,
+            bio          TEXT,
+            first_seen   TEXT,
+            last_updated TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_communities (
+            id           SERIAL PRIMARY KEY,
+            platform_id  INTEGER REFERENCES social_platforms(id),
+            name         TEXT NOT NULL,
+            display_name TEXT,
+            description  TEXT,
+            owner        TEXT,
+            topic        TEXT,
+            url          TEXT,
+            created_at   TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_series (
+            id          SERIAL PRIMARY KEY,
+            title       TEXT NOT NULL,
+            slug        TEXT UNIQUE,
+            description TEXT,
+            status      TEXT DEFAULT 'active',
+            created_at  TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_posts (
+            id           SERIAL PRIMARY KEY,
+            account_id   INTEGER REFERENCES social_accounts(id),
+            community_id INTEGER REFERENCES social_communities(id),
+            series_id    INTEGER REFERENCES social_series(id),
+            title        TEXT NOT NULL,
+            status       TEXT DEFAULT 'manuscript',
+            notes        TEXT,
+            draft_path   TEXT,
+            posted_at    TEXT,
+            post_url     TEXT,
+            is_crosspost INTEGER DEFAULT 0,
+            created_at   TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+            updated_at   TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_post_metrics (
+            id           SERIAL PRIMARY KEY,
+            post_id      INTEGER REFERENCES social_posts(id),
+            snapshot_at  TEXT,
+            views_total  INTEGER DEFAULT 0,
+            views_48h    INTEGER DEFAULT 0,
+            upvotes      INTEGER DEFAULT 0,
+            comments     INTEGER DEFAULT 0,
+            rank_today   INTEGER,
+            geo_us_pct   REAL,
+            geo_breakdown TEXT,
+            source_file  TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_milestones (
+            id           SERIAL PRIMARY KEY,
+            post_id      INTEGER REFERENCES social_posts(id),
+            account_id   INTEGER REFERENCES social_accounts(id),
+            milestone    TEXT,
+            achieved_at  TEXT,
+            metric_value INTEGER
+        )
+    """)
+    conn.commit()
+    _tables_created = True
+
+
+def _db():
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    _ensure_social_tables(conn)
+    return conn
+```
+
+### File: api/social_routes.py (table name updates)
+Change from:
+```python
+        status_counts = {
+            row["status"]: row["n"]
+            for row in conn.execute(
+                "SELECT status, COUNT(*) as n FROM posts GROUP BY status"
+            ).fetchall()
+        }
+```
+To:
+```python
+        status_counts = {
+            row["status"]: row["n"]
+            for row in conn.execute(
+                "SELECT status, COUNT(*) as n FROM social_posts GROUP BY status"
+            ).fetchall()
+        }
+```
+
+Replace all remaining occurrences of table names in social_routes.py:
+- `FROM posts` → `FROM social_posts`
+- `INTO posts` → `INTO social_posts`
+- `UPDATE posts` → `UPDATE social_posts`
+- `FROM post_metrics` → `FROM social_post_metrics`
+- `INTO post_metrics` → `INTO social_post_metrics`
+- `FROM series` → `FROM social_series`
+- `FROM communities` → `FROM social_communities`
+- `FROM accounts` → `FROM social_accounts`
+- `FROM platforms` → `FROM social_platforms`
+
+### File: api/social_workflow_routes.py
+Change from:
+```python
+import re
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
+import credentials as _vault
+
+router = APIRouter(prefix="/api/social/workflow", tags=["social-workflow"])
+
+SOCIAL_DB = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "social" / "social_media.db"
+DRAFTS_DIR = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "social" / "drafts"
+
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+}
+
+
+def _db():
+    if not SOCIAL_DB.exists():
+        raise HTTPException(status_code=503, detail=f"Social DB not found: {SOCIAL_DB}")
+    conn = sqlite3.connect(str(SOCIAL_DB))
+    conn.row_factory = sqlite3.Row
+    return conn
+```
+To:
+```python
+import re
+import sqlite3  # kept for row_factory compatibility with _PgConn
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
+import credentials as _vault
+from core.db import get_connection
+
+router = APIRouter(prefix="/api/social/workflow", tags=["social-workflow"])
+
+DRAFTS_DIR = Path(__file__).parent.parent / "artifacts" / "Sweet-Pea-Rudi19" / "social" / "drafts"
+
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+}
+
+
+def _db():
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    return conn
+```
+
+Replace all table name references in social_workflow_routes.py:
+- `FROM posts` → `FROM social_posts`
+- `INTO posts` → `INTO social_posts`
+- `UPDATE posts` → `UPDATE social_posts`
+- `FROM post_metrics` → `FROM social_post_metrics`
+- `INTO post_metrics` → `INTO social_post_metrics`
+- `FROM series` → `FROM social_series`
+
+## Rationale
+social_routes.py and social_workflow_routes.py were writing to artifacts/Sweet-Pea-Rudi19/social/social_media.db which doesn't exist — every social API call returns 503. This routes through get_connection() → Postgres and creates the social tables on first use. Tables are prefixed with social_ to avoid collision with future tables in the shared schema.
+
+## Risk Assessment
+  Risk Level: LOW
+  Reversible: YES — social_media.db doesn't exist, no data at risk
+  Dependencies: core.db.get_connection() must be importable from api/ context. _ensure_social_tables runs once on first request.
+  Note: Social tables will start empty. Seed data from governance/scripts/create_social_media_db.py should be ported separately (follow-up task).
+  Note: Table name prefix changed: posts → social_posts, etc. to avoid collision with general knowledge concepts.

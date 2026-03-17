@@ -13,7 +13,7 @@ Run: /home/sean/.willow-venv/bin/python tools/ingest_paperclip.py
 """
 
 import sys
-import sqlite3
+import sqlite3  # kept for reading external PAPERCLIP_DB (foreign SQLite source)
 import hashlib
 import logging
 from datetime import datetime, UTC

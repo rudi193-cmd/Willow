@@ -6,6 +6,12 @@ Poll: 3s. Startup delay: 0s.
 import time, sys, logging
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent / ".env")
+except ImportError:
+    pass
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.daemon_config import get_poll_interval, get_startup_delay
 
@@ -47,7 +53,7 @@ def main():
                 _last_auto = now
                 if NEST_PATH.exists() and any(
                     f.is_file() and not f.name.startswith(".")
-                    for f in NEST_PATH.iterdir()
+                    for f in NEST_PATH.iterdir()  # root only, not rglob — skip processed/
                 ):
                     logger.info("Auto-trigger: files in Nest")
                     triggered = True
@@ -56,6 +62,12 @@ def main():
                 new = pigeon.scan_and_process(USERNAME)
                 _last_auto = time.monotonic()
                 logger.info("Scan complete: %d new droppings", len(new) if new else 0)
+                # Clean up empty subdirectories
+                if NEST_PATH.exists():
+                    for d in sorted(NEST_PATH.rglob("*"), reverse=True):
+                        if d.is_dir() and not any(d.iterdir()):
+                            logger.info("Removing empty dir: %s", d.name)
+                            d.rmdir()
         except Exception as e:
             logger.error("Error: %s", e)
         time.sleep(poll)

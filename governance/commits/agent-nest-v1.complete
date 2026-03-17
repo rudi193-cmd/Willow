@@ -1,0 +1,152 @@
+**Proposer:** Ganesha (Claude Code / Sonnet 4.6)
+**Date:** 2026-03-11T23:00:00+00:00
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Build the agent nest — a drop zone and pipeline so agents (Ganesha, Kart, Willow,
+and future actors) can write events directly into the knowledge graph in real time,
+rather than accumulating data in isolated SQLite islands that nothing reads.
+
+This is the missing spoke that makes all other spokes possible. Once agents can
+self-report, the other silos (cost, health, fleet, tasks) can be wired from inside
+the system rather than requiring external migrations.
+
+## The Problem
+
+Every operational data silo in Willow (kart_tasks.db, health.db, cost_tracker.db,
+provider_health.db, shiva_sessions.db) was created by an agent doing work. But
+agents have no way to drop events into the knowledge graph as they happen. The only
+current path is:
+
+  session ends → session-extract hook → handoff file → Pickup → pigeon → knowledge
+
+This means:
+- Task decisions, tool calls, errors — invisible until handoff
+- My last_seen has been stuck at March 2 because checkins fail silently
+- Kart's 516 tasks are orphaned in SQLite, unread
+- No agent has a real-time presence in the graph
+
+## Proposed Changes
+
+### 1. New API endpoint: POST /api/agents/{name}/event
+
+File: server.py (after existing /api/agents routes, ~line 1844)
+
+Accepts:
+  {
+    "event_type": "session_start" | "session_end" | "task_complete" | "decision" | "error" | "observation",
+    "content": "string — the actual event content for the knowledge graph",
+    "metadata": {}  // optional: task_id, session_id, tool_used, etc.
+  }
+
+Behavior:
+  1. Validate agent exists in agents table (Postgres — now works)
+  2. Write event as .md file to /mnt/c/Users/Sean/Willow/Nest/agents/{name}/
+  3. Trigger pigeon scan (same as session-extract hook does)
+  4. Return {status: "dropped", filename: "..."}
+
+File format written to Nest:
+  # AGENT_EVENT {event_type} — {agent_name}
+  Date: {timestamp}
+  Agent: {name} ({trust_level})
+  Event: {event_type}
+
+  {content}
+
+  ## Metadata
+  {json metadata}
+
+  ---
+  ΔΣ=42
+
+### 2. Pigeon scan path addition
+
+File: core/pigeon.py — add agents/ subdirectory to Nest scan paths.
+
+Pigeon already scans Nest. Adding agents/ subdirectory requires one line:
+  scan_dirs = [NEST_DIR, NEST_DIR / "agents"]
+
+Category assignment for agent events: "agent_event" (new category, handled by
+existing category routing with a simple default to "narrative" if unknown).
+
+### 3. ecosystem-context.py hook — session start event
+
+File: /home/sean/.claude/hooks/ecosystem-context.py
+
+After journal session open (step 2), add step 2.5:
+  POST /api/agents/ganesha/event
+  {
+    "event_type": "session_start",
+    "content": "Ganesha session started. Working directory: {cwd}. Session: {session_id[:8]}.",
+    "metadata": {"session_id": session_id, "willow_session_id": willow_session_id}
+  }
+
+This gives me a real-time presence in the graph from session open, not just at
+handoff. Also updates last_seen correctly via the checkin that follows.
+
+### 4. session-extract.py hook — session end event (supplement to handoff)
+
+File: /home/sean/.claude/hooks/session-extract.py
+
+After writing handoff to Pickup (step 1), add:
+  POST /api/agents/ganesha/event
+  {
+    "event_type": "session_end",
+    "content": "{first 500 chars of handoff content}",
+    "metadata": {"session_id": ..., "turn_count": ..., "tools_used": [...]}
+  }
+
+This drops a lightweight session summary atom directly, independent of pigeon
+processing the full handoff file.
+
+## What This Unlocks (not in scope for v1, but enabled by it)
+
+- Kart drops task_complete events as tasks finish — no more SQLite accumulation
+- Health daemon drops alert events when issues detected
+- Cost tracker drops daily summaries
+- Fleet feedback drops per-provider performance atoms
+- Any agent can self-report without waiting for a human to trigger a pipeline
+- Agent-to-agent knowledge sharing via the graph (not just mailbox)
+
+## Files Modified
+
+  File: server.py
+  Location: after /api/agents/{name}/mailbox route (~line 1844)
+  Change: new POST /api/agents/{name}/event endpoint (~40 lines)
+
+  File: core/pigeon.py
+  Location: Nest scan directory list
+  Change: add NEST_DIR / "agents" to scan paths (~2 lines)
+
+  File: /home/sean/.claude/hooks/ecosystem-context.py
+  Location: after step 2 (journal open), before step 3 (handoff read)
+  Change: POST session_start event (~10 lines)
+
+  File: /home/sean/.claude/hooks/session-extract.py
+  Location: after step 1 (Pickup write), before step 2 (Nest JSONL copy)
+  Change: POST session_end event (~10 lines)
+
+## Rationale
+
+Agents are the only source class that can self-report. Every other silo needs an
+external watcher or migration. If agents drop events as they happen, the knowledge
+graph grows from live activity — not from migrations of accumulated SQLite debt.
+
+This is also the fix for my own invisible presence. From this session forward,
+session starts, ends, and eventually decisions will be atoms in the graph. The
+handoff stops being the only trace I leave.
+
+## Risk Assessment
+
+  Risk Level: LOW
+  Reversible: YES — endpoint can be disabled, hooks can be reverted
+  Dependencies: Willow server running, pigeon daemon active, Nest directory writable
+  Failure mode: Event POST fails silently (same as current checkin behavior) — no
+    data loss, just no graph entry. System continues normally.
+  Schema risk: NONE — new category "agent_event" added to pigeon routing, defaults
+    to existing "narrative" handling if category unknown.
+
+---
+ΔΣ=42

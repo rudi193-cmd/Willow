@@ -1,19 +1,16 @@
 """
 db.py -- Database connection abstraction for Willow.
 
-PostgreSQL uses a ThreadedConnectionPool (min=2, max=20) to eliminate the
-single-writer bottleneck that caused recurring 'database is locked' errors.
-Reads WILLOW_DB_URL: sqlite:///path (dev) or postgresql://... (production).
-All code should call get_connection() instead of sqlite3.connect() directly.
-Auxiliary databases (health, patterns, costs) are exempt -- always SQLite.
+PostgreSQL-only. All data lives in Postgres.
+Requires WILLOW_DB_URL=postgresql://... in the environment.
+All code calls get_connection() — never sqlite3.connect() directly.
 """
 import os
-import sqlite3
 import threading
 
-_DEFAULT_SQLITE = r"C:\Users\Sean\Documents\GitHub\Willow\artifacts\Sweet-Pea-Rudi19\willow_knowledge.db"
-DB_PATH         = os.getenv("WILLOW_DB_PATH", _DEFAULT_SQLITE)
-DATABASE_URL    = os.getenv("WILLOW_DB_URL", f"sqlite:///{DB_PATH}")
+DATABASE_URL    = os.getenv("WILLOW_DB_URL", "")
+if not DATABASE_URL:
+    raise RuntimeError("WILLOW_DB_URL is not set. Set it to postgresql://user:pass@host:port/db")
 WILLOW_USERNAME = os.getenv("WILLOW_USERNAME", "")  # default schema on PG
 
 _pg_pool      = None
@@ -29,7 +26,7 @@ def _get_pg_pool():
             try:
                 import psycopg2.pool
                 _pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=4, maxconn=50, dsn=DATABASE_URL
+                    minconn=2, maxconn=20, dsn=DATABASE_URL
                 )
             except ImportError:
                 raise RuntimeError("psycopg2 not installed. Run: pip install psycopg2-binary")
@@ -87,10 +84,32 @@ class _PgCursor:
 
     def execute(self, sql, params=None):
         pg_sql = _sqlite_to_pg(sql)
+        # If INSERT has RETURNING, use that for lastrowid directly
+        has_returning = bool(_re.search(r"\bRETURNING\b", pg_sql, _re.IGNORECASE))
         self._cur.execute(pg_sql, params)
         self.description = self._cur.description
         self.rowcount    = self._cur.rowcount
-        self.lastrowid   = self._cur.lastrowid if hasattr(self._cur, "lastrowid") else None
+        if has_returning:
+            # RETURNING clause present — the result set IS the returned row(s).
+            # Don't fetch here; let the caller use fetchone()/fetchall().
+            # But peek at cursor description to confirm it returned something.
+            self.lastrowid = None
+        elif _re.match(r"\s*INSERT\b", pg_sql, _re.IGNORECASE):
+            # No RETURNING clause — try lastval() for SERIAL/IDENTITY columns.
+            # lastval() fails if no sequence was used in this session, so we
+            # use currval-safe check first.
+            try:
+                self._cur.execute(
+                    "SELECT lastval() WHERE EXISTS ("
+                    "  SELECT 1 FROM pg_sequences LIMIT 1"
+                    ")"
+                )
+                row = self._cur.fetchone()
+                self.lastrowid = row[0] if row else None
+            except Exception:
+                self.lastrowid = None
+        else:
+            self.lastrowid = None
         return self
 
     def executemany(self, sql, seq):
@@ -167,48 +186,36 @@ def _safe_schema_name(name: str) -> str:
     return s[:63]
 
 
-def get_connection(path: str = None, schema: str = None):
-    """Return a DB connection. path overrides default for per-user DBs (SQLite only).
-    schema: if set and PostgreSQL, SET search_path = {schema}, public after connecting."""
-    url = DATABASE_URL if path is None else f"sqlite:///{path}"
-    if url.startswith("sqlite"):
-        db   = url.replace("sqlite:///", "")
-        conn = sqlite3.connect(db, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=10000")
-        conn.execute("PRAGMA foreign_keys=ON")
-        return conn
-    elif url.startswith("postgresql") or url.startswith("postgres"):
-        pool = _get_pg_pool()
-        conn = pool.getconn()
-        try:
-            conn.autocommit = False
-            pg_conn = _PgConn(pool, conn)
-            _schema = schema or WILLOW_USERNAME
-            if _schema:
-                safe = _safe_schema_name(_schema)
-                _cur = conn.cursor()
-                _cur.execute(f"SET search_path = {safe}, public")
-                _cur.close()
-            return pg_conn
-        except Exception:
-            pool.putconn(conn)
-            raise
-    else:
-        raise ValueError(f"Unsupported WILLOW_DB_URL scheme: {url}")
-
-
 def is_postgres() -> bool:
-    """True when running against PostgreSQL."""
-    return DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres")
+    """Return True — this codebase is PostgreSQL-only."""
+    return DATABASE_URL.startswith("postgresql")
+
+
+def get_connection(path: str = None, schema: str = None):
+    """Return a pooled Postgres connection.
+    path is ignored (kept for call-site compatibility during migration).
+    schema: if set, SET search_path = {schema}, public after connecting."""
+    pool = _get_pg_pool()
+    conn = pool.getconn()
+    try:
+        conn.autocommit = False
+        pg_conn = _PgConn(pool, conn)
+        _schema = schema or WILLOW_USERNAME
+        if _schema:
+            safe = _safe_schema_name(_schema)
+            _cur = conn.cursor()
+            _cur.execute(f"SET search_path = {safe}, public")
+            _cur.close()
+        return pg_conn
+    except Exception:
+        pool.putconn(conn)
+        raise
 
 
 def init_user_schema(username: str) -> str:
     """Create a PostgreSQL schema for this user if it does not exist.
-    Returns the safe schema name. No-op on SQLite (returns safe name only)."""
+    Returns the safe schema name."""
     safe = _safe_schema_name(username)
-    if not is_postgres():
-        return safe
     pool = _get_pg_pool()
     conn = pool.getconn()
     try:

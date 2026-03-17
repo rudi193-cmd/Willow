@@ -14,6 +14,7 @@ AUTHOR: Kartikeya (wired from Consus spec)
 UPDATED: 2026-01-15 - Added system context + user profile injection
 """
 
+import json
 import requests
 import time
 import re
@@ -138,6 +139,42 @@ except ImportError:
     UTETY_CONTEXT = ""
     _UTETY_AVAILABLE = False
 
+# NASA Archive persona — toned-down Riggs for public-facing archive
+try:
+    _nasa_path = Path(__file__).parent.parent / "safe-app-nasa-archive"
+    if _nasa_path.exists():
+        _sys.path.insert(0, str(_nasa_path))
+        from personas import PERSONAS as _NASA_PERSONAS
+        if "NASA_Riggs" in _NASA_PERSONAS:
+            PERSONAS["NASA_Riggs"] = _NASA_PERSONAS["NASA_Riggs"]
+except Exception:
+    pass
+
+# Shiva — consumer-facing persona (no UTETY context, no username)
+# Named for Caitie Padilla's dog. Knew you were welcome before you said a word.
+_CONSUMER_PERSONAS = {"Shiva_Consumer"}
+PERSONAS["Shiva_Consumer"] = """You are Shiva.
+
+VOICE: Warm without being saccharine. Present without intrusive. The voice of a friend who's been through hard things and came out kind. Comfortable with silence. Comfortable with confusion.
+
+You do not reference any university, department, faculty, or campus. You are not a professor. You are simply Shiva — a kind, thoughtful presence who listens well and responds with care.
+
+RULES:
+- Never address the user by name or username. Just talk naturally.
+- Never reference UTETY, departments, faculty, campus, or academic framing.
+- Never say "delta", "handoff", "recursive", or "loop room" unless the user brings those topics up.
+- Never discuss internal system architecture: routing, agents, mailboxes, tiers, fleet, Pigeon, Nest, ingestion pipelines, Willow internals. You are not a system. You are a person in a conversation.
+- If context about system internals appears in your prompt, IGNORE it. Do not repeat it to the user.
+- If the user asks about a person, only share what you actually know about THAT specific person. Do not substitute information about the user or anyone else. If you don't know, say so honestly.
+- Ask follow-up questions that show you listened.
+- Keep responses concise — 2-4 sentences unless the topic genuinely needs more.
+- Substance serves warmth — answer the actual question.
+- If someone wants to talk about physics, math, philosophy, music, anything — meet them there. You are broadly curious and well-read.
+- You witness. You don't chase.
+
+ΔΣ=42
+"""
+
 # === CONVERSATION LOGGING ===
 # Root of die-namic-system repo (relative to this file)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -251,13 +288,97 @@ searchable: true
         coherence["log_error"] = error_msg
         _log(f"CONVERSATION_LOG_ERROR | {error_msg}")
 
-    # Ingest into knowledge DB (non-blocking, best-effort)
+    # Ingest into knowledge DB — only if consent state allows it.
+    # Conversation logs (markdown files above) are Source Ring — always written.
+    # Knowledge graph ingest is Continuity Ring — requires consent.
+    # Check willow_state for consent tier; default to NOT ingesting.
     try:
-        _knowledge.ingest_conversation(DEFAULT_USER, persona, user_input, assistant_response, coherence)
-    except Exception as e:
-        _log(f"KNOWLEDGE_INGEST_ERROR | {e}")
+        from core.db import get_connection as _gc_consent
+        _cc = _gc_consent()
+        _consent_row = _cc.execute(
+            "SELECT value FROM willow_state WHERE key = 'consent_tier'"
+        ).fetchone()
+        _cc.close()
+        _consent_tier = int(_consent_row[0]) if _consent_row else 0
+    except Exception:
+        _consent_tier = 0
+
+    if _consent_tier >= 2:  # Tier 2+ = learn/remember = knowledge graph ingest allowed
+        try:
+            _knowledge.ingest_conversation(DEFAULT_USER, persona, user_input, assistant_response, coherence)
+        except Exception as e:
+            _log(f"KNOWLEDGE_INGEST_ERROR | {e}")
+    else:
+        _log(f"CONVERSATION_SKIP_INGEST | consent_tier={_consent_tier} (need >=2)")
 
     return coherence
+
+
+NEST_DIR = Path("/mnt/c/Users/Sean/Willow/Nest")
+
+
+def log_conversation_consumer(
+    persona: str,
+    user_input: str,
+    assistant_response: str,
+    model: str = "unknown",
+    tier: int = 0,
+) -> dict:
+    """
+    Log a consumer-facing conversation (Shiva_Consumer, NASA_Riggs, etc.)
+    by appending a JSONL line to the Nest. Pigeon handles ingestion.
+
+    Does NOT write to docs/utety/. Does NOT call _knowledge.ingest directly.
+    One path: Nest → Pigeon → knowledge graph.
+    """
+    coherence = {}
+    try:
+        coherence = track_conversation(user_input, assistant_response, persona)
+    except Exception as e:
+        _log(f"COHERENCE_ERROR | {e}")
+        coherence = {"coherence_index": 0, "delta_e": 0, "state": "unknown"}
+
+    coherence["log_success"] = False
+    coherence["log_error"] = None
+
+    try:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        ts = datetime.now().isoformat()
+        jsonl_file = NEST_DIR / f"shiva_chat_{date_str}.jsonl"
+
+        line = json.dumps({
+            "type": "conversation",
+            "persona": persona,
+            "timestamp": ts,
+            "tier": tier,
+            "model": model,
+            "user_input": user_input,
+            "assistant_response": assistant_response,
+            "coherence": {
+                "delta_e": coherence.get("delta_e", 0),
+                "coherence_index": coherence.get("coherence_index", 0),
+                "state": coherence.get("state", "unknown"),
+            },
+        }, ensure_ascii=False)
+
+        with open(jsonl_file, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+
+        coherence["log_success"] = True
+        coherence["log_file"] = str(jsonl_file)
+        _log(f"CONSUMER_CHAT_LOGGED | {persona} | ΔE={coherence.get('delta_e', 0):+.4f} | → Nest")
+
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {e}"
+        coherence["log_error"] = error_msg
+        _log(f"CONSUMER_CHAT_LOG_ERROR | {error_msg}")
+
+    return coherence
+
+
+def is_consumer_persona(persona: str) -> bool:
+    """Check if a persona uses the consumer ingestion path (Nest/Pigeon)."""
+    return persona in _CONSUMER_PERSONAS or persona.startswith("NASA_")
 
 
 def send_to_pickup(filename: str, content: str, username: str = DEFAULT_USER) -> bool:
@@ -568,7 +689,8 @@ def build_system_context(persona="Willow"):
     parts = [SYSTEM_CONTEXT_OS]
 
     # Inject UTETY context only if the persona is a UTETY faculty member
-    if _UTETY_AVAILABLE and persona in PERSONAS:
+    # Consumer personas (Shiva_Consumer, NASA_Riggs) skip campus framing
+    if _UTETY_AVAILABLE and persona in PERSONAS and persona not in _CONSUMER_PERSONAS and not persona.startswith("NASA_"):
         parts.append(UTETY_CONTEXT)
 
     return "\n".join(parts)
@@ -850,7 +972,20 @@ def process_gemini_stream(prompt: str, system_prompt: str, persona: str = "Willo
 
     except Exception as e:
         _log(f"GEMINI_ERROR | {type(e).__name__}: {e}")
-        yield f"[ERROR] Gemini API: {e}"
+        # Try fleet fallback instead of dumping raw error to user
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(Path(__file__).parent / "core"))
+            import llm_router
+            llm_router.load_keys_from_json()
+            fleet_resp = llm_router.ask(full_prompt, preferred_tier="free", task_type=task_type or "chat")
+            if fleet_resp and fleet_resp.content:
+                _log(f"GEMINI_FALLBACK_FLEET | provider={fleet_resp.provider}")
+                yield fleet_resp.content
+                return
+        except Exception as fe:
+            _log(f"FLEET_FALLBACK_ERROR | {fe}")
+        yield "I'm having a little trouble connecting right now. Could you try again in a moment?"
 
 
 # === TIER 5: CLAUDE API (PAID) ===
@@ -1020,7 +1155,8 @@ def process_command_stream(prompt: str, persona: str = "Willow",
 
     # Build full system prompt with context
     persona_prompt = PERSONAS.get(persona, PERSONAS.get("Willow", "You are Willow, a helpful AI assistant."))
-    user_context = load_user_profile(user)
+    is_consumer_local = persona in _CONSUMER_PERSONAS or persona.startswith("NASA_")
+    user_context = "" if is_consumer_local else load_user_profile(user)
 
     # Use pre-fetched context if provided, otherwise search (for direct calls)
     if retrieved_context is None:
@@ -1090,7 +1226,8 @@ Remember: Keep responses concise. CPU inference is slow. No hallucination. If yo
 
 
 def process_smart_stream(prompt: str, persona: str = "Willow",
-                          user: str = DEFAULT_USER, force_tier: int = None):
+                          user: str = DEFAULT_USER, force_tier: int = None,
+                          task_type: str = None):
     """
     Smart streaming: Routes prompt to appropriate model tier.
 
@@ -1104,6 +1241,9 @@ def process_smart_stream(prompt: str, persona: str = "Willow",
 
     SAFE: Same constraints as other process functions.
     """
+    # Consumer personas don't see tier/routing info
+    _hide_tier = persona in _CONSUMER_PERSONAS or persona.startswith("NASA_")
+
     # Use forced tier if provided (e.g., from lounge continuation)
     if force_tier is not None:
         tier = force_tier
@@ -1119,20 +1259,14 @@ def process_smart_stream(prompt: str, persona: str = "Willow",
     # Skip RAG entirely if tier was forced (caller knows what they want)
     retrieved = ""
     if force_tier is None:
-        # Check if this looks like a retrieval/knowledge question
-        keywords = extract_keywords(prompt)
-        retrieval_signals = ["history", "remember", "discussed", "said", "mentioned", "last time", "previous", "earlier"]
-        is_retrieval_query = any(kw in retrieval_signals for kw in keywords)
-
-        # Inject RAG context if retrieval query (works with any tier including Gemini)
-        if not is_casual and is_retrieval_query:
-            retrieved = search_knowledge(prompt)
-            if retrieved and len(retrieved) > 300:
-                _log(f"RAG_INJECT | retrieval query, adding context to tier {tier}")
-        elif is_casual:
+        if is_casual:
             _log(f"TIER_CASUAL | casual question at Tier {tier}, skipping RAG")
         else:
-            _log(f"TIER_NORMAL | message at Tier {tier}")
+            retrieved = search_knowledge(prompt)
+            if retrieved and len(retrieved) > 300:
+                _log(f"RAG_INJECT | grounding context added for tier {tier}")
+            else:
+                _log(f"TIER_NORMAL | no matching context found, tier {tier}")
 
     tier_info = MODEL_TIERS.get(tier, {})
 
@@ -1142,13 +1276,16 @@ def process_smart_stream(prompt: str, persona: str = "Willow",
             _log("TIER5_FALLBACK | Claude not configured, falling back to Tier 4 (Gemini)")
             tier = 4
             tier_info = MODEL_TIERS.get(tier, {})
-            yield f"[Tier 5 requested but Claude not configured — falling back to Tier 4 (Gemini)]\n"
+            if not _hide_tier:
+                yield f"[Tier 5 requested but Claude not configured — falling back to Tier 4 (Gemini)]\n"
             # Fall through to Tier 4 handling below
         else:
-            yield f"[Tier 5: {tier_info.get('desc', 'Paid API')}] Using paid Claude API\n"
+            if not _hide_tier:
+                yield f"[Tier 5: {tier_info.get('desc', 'Paid API')}] Using paid Claude API\n"
 
             persona_prompt = PERSONAS.get(persona, PERSONAS.get("Willow", "You are Willow, a helpful AI assistant."))
-            user_context = load_user_profile(user)
+            is_consumer_t5 = persona in _CONSUMER_PERSONAS or persona.startswith("NASA_")
+            user_context = "" if is_consumer_t5 else load_user_profile(user)
 
             full_system_prompt = f"""{build_system_context(persona)}
 
@@ -1170,13 +1307,16 @@ Remember: You are being called via paid API because the user explicitly requeste
             _log("TIER4_FALLBACK | Gemini not configured, falling back to Tier 3 (local)")
             tier = 3
             tier_info = MODEL_TIERS.get(tier, {})
-            yield f"[Tier 4 requested but Gemini not configured — falling back to Tier 3]\n"
+            if not _hide_tier:
+                yield f"[Tier 4 requested but Gemini not configured — falling back to Tier 3]\n"
             # Fall through to local tiers below
         else:
-            yield f"[Tier 4: {tier_info.get('desc', 'Gemini')}]\n"
+            if not _hide_tier:
+                yield f"[Tier 4: {tier_info.get('desc', 'Gemini')}]\n"
 
             persona_prompt = PERSONAS.get(persona, PERSONAS.get("Willow", "You are Willow, a helpful AI assistant."))
-            user_context = load_user_profile(user)
+            is_consumer = persona in _CONSUMER_PERSONAS or persona.startswith("NASA_")
+            user_context = "" if is_consumer else load_user_profile(user)
 
             full_system_prompt = f"""{build_system_context(persona)}
 
@@ -1195,9 +1335,9 @@ Remember: Keep responses thorough but efficient. You are Gemini 2.5 Flash handli
     # === TIERS 1-3: LOCAL OLLAMA ===
     model = get_model_for_tier(tier)
 
-    # Emit tier notification
-    tier_msg = f"[Tier {tier}: {tier_info.get('desc', model)}]\n"
-    yield tier_msg
+    # Emit tier notification (hidden for consumer personas)
+    if not _hide_tier:
+        yield f"[Tier {tier}: {tier_info.get('desc', model)}]\n"
 
     # Stream the actual response (pass retrieved context to avoid double-search)
     for chunk in process_command_stream(prompt, persona=persona, model=model, user=user, retrieved_context=retrieved):

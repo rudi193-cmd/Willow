@@ -16,7 +16,7 @@ CHECKSUM: ΔΣ=42
 import re
 import glob as glob_module
 import subprocess
-from core import shell_adapter
+from core import shell_adapter, loam
 import requests
 from pathlib import Path
 from dataclasses import dataclass

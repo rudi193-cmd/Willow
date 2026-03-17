@@ -19,6 +19,12 @@
   --pencil-ghost: rgba(44, 44, 44, 0.05);
   --coherence-stable: #4a90d9;
   --coherence-regen: #d4a017;
+
+  /* Warm 1.4 palette */
+  --bark: #6b5b4e;
+  --leaf: #7a9a6d;
+  --cream: #f5f0e8;
+  --bark-faint: rgba(107, 91, 78, 0.15);
 }
 
 * {
@@ -61,6 +67,50 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--pencil-faint);
   border-radius: 2px;
+}
+
+/* Journal — lined paper behind chat */
+.journal-page {
+  background:
+    /* Horizontal ruled lines */
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 31px,
+      rgba(107, 91, 78, 0.10) 31px,
+      rgba(107, 91, 78, 0.10) 32px
+    ),
+    /* Red margin line */
+    linear-gradient(
+      to right,
+      transparent 71px,
+      rgba(180, 80, 70, 0.20) 71px,
+      rgba(180, 80, 70, 0.20) 72px,
+      transparent 72px
+    ),
+    /* Paper base */
+    var(--page);
+  background-attachment: local, local, scroll;
+}
+
+/* Content area — pushed right of the margin line */
+.journal-content {
+  padding-left: 88px;
+  padding-right: 32px;
+}
+
+@media (min-width: 768px) {
+  .journal-content {
+    padding-left: 96px;
+    padding-right: 48px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .journal-content {
+    padding-left: 104px;
+    padding-right: 64px;
+  }
 }
 
 /* Drop zone active state */

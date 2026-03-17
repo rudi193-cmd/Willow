@@ -1,65 +1,69 @@
 """
-shiva_db.py — Shiva's SQLite layer
-====================================
+shiva_db.py — Shiva's Postgres layer
+======================================
 Shiva owns this db. Willow access only via Pigeon bus — never direct.
 
-Tables:
-  journal_sessions  — full conversation records
-  nodes             — knowledge atoms extracted from sessions
-  errors            — error tracking (pre-existing)
-  corrections       — principle learning (pre-existing)
+Tables (in active user schema):
+  shiva_journal_sessions  — full conversation records
+  shiva_nodes             — knowledge atoms extracted from sessions
 
 ΔΣ=42
 """
 
-import sqlite3
 import threading
 from datetime import datetime, timezone
-from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent.parent / "shiva_memory" / "shiva.db"
+from core.db import get_connection
 
 _lock = threading.Lock()
 
 
-def _conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+def _conn():
+    conn = get_connection()
     return conn
 
 
 def init_db():
-    """Run migrations. Safe to call on every startup."""
+    """Ensure Shiva tables exist in Postgres. Safe to call on every startup."""
     with _lock:
         conn = _conn()
         try:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS journal_sessions (
-                    id           TEXT PRIMARY KEY,
-                    username     TEXT NOT NULL,
-                    started_at   TEXT NOT NULL,
-                    saved_at     TEXT NOT NULL,
-                    turn_count   INTEGER DEFAULT 0,
-                    content      TEXT NOT NULL,
-                    atoms_done   INTEGER DEFAULT 0
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_js_username
-                    ON journal_sessions(username);
-
-                CREATE INDEX IF NOT EXISTS idx_js_atoms
-                    ON journal_sessions(atoms_done);
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS shiva_journal_sessions (
+                    id         TEXT PRIMARY KEY,
+                    username   TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    saved_at   TEXT NOT NULL,
+                    turn_count INTEGER DEFAULT 0,
+                    content    TEXT NOT NULL,
+                    atoms_done INTEGER DEFAULT 0
+                )
             """)
-
-            # Add pigeon_synced to nodes if missing (migration)
-            cols = [r[1] for r in conn.execute("PRAGMA table_info(nodes)").fetchall()]
-            if "pigeon_synced" not in cols:
-                conn.execute("ALTER TABLE nodes ADD COLUMN pigeon_synced INTEGER DEFAULT 0")
-            if "session_id" not in cols:
-                conn.execute("ALTER TABLE nodes ADD COLUMN session_id TEXT")
-
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sjs_username
+                    ON shiva_journal_sessions(username)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sjs_atoms
+                    ON shiva_journal_sessions(atoms_done)
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS shiva_nodes (
+                    id            SERIAL PRIMARY KEY,
+                    username      TEXT NOT NULL,
+                    domain        TEXT,
+                    depth         TEXT,
+                    temporal      TEXT,
+                    content       TEXT,
+                    source        TEXT,
+                    session_id    TEXT,
+                    created_at    TEXT,
+                    updated_at    TEXT,
+                    is_deleted    INTEGER DEFAULT 0,
+                    is_sensitive  INTEGER DEFAULT 0,
+                    pigeon_synced INTEGER DEFAULT 0
+                )
+            """)
             conn.commit()
         finally:
             conn.close()
@@ -76,7 +80,7 @@ def save_session(session_id: str, username: str, started_ms: int,
         conn = _conn()
         try:
             conn.execute("""
-                INSERT INTO journal_sessions
+                INSERT INTO shiva_journal_sessions
                     (id, username, started_at, saved_at, turn_count, content, atoms_done)
                 VALUES (?, ?, ?, ?, ?, ?, 0)
                 ON CONFLICT(id) DO UPDATE SET
@@ -100,7 +104,7 @@ def get_pending_extraction() -> list:
         conn = _conn()
         try:
             rows = conn.execute(
-                "SELECT * FROM journal_sessions WHERE atoms_done = 0 ORDER BY saved_at"
+                "SELECT * FROM shiva_journal_sessions WHERE atoms_done = 0 ORDER BY saved_at"
             ).fetchall()
             return [dict(r) for r in rows]
         finally:
@@ -111,7 +115,7 @@ def mark_atoms_done(session_id: str):
     with _lock:
         conn = _conn()
         try:
-            conn.execute("UPDATE journal_sessions SET atoms_done=1 WHERE id=?", (session_id,))
+            conn.execute("UPDATE shiva_journal_sessions SET atoms_done=1 WHERE id=?", (session_id,))
             conn.commit()
         finally:
             conn.close()
@@ -129,7 +133,7 @@ def insert_node(username: str, domain: str, content: str,
         conn = _conn()
         try:
             cur = conn.execute("""
-                INSERT INTO nodes
+                INSERT INTO shiva_nodes
                     (username, domain, depth, temporal, content, source, session_id,
                      created_at, updated_at, pigeon_synced)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
@@ -146,7 +150,7 @@ def get_unsynced_nodes(limit: int = 50) -> list:
         conn = _conn()
         try:
             rows = conn.execute("""
-                SELECT * FROM nodes
+                SELECT * FROM shiva_nodes
                 WHERE pigeon_synced = 0 AND is_deleted = 0
                 ORDER BY created_at
                 LIMIT ?
@@ -165,7 +169,7 @@ def mark_synced(node_ids: list):
         conn = _conn()
         try:
             conn.execute(
-                f"UPDATE nodes SET pigeon_synced=1 WHERE id IN ({placeholders})",
+                f"UPDATE shiva_nodes SET pigeon_synced=1 WHERE id IN ({placeholders})",
                 node_ids
             )
             conn.commit()

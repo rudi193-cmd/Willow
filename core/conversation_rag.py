@@ -11,7 +11,6 @@ GOVERNANCE: 100% local. No data leaves machine.
 CHECKSUM: ΔΣ=42
 """
 
-import sqlite3
 import json
 import os
 import hashlib

@@ -33,6 +33,11 @@ from core import loam, embeddings
 
 log = logging.getLogger("topology")
 
+# Entities linked to more items than this are too ubiquitous to carry
+# meaningful signal (e.g. "Sean", "Willow").  Skip them to avoid N*(N-1)/2
+# edge explosion.  Adjustable per deployment.
+MAX_ENTITY_FANOUT = 500
+
 
 # =========================================================================
 # TABLE INIT
@@ -101,6 +106,16 @@ def build_edges(username: str, batch_size: int = 50) -> int:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         created = 0
 
+        # Log mega-entities being skipped by the fanout guard
+        mega = cur.execute("""
+            SELECT e.name, COUNT(*) as cnt FROM entities e
+            JOIN knowledge_entities ke ON ke.entity_id = e.id
+            GROUP BY e.name HAVING COUNT(*) > ?
+            ORDER BY cnt DESC
+        """, (MAX_ENTITY_FANOUT,)).fetchall()
+        for ename, ecnt in mega:
+            log.info(f"Skipping entity {ename} (linked to {ecnt} items, exceeds fanout limit {MAX_ENTITY_FANOUT})")
+
         # Get atoms without edges yet
         atoms = cur.execute("""
             SELECT k.id, k.category, k.created_at, k.embedding, k.ring, k.title, k.content_snippet
@@ -115,14 +130,22 @@ def build_edges(username: str, batch_size: int = 50) -> int:
         for atom_id, category, created_at, emb, ring, title, snippet in atoms:
 
             # 1. Shared entity edges — JOIN to knowledge guards against orphaned knowledge_entities rows
+            #    Cardinality guard: exclude entities linked to > MAX_ENTITY_FANOUT items
+            #    to prevent quadratic edge explosion on mega-entities.
             shared = cur.execute("""
                 SELECT ke2.knowledge_id, COUNT(*) as cnt
                 FROM knowledge_entities ke1
                 JOIN knowledge_entities ke2 ON ke1.entity_id = ke2.entity_id
                 JOIN knowledge k ON k.id = ke2.knowledge_id
+                JOIN entities e ON e.id = ke1.entity_id
                 WHERE ke1.knowledge_id = ? AND ke2.knowledge_id != ?
-                GROUP BY ke2.knowledge_id HAVING cnt >= 2
-            """, (atom_id, atom_id)).fetchall()
+                  AND e.never_promote = 0
+                  AND ke1.entity_id NOT IN (
+                      SELECT entity_id FROM knowledge_entities
+                      GROUP BY entity_id HAVING COUNT(*) > ?
+                  )
+                GROUP BY ke2.knowledge_id HAVING COUNT(*) >= 2
+            """, (atom_id, atom_id, MAX_ENTITY_FANOUT)).fetchall()
 
             for target_id, cnt in shared:
                 w = min(1.0, cnt / 5.0)
@@ -167,12 +190,17 @@ def build_edges(username: str, batch_size: int = 50) -> int:
             # 4. Ring flow edges
             next_ring = {"source": "bridge", "bridge": "continuity", "continuity": "source"}.get(ring)
             if next_ring:
-                # Get this atom's entity names
+                # Get this atom's entity names (excluding mega-entities)
                 ent_names = [r[0] for r in cur.execute("""
                     SELECT e.name FROM entities e
                     JOIN knowledge_entities ke ON ke.entity_id = e.id
                     WHERE ke.knowledge_id = ?
-                """, (atom_id,)).fetchall()]
+                      AND e.never_promote = 0
+                      AND ke.entity_id NOT IN (
+                          SELECT entity_id FROM knowledge_entities
+                          GROUP BY entity_id HAVING COUNT(*) > ?
+                      )
+                """, (atom_id, MAX_ENTITY_FANOUT)).fetchall()]
 
                 if ent_names:
                     candidates = cur.execute(
@@ -190,9 +218,85 @@ def build_edges(username: str, batch_size: int = 50) -> int:
 
         conn.commit()
         log.info(f"Built {created} edges for {len(atoms)} atoms")
+
+        # ΔΣ: Register gaps for weak edges (post-commit, best-effort)
+        try:
+            _register_edge_gaps(conn, username, now)
+        except Exception as e:
+            log.warning(f"Edge gap registration failed (non-fatal): {e}")
+
         return created
     finally:
         conn.close()
+
+
+def _register_edge_gaps(conn, username: str, now: str):
+    """Register acknowledged unknowns on weak edges. ΔΣ = Σ(Δᵢ)."""
+    cur = conn.cursor()
+
+    # Temporal edges (weight 0.5) — co-occurrence only, no semantic link
+    temporal_edges = cur.execute("""
+        SELECT id FROM knowledge_edges
+        WHERE edge_type = 'temporal' AND weight <= 0.5
+        AND id NOT IN (SELECT edge_id FROM edge_gaps)
+        LIMIT 100
+    """).fetchall()
+    for (eid,) in temporal_edges:
+        try:
+            cur.execute(
+                """INSERT INTO edge_gaps (edge_id, gap_text, gap_type, specificity,
+                       registered_by, registered_at)
+                   VALUES (?, 'Temporal co-occurrence only — no entity or semantic link',
+                           'temporal_only', 0.7, 'topology_builder', ?)
+                   ON CONFLICT(edge_id, gap_text) DO NOTHING""",
+                (eid, now)
+            )
+        except Exception:
+            pass
+
+    # Semantic edges below high-confidence threshold
+    weak_semantic = cur.execute("""
+        SELECT id, weight FROM knowledge_edges
+        WHERE edge_type = 'semantic_similar' AND weight < 0.80
+        AND id NOT IN (SELECT edge_id FROM edge_gaps)
+        LIMIT 100
+    """).fetchall()
+    for eid, w in weak_semantic:
+        try:
+            cur.execute(
+                """INSERT INTO edge_gaps (edge_id, gap_text, gap_type, specificity,
+                       registered_by, registered_at)
+                   VALUES (?, ?, 'weak_evidence', 0.8, 'topology_builder', ?)
+                   ON CONFLICT(edge_id, gap_text) DO NOTHING""",
+                (eid, f'Similarity score {w:.3f} — below high-confidence threshold (0.80)', now)
+            )
+        except Exception:
+            pass
+
+    # Ring flow edges — inferred from text mention, not structural link
+    inferred_flow = cur.execute("""
+        SELECT id FROM knowledge_edges
+        WHERE edge_type = 'ring_flow'
+        AND id NOT IN (SELECT edge_id FROM edge_gaps)
+        LIMIT 100
+    """).fetchall()
+    for (eid,) in inferred_flow:
+        try:
+            cur.execute(
+                """INSERT INTO edge_gaps (edge_id, gap_text, gap_type, specificity,
+                       registered_by, registered_at)
+                   VALUES (?, 'Flow inferred from text mention, not structural link',
+                           'inferred_not_stated', 0.6, 'topology_builder', ?)
+                   ON CONFLICT(edge_id, gap_text) DO NOTHING""",
+                (eid, now)
+            )
+        except Exception:
+            pass
+
+    conn.commit()
+    gap_count = len(temporal_edges) + len(weak_semantic) + len(inferred_flow)
+    if gap_count > 0:
+        log.info(f"ΔΣ: Registered {gap_count} edge gaps (temporal={len(temporal_edges)}, weak_semantic={len(weak_semantic)}, flow={len(inferred_flow)})")
 
 
 # =========================================================================
@@ -290,7 +394,7 @@ def zoom(username: str, node_id: int, depth: int = 1) -> Dict:
     """Traverse the topology from a single atom."""
     loam.init_db(username)
     conn = loam._connect(username)
-    conn.row_factory = sqlite3.Row
+    # row_factory handled by db.py
     cur = conn.cursor()
 
     atom = cur.execute(
@@ -353,7 +457,7 @@ def check_strip_continuity(username: str) -> Dict:
     """Find atoms stuck in one ring — gaps in the Möbius strip."""
     loam.init_db(username)
     conn = loam._connect(username)
-    conn.row_factory = sqlite3.Row
+    # row_factory handled by db.py
     cur = conn.cursor()
     _init_tables(conn)
 

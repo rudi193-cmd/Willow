@@ -1,5 +1,4 @@
 from core.db import get_connection
-import sqlite3
 from collections import defaultdict
 from pathlib import Path
 

@@ -1,0 +1,105 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-16T22:30:00-06:00
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Add structured task dispatch for agents. Two changes:
+
+1. **Task dispatch endpoint** (`/api/dispatch/{name}`) — agents execute tools directly without fleet LLM calls. Structured input (tool + params), structured output (result + status). All executions logged to Postgres `tasks` + `task_log` tables.
+
+2. **Local embedding tool** (`tools/embed_corpus.py`) — 384-dim sentence-transformer embeddings for all knowledge atoms. Semantic search, backfill, similarity edges. 100% local, zero cloud tokens. Already running — 15,661 atoms embedded.
+
+### Why
+
+The current `/api/agent-chat/{name}` endpoint routes everything through the fleet LLM to generate a conversational response — even when the instruction is "run this Python script." Kart doesn't need a conversation to execute `embed_corpus.py`. He needs a task struct and direct execution.
+
+Three modes now exist:
+- **Route** (front side): User -> Willow -> Agent. Chat interface. `/api/agent-chat/{name}`
+- **Dispatch** (back side): Willow -> Agent. Task interface. `/api/dispatch/{name}`
+- **Query** (back side): Direct DB search. `/api/dispatch/{name}` with `knowledge_search` tool
+
+### Tool Registry
+
+Tools registered at startup, callable via `POST /api/dispatch/{name}`:
+
+| Tool | Function | Source |
+|------|----------|--------|
+| `embed_search` | Semantic search against corpus | `tools/embed_corpus.py` |
+| `embed_corpus` | Embed all unembedded atoms | `tools/embed_corpus.py` |
+| `embed_backfill` | Find similar atoms, create edges | `tools/embed_corpus.py` |
+| `enrich_queue` | OCR enrichment for review queue | `core/ocr_consumer.py` |
+| `score_screenshots` | Importance scoring for screenshots | `core/ocr_consumer.py` |
+| `promote_entities` | Entity layer 1->2 promotion | `core/loam.py` |
+| `build_edges` | Topology edge building | `core/topology.py` |
+| `pigeon_scan` | Nest scan and processing | `core/pigeon.py` |
+| `knowledge_search` | Keyword search (no fleet) | `core/db.py` |
+
+## Proposed Changes
+
+### File: server.py
+
+Change from:
+```python
+    return {"agent": name, "response": response_text, "ok": True}
+
+
+# --- Agent Chain / Conf Call Endpoint ---
+```
+
+To:
+```python
+    return {"agent": name, "response": response_text, "ok": True}
+
+
+# --- Agent Task Dispatch (structured, no fleet call) ---
+
+# Tool registry: tool_name -> (callable, description)
+_AGENT_TOOLS = {}
+
+def _register_tools():
+    """Register available local tools for agent dispatch."""
+    # [9 tools registered from embed_corpus, ocr_consumer, loam, topology, pigeon, db]
+
+_register_tools()
+
+@app.get("/api/dispatch/tools")
+def agent_tools_list():
+    """List available tools for agent task dispatch."""
+
+@app.post("/api/dispatch/{name}")
+async def agent_task_dispatch(name: str, request: Request):
+    """
+    Structured task dispatch. No fleet call. No conversation.
+    Body: {"tool": "embed_search", "params": {"query": "...", "limit": 10}}
+    Returns: {"agent": name, "tool": tool, "result": {...}, "ok": True, "task_id": "..."}
+    """
+    # Creates task record in Postgres, executes tool, logs result
+
+
+# --- Agent Chain / Conf Call Endpoint ---
+```
+
+### File: tools/embed_corpus.py
+
+New file. Local embedding job using sentence-transformers (all-MiniLM-L6-v2, 384-dim).
+
+Functions:
+- `embed_corpus(reembed_all)` — batch embed all atoms, stores as bytea in knowledge.embedding
+- `search(query, limit, min_score)` — cosine similarity semantic search
+- `backfill_similar(atom_id, ...)` — find similar atoms, optionally create edges
+
+CLI: `python tools/embed_corpus.py --search "query"` / `--backfill ATOM_ID` / `--all`
+
+## Rationale
+
+Willow's backend agents need structured task execution, not conversation. The chat endpoint forces a fleet LLM call for every backend operation. The dispatch endpoint executes tools directly — zero cloud tokens for operations that are 100% local (embedding, OCR, topology, pigeon scan).
+
+The embedding tool gives Willow semantic search over her own corpus. Combined with dispatch, Kart can search, embed, build edges, and promote entities without a single fleet call.
+
+## Risk Assessment
+  Risk Level: LOW
+  Reversible: YES (endpoint removal is a single edit, embeddings are additive)
+  Dependencies: sentence-transformers (already installed), numpy (already installed)
+  Breaking Changes: None — new endpoints only, no existing behavior modified

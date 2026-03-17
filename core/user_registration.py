@@ -1,5 +1,4 @@
 import sys
-import sqlite3
 import argparse
 import json
 from pathlib import Path
@@ -21,35 +20,9 @@ def create_user_dirs(username: str) -> None:
 
 
 def init_user_knowledge_db(username: str) -> None:
-    """Create willow_knowledge.db with the production schema (lattice columns included)."""
-    db_path = WILLOW_ROOT / "artifacts" / username / "willow_knowledge.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA busy_timeout=10000")
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS knowledge (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_type     TEXT NOT NULL,
-            source_id       TEXT NOT NULL UNIQUE,
-            title           TEXT,
-            summary         TEXT,
-            content_snippet TEXT,
-            category        TEXT DEFAULT 'reference',
-            ring            TEXT DEFAULT 'bridge',
-            created_at      TEXT,
-            lattice_domain  TEXT,
-            lattice_type    TEXT,
-            lattice_status  TEXT
-        )
-    """)
-    conn.execute("""
-        CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts
-        USING fts5(title, summary, content_snippet, content='knowledge', content_rowid='id')
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_source_id ON knowledge(source_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_lattice ON knowledge(lattice_domain, lattice_type, lattice_status)")
-    conn.commit()
-    conn.close()
+    """Ensure user has a Postgres schema. Schema tables created by pg_schema.sql."""
+    from core.db import init_user_schema
+    init_user_schema(username)
 
 
 def create_user_config(username: str, display_name: str, trust_level: int) -> dict:

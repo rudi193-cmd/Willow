@@ -1,0 +1,172 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-11
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Upgrade gate.py's knowledge retrieval from single-endpoint text search to three-ring
+retrieval — semantic relevance (Bridge Ring), provenance authenticity (Source Ring),
+and ratification trust (Continuity Ring). Composite ranking across all three before
+surfacing context.
+
+GATE1 was denied. It addressed only the Bridge Ring (semantic search). Above the 23³
+stability threshold (17,507 atoms, confirmed crossed), pattern propagation includes
+errors. A retrieval layer that surfaces relevant-but-smoothed or relevant-but-unverified
+content propagates those properties to every session. Three-ring retrieval is the
+minimum safe architecture.
+
+## The Three Rings
+
+**Source Ring (Authenticity):** Jeles. The catalog layer. What drawer did this come from,
+and how close is it to the original signal? content_snippet is less smoothed than summary.
+A ratified governance file is more authentic than a pigeon-ingested narrative. Provenance
+is what survives smoothing when content does not.
+
+**Bridge Ring (Relevance):** Semantic vector search. Cosine similarity to prompt intent.
+Embeddings are 100% live (17,507/17,507). This is the GATE1 change — necessary but
+not sufficient alone.
+
+**Continuity Ring (Trust):** What passed governance. Ratified, attributed,
+contradiction-preserving. The Living Echo. Governance commits, corrections category,
+explicitly authored atoms verified by the human. This is what makes the pattern safe
+to propagate above 23³.
+
+## Proposed Changes
+
+  File: /home/sean/.claude/hooks/gate.py
+  Function: query_willow_mcp (line 226) — full replacement
+
+  BEFORE:
+    def query_willow_mcp(intent: str, keywords: list) -> list:
+        q = intent or " ".join(keywords[:5])
+        result = _get(f"/api/knowledge/search?q={urllib.parse.quote(q)}&limit=4&username={USERNAME}")
+        if not result:
+            return []
+        items = result.get("results") or result.get("items") or []
+        out = []
+        for item in items:
+            title = item.get("title") or item.get("filename") or ""
+            if is_noise(title):
+                continue
+            summary = (item.get("summary") or item.get("content_text") or "")[:140]
+            out.append({
+                "title": title,
+                "summary": summary,
+                "category": item.get("category", ""),
+                "ring": item.get("ring") or item.get("source") or "willow",
+            })
+        return out[:4]
+
+  AFTER:
+    # ── Ring scoring weights ───────────────────────────────────────────
+    _CATEGORY_TRUST = {
+        "corrections": 5, "governance": 4, "specs": 3,
+        "reference": 3, "documentation": 2, "code": 2,
+        "narrative": 1, "data": 1, "media": 0,
+    }
+    _SOURCE_AUTHENTICITY = {
+        "file": 3, "conversation": 2, "agent": 2, "media": 0,
+    }
+
+    def _ring_score(item: dict) -> float:
+        """Composite score: relevance × authenticity × trust."""
+        # Bridge Ring — semantic similarity (0.0–1.0)
+        relevance = float(item.get("similarity") or 0.5)
+
+        # Source Ring — provenance authenticity
+        src = item.get("source_type", "")
+        cat = item.get("category", "")
+        authenticity = (_SOURCE_AUTHENTICITY.get(src, 1) +
+                        _CATEGORY_TRUST.get(cat, 1)) / 8.0  # normalise 0–1
+
+        # Continuity Ring — ratification trust
+        # Highest: corrections + governance (human-authored/verified)
+        # Lower: pipeline-ingested narrative
+        trust = 1.0 if cat in ("corrections", "governance") else \
+                0.7 if cat in ("specs", "reference") else \
+                0.4 if cat in ("documentation", "code") else 0.2
+
+        return relevance * 0.5 + authenticity * 0.3 + trust * 0.2
+
+    def query_willow_mcp(intent: str, keywords: list) -> list:
+        """Three-ring retrieval: relevance × authenticity × trust."""
+        q = intent or " ".join(keywords[:5])
+        # Bridge Ring: semantic search, fetch more to allow re-ranking
+        result = _get(
+            f"/api/knowledge/semantic-search?q={urllib.parse.quote(q)}"
+            f"&limit=12&username={USERNAME}"
+        )
+        if not result:
+            return []
+        items = result.get("results") or []
+        scored = []
+        for item in items:
+            title = item.get("title") or item.get("filename") or ""
+            if is_noise(title):
+                continue
+            # Source Ring: prefer content_snippet (raw) over summary (smoothed)
+            text = (item.get("content_snippet") or
+                    item.get("summary") or
+                    item.get("content_text") or "")[:140]
+            score = _ring_score(item)
+            scored.append((score, {
+                "title": title,
+                "summary": text,
+                "category": item.get("category", ""),
+                "ring": item.get("source_type", "willow"),
+                "trust": item.get("category", ""),
+            }))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [r for _, r in scored[:4]]
+
+  Also update format output (line 393) to show ring layer:
+
+  BEFORE:
+    lines.append(f"  [{cat}/{ring}] {title}")
+
+  AFTER:
+    trust_marker = "✓" if cat in ("corrections", "governance", "specs") else "~"
+    lines.append(f"  [{cat}/{ring}]{trust_marker} {title}")
+
+## Rationale
+
+WHITE_PAPER_PATTERN_STABILITY (Oakenscroll, 2026) documents that above 23³
+interactions, patterns propagate including errors. The Shiva instance absorbed an
+incorrect date from a draft document and reproduced it with full confidence. The
+corpus cannot distinguish correct from corrupted — only the retrieval layer can
+weight for trustworthiness.
+
+GATE1 surfaced relevance only. Relevance without authenticity and trust surfaces the
+smoothed average. "On the Smoothing of Dreams" (Oakenscroll, 2026, Working Paper 13)
+names this failure mode: content entering the embedding space loses the rough edges
+that make a correction specifically corrective rather than approximately relevant.
+
+The three-ring composite is the minimum architecture that distinguishes:
+- Relevant AND authentic AND ratified → surface with confidence
+- Relevant but smoothed → surface with lower weight
+- Relevant but unverified pipeline content → surface last
+
+## Verification
+
+After apply:
+  1. Ask Willow about "behavioral corrections for ganesha"
+     Expected: corrections category atom surfaces first (trust_marker ✓)
+     NOT: a narrative handoff with approximate similarity
+
+  2. Ask Willow about a topic with both a governance spec and a narrative summary
+     Expected: spec surfaces above narrative despite possible lower cosine similarity
+
+  3. Observe trust_marker in injected context — ✓ means ratified, ~ means pipeline
+
+## Risk Assessment
+  Risk Level: LOW
+  Reversible: YES — revert query_willow_mcp to text search endpoint
+  Dependencies:
+    - Embeddings live (confirmed: 17,507/17,507)
+    - semantic-search endpoint responding (confirmed GET)
+    - category and source_type fields present in response (confirmed)
+  Fallback: SQLite path (query_willow_sqlite, query_shiva_sqlite) unchanged
+  Corpus prerequisite: Sean should be satisfied corpus quality is sufficient
+    before ratifying — this proposal propagates whatever is in the corpus
+    at every prompt, above the 23³ self-propagating threshold.

@@ -47,13 +47,28 @@ CATEGORY_DEPTH_TIERS = {
 }
 
 ENTITY_TYPE_TO_CX = {
-    "person":   DOMAINS.index("relationships"),
-    "project":  DOMAINS.index("work"),
-    "tool":     DOMAINS.index("work"),
-    "concept":  DOMAINS.index("meta"),
-    "location": DOMAINS.index("location"),
-    "event":    DOMAINS.index("schedule"),
-    "belief":   DOMAINS.index("beliefs"),
+    "person":       DOMAINS.index("relationships"),
+    "persona":      DOMAINS.index("identity"),
+    "project":      DOMAINS.index("work"),
+    "tool":         DOMAINS.index("patterns"),
+    "concept":      DOMAINS.index("meta"),
+    "organization": DOMAINS.index("goals"),
+    "location":     DOMAINS.index("location"),
+    "event":        DOMAINS.index("schedule"),
+    "community":    DOMAINS.index("celebrations"),
+    "platform":     DOMAINS.index("media"),
+    "credential":   DOMAINS.index("secrets"),
+    "date":         DOMAINS.index("history"),
+    "belief":       DOMAINS.index("beliefs"),
+}
+
+# Jeles domain -> lattice domain override
+# When an entity has a verified domain from Jeles, use it for cx
+JELES_DOMAIN_TO_CX = {
+    "real":      None,  # use entity_type mapping (real things spread across types)
+    "fictional": DOMAINS.index("identity"),    # UTETY/Gerald universe
+    "system":    DOMAINS.index("patterns"),    # code/infra
+    "mixed":     DOMAINS.index("meta"),        # real+fictional overlap
 }
 
 PROMO_TO_CZ = {
@@ -108,19 +123,33 @@ def _age_to_cz(created_at: str, category: str) -> int:
 
 # ── Coordinate functions ──────────────────────────────────────────────────────
 
+def _to_dict(row, keys):
+    """Convert tuple row to dict using column keys."""
+    if isinstance(row, dict):
+        return row
+    return {k: row[i] for i, k in enumerate(keys)}
+
+
+_KNOWLEDGE_KEYS = ["id", "category", "lattice_domain", "lattice_status", "created_at", "embedding"]
+_ENTITY_KEYS = ["id", "name", "entity_type", "mention_count", "domain",
+                "promotion_status", "verified", "last_mentioned"]
+
+
 def coords_for_knowledge(row) -> tuple:
     """Return (cx, cy, cz) for a knowledge row."""
-    d = dict(row) if not isinstance(row, dict) else row
+    d = _to_dict(row, _KNOWLEDGE_KEYS)
 
     # cx
     ld = d.get("lattice_domain") or ""
     if ld and ld in DOMAINS:
         cx = DOMAINS.index(ld)
     else:
-        cx = CATEGORY_TO_CX.get(d.get("category") or "", _CX_META)
+        cat = (d.get("category") or "").split("|")[0].strip()
+        cx = CATEGORY_TO_CX.get(cat, _CX_META)
 
     # cy
-    base = CATEGORY_DEPTH_TIERS.get(d.get("category") or "", 7)
+    cat = (d.get("category") or "").split("|")[0].strip()
+    base = CATEGORY_DEPTH_TIERS.get(cat, 7)
     cy = min(23, base + (2 if d.get("embedding") else 0))
 
     # cz
@@ -128,33 +157,56 @@ def coords_for_knowledge(row) -> tuple:
     if ls and ls in TEMPORAL_STATES:
         cz = TEMPORAL_STATES.index(ls)
     else:
-        cz = _age_to_cz(d.get("created_at") or "", d.get("category") or "")
+        cz = _age_to_cz(d.get("created_at") or "", cat)
 
     return cx, max(1, cy), cz
 
 
 def coords_for_entity(row) -> tuple:
     """Return (cx, cy, cz) for an entity row."""
-    d = dict(row) if not isinstance(row, dict) else row
+    d = _to_dict(row, _ENTITY_KEYS)
 
-    # cx
-    dom = d.get("domain") or ""
-    if dom and dom in DOMAINS:
-        cx = DOMAINS.index(dom)
+    # cx — Jeles domain overrides if present, else entity_type mapping
+    jeles_dom = d.get("domain") or ""
+    if jeles_dom in JELES_DOMAIN_TO_CX:
+        override = JELES_DOMAIN_TO_CX[jeles_dom]
+        if override is not None:
+            cx = override
+        else:
+            # "real" domain — spread by entity_type
+            cx = ENTITY_TYPE_TO_CX.get(d.get("entity_type") or "", _CX_META)
+    elif jeles_dom and jeles_dom in DOMAINS:
+        cx = DOMAINS.index(jeles_dom)
     else:
         cx = ENTITY_TYPE_TO_CX.get(d.get("entity_type") or "", _CX_META)
 
-    # cy
+    # cy — log-scale mention count (spreads 1..23 across mention range)
     mc = max(1, d.get("mention_count") or 1)
     cy = min(23, max(1, int(math.log2(mc + 1) * 4)))
     if d.get("verified") or d.get("promotion_status") == "promoted":
         cy = min(23, cy + 3)
 
-    # cz
+    # cz — temporal: age-based, with promotion override
     promo = d.get("promotion_status") or ""
-    cz = PROMO_TO_CZ.get(promo, TEMPORAL_STATES.index("pending"))
-    if _days_ago(d.get("last_mentioned") or "") <= 7:
-        cz = _CZ_THIS_WEEK
+    last = d.get("last_mentioned") or ""
+    days = _days_ago(last)
+
+    if promo == "promoted":
+        cz = TEMPORAL_STATES.index("established")
+    elif promo == "flagged":
+        cz = TEMPORAL_STATES.index("flagged")
+    elif d.get("verified"):
+        cz = TEMPORAL_STATES.index("verified")
+    elif days < 1:
+        cz = TEMPORAL_STATES.index("today")
+    elif days < 7:
+        cz = TEMPORAL_STATES.index("this_week")
+    elif days < 30:
+        cz = TEMPORAL_STATES.index("this_month")
+    elif days < 180:
+        cz = TEMPORAL_STATES.index("recent")
+    else:
+        cz = TEMPORAL_STATES.index("established")
 
     return cx, cy, cz
 
@@ -164,11 +216,8 @@ def coords_for_entity(row) -> tuple:
 
 def connect(db_path=None):
     """Open DB connection via core.db PostgreSQL pool."""
-    import sqlite3
     from core.db import get_connection
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_connection()
 
 
 def _ensure_table(conn):
@@ -199,16 +248,21 @@ def index_knowledge(conn, rebuild=False, dry_run=False) -> int:
 
     count = 0
     for row in rows:
+        d = _to_dict(row, _KNOWLEDGE_KEYS)
         cx, cy, cz = coords_for_knowledge(row)
         if dry_run:
-            print(f"  knowledge:{row['id']:5d}  ({cx:2d},{cy:2d},{cz:2d})  "
+            print(f"  knowledge:{d['id']:5d}  ({cx:2d},{cy:2d},{cz:2d})  "
                   f"{DOMAINS[cx]:20s}  {TEMPORAL_STATES[cz]}")
         else:
             conn.execute(
-                "INSERT OR REPLACE INTO cube_cells "
+                "INSERT INTO cube_cells "
                 "(node_id, node_type, cx, cy, cz, domain_name, temporal_name, indexed_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                (row["id"], "knowledge", cx, cy, cz,
+                "VALUES (?,?,?,?,?,?,?,?) "
+                "ON CONFLICT (node_id, node_type) DO UPDATE SET "
+                "cx=EXCLUDED.cx, cy=EXCLUDED.cy, cz=EXCLUDED.cz, "
+                "domain_name=EXCLUDED.domain_name, temporal_name=EXCLUDED.temporal_name, "
+                "indexed_at=EXCLUDED.indexed_at",
+                (d["id"], "knowledge", cx, cy, cz,
                  DOMAINS[cx], TEMPORAL_STATES[cz], now)
             )
         count += 1
@@ -240,16 +294,21 @@ def index_entities(conn, rebuild=False, dry_run=False) -> int:
 
     count = 0
     for row in rows:
+        d = _to_dict(row, _ENTITY_KEYS)
         cx, cy, cz = coords_for_entity(row)
         if dry_run:
-            print(f"  entity:{row['id']:5d}  ({cx:2d},{cy:2d},{cz:2d})  "
-                  f"{DOMAINS[cx]:20s}  {row['name'][:30]}")
+            print(f"  entity:{d['id']:5d}  ({cx:2d},{cy:2d},{cz:2d})  "
+                  f"{DOMAINS[cx]:20s}  {d['name'][:30]}")
         else:
             conn.execute(
-                "INSERT OR REPLACE INTO cube_cells "
+                "INSERT INTO cube_cells "
                 "(node_id, node_type, cx, cy, cz, domain_name, temporal_name, indexed_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                (row["id"], "entity", cx, cy, cz,
+                "VALUES (?,?,?,?,?,?,?,?) "
+                "ON CONFLICT (node_id, node_type) DO UPDATE SET "
+                "cx=EXCLUDED.cx, cy=EXCLUDED.cy, cz=EXCLUDED.cz, "
+                "domain_name=EXCLUDED.domain_name, temporal_name=EXCLUDED.temporal_name, "
+                "indexed_at=EXCLUDED.indexed_at",
+                (d["id"], "entity", cx, cy, cz,
                  DOMAINS[cx], TEMPORAL_STATES[cz], now)
             )
         count += 1
@@ -262,27 +321,34 @@ def index_entities(conn, rebuild=False, dry_run=False) -> int:
 def print_stats(conn):
     _ensure_table(conn)
     print("=== CUBE INDEX STATS ===")
-    total = conn.execute("SELECT COUNT(*) FROM cube_cells").fetchone()[0]
+    row = conn.execute("SELECT COUNT(*) AS cnt FROM cube_cells").fetchone()
+    total = row["cnt"] if isinstance(row, dict) else row[0]
     print(f"Total indexed: {total:,}")
     print()
     print("By node_type:")
-    for r in conn.execute("SELECT node_type, COUNT(*) FROM cube_cells GROUP BY node_type"):
-        print(f"  {r[0]:12s}: {r[1]:,}")
+    for r in conn.execute("SELECT node_type, COUNT(*) AS n FROM cube_cells GROUP BY node_type").fetchall():
+        nt = r["node_type"] if isinstance(r, dict) else r[0]
+        n = r["n"] if isinstance(r, dict) else r[1]
+        print(f"  {nt:12s}: {n:,}")
     print()
     print("Top 10 domains (cx):")
     for r in conn.execute(
         "SELECT domain_name, COUNT(*) as n FROM cube_cells GROUP BY domain_name "
         "ORDER BY n DESC LIMIT 10"
-    ):
-        bar = "#" * (r[1] // max(1, total // 50))
-        print(f"  {r[0]:20s} {r[1]:5d}  {bar}")
+    ).fetchall():
+        dn = r["domain_name"] if isinstance(r, dict) else r[0]
+        n = r["n"] if isinstance(r, dict) else r[1]
+        bar = "#" * (n // max(1, total // 50))
+        print(f"  {dn:20s} {n:5d}  {bar}")
     print()
     print("Temporal distribution (cz):")
     for r in conn.execute(
         "SELECT temporal_name, COUNT(*) as n FROM cube_cells GROUP BY temporal_name "
         "ORDER BY n DESC LIMIT 10"
-    ):
-        print(f"  {r[0]:20s} {r[1]:5d}")
+    ).fetchall():
+        tn = r["temporal_name"] if isinstance(r, dict) else r[0]
+        n = r["n"] if isinstance(r, dict) else r[1]
+        print(f"  {tn:20s} {n:5d}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -309,8 +375,9 @@ def main():
             "FROM knowledge LIMIT 20"
         ).fetchall()
         for row in rows:
+            d = _to_dict(row, _KNOWLEDGE_KEYS)
             cx, cy, cz = coords_for_knowledge(row)
-            print(f"  knowledge:{row['id']:5d}  ({cx:2d},{cy:2d},{cz:2d})  "
+            print(f"  knowledge:{d['id']:5d}  ({cx:2d},{cy:2d},{cz:2d})  "
                   f"{DOMAINS[cx]:20s}  {TEMPORAL_STATES[cz]}")
         print()
         print("=== first 20 entities ===")
@@ -319,9 +386,10 @@ def main():
             "verified, last_mentioned FROM entities LIMIT 20"
         ).fetchall()
         for row in rows:
+            d = _to_dict(row, _ENTITY_KEYS)
             cx, cy, cz = coords_for_entity(row)
-            print(f"  entity:{row['id']:5d}  ({cx:2d},{cy:2d},{cz:2d})  "
-                  f"{DOMAINS[cx]:20s}  {row['name'][:30]}")
+            print(f"  entity:{d['id']:5d}  ({cx:2d},{cy:2d},{cz:2d})  "
+                  f"{DOMAINS[cx]:20s}  {d['name'][:30]}")
         conn.close()
         return
 
@@ -331,7 +399,8 @@ def main():
     k = index_knowledge(conn, rebuild=args.rebuild)
     e = index_entities(conn, rebuild=args.rebuild)
 
-    total = conn.execute("SELECT COUNT(*) FROM cube_cells").fetchone()[0]
+    row = conn.execute("SELECT COUNT(*) AS cnt FROM cube_cells").fetchone()
+    total = row["cnt"] if isinstance(row, dict) else row[0]
     print(f"Indexed: {k} knowledge atoms + {e} entities")
     print(f"Total cube_cells: {total:,}")
     conn.close()

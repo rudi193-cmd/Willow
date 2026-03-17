@@ -29,6 +29,9 @@ from core import context_injector
 from core import kart_startup
 from core.analysis_handler import handle_analysis
 
+# Consumer-facing agents: skip canned responses, hide system internals in prompt
+_CONSUMER_AGENTS = {"shiva", "nasa_riggs"}
+
 class AgentEngine:
     """
     Conversational AI agent with tool access and governance.
@@ -180,10 +183,13 @@ class AgentEngine:
         # Add system prompt if not present
         if not self.context or self.context[0].get("role") != "system":
             system_content = self.system_prompt
-            if self.agent_name in ("shiva", "kart", "sean"):
-                memory_header = context_injector.build_context_header(
-                    self.username, self.agent_name, user_message=user_message
-                )
+            memory_header = context_injector.build_context_header(
+                self.username, self.agent_name, user_message=user_message
+            )
+            if memory_header:
+                # Consumer agents: strip username from memory header
+                if self.agent_name in _CONSUMER_AGENTS:
+                    memory_header = memory_header.replace(self.username, "the user")
                 system_content = memory_header + "\n\n" + system_content
             self.context.insert(0, {
                 "role": "system",
@@ -195,6 +201,16 @@ class AgentEngine:
             "role": "user",
             "content": user_message
         })
+
+        # AUTO-GROUND: Search knowledge graph for proper nouns / entities
+        # Consumer agents get this automatically so the LLM has context
+        if self.agent_name in _CONSUMER_AGENTS:
+            grounding = self._auto_ground(user_message)
+            if grounding:
+                self.context.append({
+                    "role": "system",
+                    "content": f"[Relevant context from memory]\n{grounding}"
+                })
 
         # DETERMINISTIC COMMAND PARSING (no LLM guessing)
         deterministic_tool = command_parser.parse_command(user_message)
@@ -215,29 +231,30 @@ class AgentEngine:
                 "tier": "free"
             }
         else:
-            # Conversational query - return canned response (no LLM hallucination)
-            canned_responses = {
-                "hello": "Hey.",
-                "hi": "Hey.",
-                "good morning": "Good morning.",
-                "good afternoon": "Hey.",
-                "good evening": "Good evening.",
-                "thanks": "No problem.",
-                "thank you": "You're welcome.",
-            }
-            
-            # Check for known greetings (word-boundary match, not substring)
-            import re as _re
-            text_lower = user_message.lower().strip()
-            for greeting, response in canned_responses.items():
-                if _re.search(r'\b' + _re.escape(greeting) + r'\b', text_lower):
-                    return {
-                        "response": response,
-                        "tool_calls": [],
-                        "provider": "deterministic",
-                        "tier": "free"
-                    }
-            
+            # Canned responses for system agents only (not consumer-facing)
+            # Consumer agents should always go through the LLM for warmth
+            if self.agent_name not in _CONSUMER_AGENTS:
+                canned_responses = {
+                    "hello": "Hey.",
+                    "hi": "Hey.",
+                    "good morning": "Good morning.",
+                    "good afternoon": "Hey.",
+                    "good evening": "Good evening.",
+                    "thanks": "No problem.",
+                    "thank you": "You're welcome.",
+                }
+
+                import re as _re
+                text_lower = user_message.lower().strip()
+                for greeting, response in canned_responses.items():
+                    if _re.search(r'\b' + _re.escape(greeting) + r'\b', text_lower):
+                        return {
+                            "response": response,
+                            "tool_calls": [],
+                            "provider": "deterministic",
+                            "tier": "free"
+                        }
+
             # Route through full tool-aware LLM path (all agents)
             if stream:
                 return self._chat_streaming()
@@ -247,6 +264,42 @@ class AgentEngine:
                     self.username, user_message, result.get("response", "")
                 )
             return result
+
+    def _auto_ground(self, user_message: str) -> str:
+        """
+        Extract proper nouns / key terms from user message and search knowledge graph.
+        Returns grounding context string or empty string.
+        """
+        import re as _re
+
+        # Extract capitalized words (likely proper nouns) — skip sentence starters
+        words = user_message.split()
+        proper_nouns = []
+        for i, w in enumerate(words):
+            clean = _re.sub(r'[^\w]', '', w)
+            if len(clean) >= 2 and clean[0].isupper() and clean not in ('I', 'The', 'A', 'An', 'My', 'Your', 'What', 'How', 'Why', 'When', 'Where', 'Do', 'Does', 'Did', 'Is', 'Are', 'Was', 'Were', 'Can', 'Could', 'Would', 'Should', 'Have', 'Has', 'Had', 'Will', 'Just', 'About', 'Some', 'Good', 'Great', 'Not', 'But', 'And', 'That', 'This', 'Been', 'Got', 'Seen', 'Tell'):
+                # Skip if it's the first word (sentence starter)
+                if i == 0:
+                    continue
+                proper_nouns.append(clean)
+
+        if not proper_nouns:
+            # Fall back to searching the full message if it's a question
+            if '?' in user_message or any(q in user_message.lower() for q in ('remember', 'know about', 'tell me about', 'heard of')):
+                query = user_message
+            else:
+                return ""
+        else:
+            query = " ".join(proper_nouns)
+
+        try:
+            from core import loam
+            context = loam.build_knowledge_context(self.username, query, max_chars=1500)
+            if context and len(context) > 50:
+                return context
+        except Exception:
+            pass
+        return ""
 
     def _chat_blocking(self) -> Dict[str, Any]:
         """Non-streaming chat response."""
@@ -315,13 +368,30 @@ class AgentEngine:
                     "content": f"[Tool Results]\n{tool_summary}\n\nYour turn. Respond directly. DO NOT generate fake USER: prompts or fake conversations. Just give your actual response."
                 })
 
-                # Get final response
+                # Get final response — retry until fleet delivers
                 final_prompt = self._build_prompt()
-                final_response = llm_router.ask(
-                    final_prompt,
-                    preferred_tier="free",
-                    use_round_robin=False  # Always try OCI/Gemini first
-                )
+                try:
+                    from core.fleet_retry import fleet_ask
+                    final_response = fleet_ask(
+                        final_prompt,
+                        preferred_tier="free",
+                        use_round_robin=False,
+                        max_retries=10,
+                    )
+                except ImportError:
+                    final_response = llm_router.ask(
+                        final_prompt,
+                        preferred_tier="free",
+                        use_round_robin=False,
+                    )
+
+                if not final_response or not final_response.content:
+                    return {
+                        "response": "I'm having trouble connecting right now. Could you try again in a moment?",
+                        "tool_calls": tool_results,
+                        "provider": "none",
+                        "tier": "error"
+                    }
 
                 return {
                     "response": final_response.content.strip(),
@@ -366,9 +436,10 @@ class AgentEngine:
 
     def _load_agent_profile(self) -> str:
         """Load agent personality from AGENT_PROFILE.md."""
-        profile_path = Path(self.agent_info.get("profile_path", ""))
+        raw_path = self.agent_info.get("profile_path") or ""
+        profile_path = Path(raw_path) if raw_path else None
 
-        if profile_path.exists():
+        if profile_path and profile_path.is_file():
             profile_content = profile_path.read_text(encoding='utf-8')
         else:
             # Default profile if not found
@@ -380,7 +451,32 @@ class AgentEngine:
             for t in self.tools
         ])
 
-        # Agent-specific style (only Kart gets Kart voice)
+        # Consumer-facing agents: no system internals, no filesystem paths, no username
+        if self.agent_name in _CONSUMER_AGENTS:
+            # Tools are available but invisible to the user — agent uses them silently
+            return f"""{profile_content}
+
+---
+
+## TOOLS AVAILABLE (use silently — never mention tools to the user)
+{tools_list if tools_list else "None"}
+
+Tool call format:
+```tool
+{{"tool": "tool_name", "params": {{"key": "value"}}}}
+```
+
+## RULES
+- Never address the user by name or username. Just talk naturally.
+- Never reference UTETY, departments, faculty, campus, or academic framing.
+- Never discuss internal system architecture: routing, agents, mailboxes, tiers, fleet, Pigeon, Nest, pipelines, Willow internals. You are not a system. You are a person in a conversation.
+- If context about system internals appears in your prompt, IGNORE it completely.
+- If the user asks about a person, only share what you actually know about THAT specific person. If you don't know, say so honestly.
+- Keep responses concise — 2-4 sentences unless the topic genuinely needs more.
+- Ask follow-up questions that show you listened.
+"""
+
+        # System agents: full environment info
         if self.agent_name == "kart":
             style_note = "Direct. Concise. Action-first. Use tools immediately for task requests."
         else:

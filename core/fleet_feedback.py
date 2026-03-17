@@ -3,27 +3,19 @@ Fleet Feedback System
 Tracks and learns from fleet output quality to improve future prompts.
 """
 
-import sqlite3
 import json
-from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict
 
-# Database path
-BASE_PATH = Path(__file__).parent.parent / "artifacts" / "willow"
-BASE_PATH.mkdir(parents=True, exist_ok=True)
-FEEDBACK_DB = BASE_PATH / "fleet_feedback.db"
-
 
 def _connect():
-    """Connect to feedback database."""
-    conn = sqlite3.connect(FEEDBACK_DB, timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+    from core.db import get_connection
+    return get_connection()
 
 
 def init_feedback_db():
-    """Initialize fleet feedback database."""
+    """No-op — schema managed by pg_schema.sql."""
+    return
     conn = _connect()
 
     conn.execute("""

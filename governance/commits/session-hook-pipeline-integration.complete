@@ -1,0 +1,59 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-11T03:45:00Z
+**Type:** Feature
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Wire session JSONL through the Nest intake pipeline instead of bypassing it,
+and add context continuity verification to the session start hook.
+
+## Problem
+
+Current Stop hook (`session-extract.py`) POSTs handoff content directly to
+`/api/knowledge/ingest`, bypassing Nest entirely. The JSONL never goes through
+pigeon → staging → fleet summarization → knowledge. This means:
+
+1. Session knowledge atoms have no proper summary (fleet phases silently skipped)
+2. The intake pipeline is never exercised by session flow — no natural health signal
+3. `ecosystem-context.py` at session start searches knowledge and gets stale or
+   truncated results, with summary=NULL
+
+## Proposed Changes
+
+### File: /home/sean/.claude/hooks/session-extract.py
+**Location:** After `call_fleet()` builds handoff content, in main()
+
+Replace the direct `/api/knowledge/ingest` POST with:
+1. Write the JSONL file to the Nest directory as `SESSION_{session_id[:8]}_{ts}.jsonl`
+2. Also write the fleet-built handoff as `SESSION_HANDOFF_{ts}.md` to Pickup
+   (same as `/handoff` command — consistent naming, pigeon picks it up)
+3. Trigger pigeon scan via `POST /api/pigeon/scan?username=Sweet-Pea-Rudi19`
+4. Keep the direct ingest as fallback if Nest write fails
+
+### File: /home/sean/.claude/hooks/ecosystem-context.py
+**Location:** Step 3 (currently loads SESSION_HANDOFF from knowledge search)
+
+Replace with:
+1. Read the most recent `SESSION_HANDOFF_*.md` directly from Pickup (sorted by
+   filename — timestamps are in the name, no DB dependency)
+2. Search knowledge for most recent session entry matching previous session_id
+   (from SESSION_FILE if it exists, or by title pattern)
+3. Compare: does the knowledge entry exist? Does it contain the key topics from
+   the handoff? Surface any mismatch as a gap warning
+4. Inject: handoff content (full, from file) + comparison result + knowledge gaps
+
+## Rationale
+
+- Nest → pigeon → knowledge is the designed intake path. Sessions should use it.
+- The comparison at session start gives a live signal: did the previous session's
+  data make it through the pipeline? If not, something broke.
+- Reading SESSION_HANDOFF directly from Pickup (not knowledge DB) gives full
+  content, not a 1000-char snippet with summary=NULL.
+- Natural DB health test on every session start — no separate monitoring needed.
+
+## Risk Assessment
+  Risk Level: LOW
+  Reversible: YES — both hooks can be reverted independently
+  Dependencies: pigeon scan endpoint, Pickup dir write access, Nest dir write access
+  Fallback: direct /api/knowledge/ingest POST kept as fallback in Stop hook

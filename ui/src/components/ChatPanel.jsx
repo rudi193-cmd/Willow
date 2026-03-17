@@ -31,9 +31,9 @@ export default function ChatPanel({ messages, isStreaming, coherence, onSend, at
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full journal-page">
       {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 md:px-8 lg:px-16 py-6">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto journal-content py-6">
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <p className="font-ernie text-lg opacity-faint select-none">
@@ -51,7 +51,7 @@ export default function ChatPanel({ messages, isStreaming, coherence, onSend, at
       </div>
 
       {/* Input area — bottom */}
-      <div className="px-4 md:px-8 lg:px-16 pb-6 pt-2">
+      <div className="journal-content pb-6 pt-2">
         <div className="flex items-end gap-3">
           <div className="flex-1">
             <PencilInput

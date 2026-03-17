@@ -3,7 +3,6 @@ credentials.py - Fernet-encrypted SQLite credential vault
 Key: ~/.willow_master.key (0600)  DB: ~/.willow_creds.db
 """
 import json, os, stat
-import sqlite3  # row_factory compat
 from core.db import get_connection
 from datetime import datetime, timezone
 from pathlib import Path

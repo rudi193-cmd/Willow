@@ -3,21 +3,14 @@ Provider Performance Tracking
 Tracks which LLM providers perform best for different task types.
 """
 
-import sqlite3
 import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from pathlib import Path
 
-# Use same DB as patterns
-BASE_PATH = Path(__file__).parent.parent / "artifacts" / "willow"
-PATTERNS_DB = BASE_PATH / "patterns.db"
 
 def _connect():
-    """Connect to patterns database."""
-    conn = sqlite3.connect(PATTERNS_DB, timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+    from core.db import get_connection
+    return get_connection()
 
 
 def log_provider_performance(
@@ -39,12 +32,7 @@ def log_provider_performance(
         success: Whether request succeeded
         error_type: If failed, what kind of error ("429", "timeout", etc.)
     """
-    conn = _connect()
-    conn.execute("""
-        INSERT INTO provider_performance
-        (timestamp, provider, file_type, category, response_time_ms, success, error_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (
+    params = (
         datetime.now().isoformat(),
         provider,
         file_type,
@@ -52,9 +40,27 @@ def log_provider_performance(
         response_time_ms,
         success,
         error_type
-    ))
-    conn.commit()
-    conn.close()
+    )
+    sql = """
+        INSERT INTO provider_performance
+        (timestamp, provider, file_type, category, response_time_ms, success, error_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """
+    conn = _connect()
+    try:
+        conn.execute(sql, params)
+        conn.commit()
+    except Exception:
+        # Sequence collision (duplicate key) from aborted transactions.
+        # Rollback clears the aborted txn state; retry advances the sequence.
+        try:
+            conn._conn.rollback()
+            conn.execute(sql, params)
+            conn.commit()
+        except Exception:
+            pass
+    finally:
+        conn.close()
 
 
 def get_best_provider_for(
@@ -95,7 +101,7 @@ def get_best_provider_for(
 
     query += f"""
         GROUP BY provider
-        HAVING sample_size >= {min_samples}
+        HAVING COUNT(*) >= {min_samples}
         ORDER BY success_rate DESC, avg_time ASC
         LIMIT 1
     """

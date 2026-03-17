@@ -1,10 +1,19 @@
 
-import os, sys, json, hashlib, shutil, sqlite3, logging, re, threading
+import os, sys, json, hashlib, shutil, logging, re, threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, UTC
 from pathlib import Path
 
 logger = logging.getLogger("pigeon")
+
+QUARANTINE_THRESHOLD = 3  # max errors before a file is quarantined
+
+
+def _pg_safe(text):
+    """Strip NUL bytes from strings before Postgres insertion."""
+    if isinstance(text, str):
+        return text.replace('\x00', '')
+    return text
 
 _WIN = sys.platform == "win32"
 _BASE = r"C:\Users\Sean" if _WIN else "/mnt/c/Users/Sean"
@@ -19,6 +28,7 @@ NEST_PATHS = {
 
 AGENT_NAMES = [
     "willow", "kart", "riggs", "ada", "shiva", "gerald", "steve", "pigeon",
+    "ganesha",
     "field_notes", "law_gazelle", "private_ledger", "public_ledger", "source_trail", "the_squirrel",
 ]
 
@@ -28,7 +38,10 @@ FILED_BASE = {
     "Sweet-Pea-Rudi19": os.path.join(_BASE, "Willow", "Filed"),
 }
 
-VALID_CATEGORIES = {"legal", "narrative", "personal", "code", "reference", "media"}
+# Classification delegated to classifier.py — Pigeon drives the bus, Willow reads the manifest
+from core.classifier import get_valid_categories as _get_valid_categories, classify as _classify_file
+
+VALID_CATEGORIES = _get_valid_categories()
 
 
 def _file_hash(path: Path) -> str:
@@ -106,7 +119,7 @@ def _read_snippet(file_path: str, max_bytes: int = 2000) -> str:
             import ocr_consumer
             text = ocr_consumer._extract_image(path)
             if text:
-                return text[:max_bytes]
+                return text.replace("\x00", "")[:max_bytes]
         except Exception as e:
             logger.debug(f"PIGEON: OCR fallback for {path.name}: {e}")
 
@@ -122,55 +135,25 @@ def _read_snippet(file_path: str, max_bytes: int = 2000) -> str:
         except Exception as e:
             logger.debug(f"PIGEON: PDF extract fallback for {path.name}: {e}")
 
-    # Everything else: read as text
+    # Everything else: read as text (skip binary files to avoid NUL byte poisoning)
+    if suffix in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".pdf"):
+        return ""  # Binary file with no successful OCR — don't read raw bytes
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            return f.read(max_bytes)
+            return f.read(max_bytes).replace("\x00", "")
     except Exception:
         try:
             with open(file_path, "rb") as f:
-                return f.read(max_bytes).decode("utf-8", errors="replace")
+                return f.read(max_bytes).decode("utf-8", errors="replace").replace("\x00", "")
         except Exception:
             return ""
 
 
 def classify_file(filename: str, snippet: str) -> dict:
-    import sys
-    sys.path.insert(0, os.path.join(_REPO, "core"))
-    import llm_router
-    llm_router.load_keys_from_json()
-    prompt = (
-        "Classify this file and summarize it in 1-2 sentences.\n"
-        "Categories: legal, narrative, personal, code, reference, media\n"
-        "Also provide a subcategory (1-2 words, lowercase, hyphens only). "
-        "Examples: bankruptcy, workers-comp, screenshots, photos, generated, notebooks, scripts, journals, books, specs.\n"
-        f"Filename: {filename}\nContent preview:\n{snippet[:1500]}\n\n"
-        'Respond as JSON only: {"category": "...", "subcategory": "...", "summary": "..."}'
-    )
-    try:
-        resp = llm_router.ask(prompt, preferred_tier="free")
-        if resp and resp.content:
-            match = re.search(r"\{[^{}]+\}", resp.content, re.DOTALL)
-            if match:
-                data = json.loads(match.group())
-                cat = data.get("category", "reference").lower().strip()
-                if cat not in VALID_CATEGORIES:
-                    cat = "reference"
-                sub = data.get("subcategory", "general").lower().strip()
-                sub = re.sub(r"[^a-z0-9-]", "-", sub)[:32] or "general"
-                return {"category": cat, "subcategory": sub, "summary": data.get("summary", "")[:300]}
-    except Exception as e:
-        logger.warning(f"PIGEON: classify failed for {filename}: {e}")
-    name = filename.lower()
-    if any(k in name for k in ["legal", "court", "bankruptcy", "motion", "schedule", "creditor"]):
-        return {"category": "legal", "subcategory": "general", "summary": f"Legal document: {filename}"}
-    if any(k in name for k in ["book", "story", "chapter", "novel", "trappist", "mann", "manuscript"]):
-        return {"category": "narrative", "subcategory": "books", "summary": f"Narrative document: {filename}"}
-    if any(k in name for k in [".jsonl", "kart", "claude", "chatgpt", "export", "sessions"]):
-        return {"category": "code", "subcategory": "exports", "summary": f"Code or export: {filename}"}
-    if any(k in name for k in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mp3"]):
-        return {"category": "media", "subcategory": "photos", "summary": f"Media file: {filename}"}
-    return {"category": "reference", "subcategory": "general", "summary": f"Document: {filename}"}
+    """Delegate to classifier.py — Pigeon drives the bus, Willow reads the manifest."""
+    return _classify_file(filename, snippet)
+
+
 def route_file(file_path: str, category: str, username: str, subcategory: str = "general") -> str:
     base = FILED_BASE.get(username, os.path.join(_BASE, "Willow", "Filed"))
     dest_dir = os.path.join(base, category, subcategory)
@@ -190,7 +173,8 @@ def create_dropping(username, filename, original_path, filed_to, category, summa
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO pigeon_droppings (username, filename, file_hash, original_path, filed_to, category, summary, created_at) VALUES (?,?,?,?,?,?,?,?)",
-        (username, filename, file_hash, original_path, filed_to, category, summary, datetime.now(UTC).isoformat())
+        (_pg_safe(username), _pg_safe(filename), _pg_safe(file_hash), _pg_safe(original_path),
+         _pg_safe(filed_to), _pg_safe(category), _pg_safe(summary), datetime.now(UTC).isoformat())
     )
     conn.commit()
     dropping_id = cur.lastrowid
@@ -203,7 +187,7 @@ def _log_error(username: str, filename: str, error: str):
         conn = _connect()
         conn.execute(
             "INSERT INTO pigeon_errors (username, filename, error, created_at) VALUES (?,?,?,?)",
-            (username, filename, str(error), datetime.now(UTC).isoformat())
+            (_pg_safe(username), _pg_safe(filename), _pg_safe(str(error)), datetime.now(UTC).isoformat())
         )
         conn.commit()
         conn.close()
@@ -243,15 +227,371 @@ def sweep_all(username: str) -> int:
     return count
 
 
+def _error_count(filename: str) -> int:
+    """Count how many times a file has errored in pigeon_errors."""
+    try:
+        conn = _connect()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM pigeon_errors WHERE filename=?", (filename,))
+        count = cur.fetchone()[0]
+        conn.close()
+        return count
+    except Exception:
+        return 0
+
+
+def _chunk_task(message: str) -> list[dict]:
+    """Decompose a task into sections for parallel fleet processing.
+
+    Splits on markdown headers (##), numbered sections, or --- dividers.
+    Each chunk gets a role: 'section' (parallel) or 'assembly' (Kart merges).
+    Short tasks (<2000 chars) stay as a single chunk.
+    """
+    if len(message) < 2000:
+        return [{"role": "single", "index": 0, "content": message}]
+
+    # Split on section markers
+    import re
+    parts = re.split(r'\n(?=##\s|SECTION\s|---\n|\d+\.\s+[A-Z])', message)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if len(parts) <= 1:
+        # No clear sections — split by paragraph groups (~1500 chars each)
+        paragraphs = message.split('\n\n')
+        chunks = []
+        current = []
+        current_len = 0
+        for para in paragraphs:
+            if current_len + len(para) > 1500 and current:
+                chunks.append('\n\n'.join(current))
+                current = [para]
+                current_len = len(para)
+            else:
+                current.append(para)
+                current_len += len(para)
+        if current:
+            chunks.append('\n\n'.join(current))
+        parts = chunks
+
+    return [{"role": "section", "index": i, "content": p} for i, p in enumerate(parts)]
+
+
+def _call_agent(agent_name: str, message: str, username: str) -> str | None:
+    """Call a local agent persona via chunked fleet pipeline.
+
+    Pipeline: decompose → parallel fleet calls → Kart reassembles → Crown witnesses.
+    Each chunk goes to the best available provider. Kart stitches with voice consistency.
+    Full rings: mailbox (Crown-witnessed), reply file, knowledge graph eligible.
+    """
+    try:
+        sys.path.insert(0, _REPO)
+        sys.path.insert(0, os.path.join(_REPO, "core"))
+        import local_api
+        import llm_router
+
+        # Resolve persona
+        persona = agent_name.capitalize()
+        if persona not in local_api.PERSONAS:
+            if agent_name not in local_api.PERSONAS:
+                logger.warning(f"PIGEON: no persona config for {agent_name}")
+                return None
+            persona = agent_name
+
+        persona_prompt = local_api.PERSONAS.get(persona, "")
+
+        llm_router.load_keys_from_json()
+
+        # Decompose task into chunks
+        chunks = _chunk_task(message)
+        logger.info(f"PIGEON: {agent_name} task decomposed into {len(chunks)} chunks")
+
+        if len(chunks) == 1 and chunks[0]["role"] == "single":
+            # Short task — single fleet call
+            full_prompt = f"{persona_prompt}\n\n{message}"
+            resp = llm_router.ask(full_prompt, preferred_tier="free",
+                                  task_type="general_completion", max_tokens=4096)
+            if resp and resp.content:
+                response = resp.content.strip()
+                logger.info(f"PIGEON: {agent_name} (single) via {resp.provider} ({len(response)} chars)")
+            else:
+                return None
+        else:
+            # Multi-chunk — parallel fleet calls, then Kart assembly
+            section_results = [None] * len(chunks)
+
+            def _process_chunk(chunk):
+                idx = chunk["index"]
+                section_prompt = (
+                    f"You are {persona}. {persona_prompt}\n\n"
+                    f"Write section {idx + 1} of {len(chunks)} for this task. "
+                    f"Maintain voice throughout. This is your section:\n\n"
+                    f"{chunk['content']}"
+                )
+                resp = llm_router.ask(section_prompt, preferred_tier="free",
+                                      task_type="general_completion", max_tokens=4096)
+                if resp and resp.content:
+                    section_results[idx] = resp.content.strip()
+                    logger.info(f"PIGEON: {agent_name} chunk {idx+1}/{len(chunks)} "
+                                f"via {resp.provider} ({len(resp.content)} chars)")
+                else:
+                    section_results[idx] = f"[Section {idx+1} generation failed]"
+
+            # Parallel execution
+            with ThreadPoolExecutor(max_workers=min(len(chunks), 4)) as executor:
+                executor.map(_process_chunk, chunks)
+
+            # Kart assembly: stitch sections with voice consistency
+            sections_text = "\n\n---\n\n".join(
+                f"## Section {i+1}\n{s}" for i, s in enumerate(section_results) if s
+            )
+
+            assembly_prompt = (
+                f"You are Kart (infrastructure agent). Your task: assemble these {len(chunks)} "
+                f"sections into ONE coherent document in the voice of {persona}.\n\n"
+                f"Voice reference: {persona_prompt[:500]}\n\n"
+                f"RULES:\n"
+                f"- Maintain consistent {persona} voice throughout\n"
+                f"- Smooth transitions between sections\n"
+                f"- Remove duplicate content across sections\n"
+                f"- Keep ALL substantive content — do not summarize or shorten\n"
+                f"- Output the assembled document only, no meta-commentary\n\n"
+                f"SECTIONS TO ASSEMBLE:\n\n{sections_text}"
+            )
+
+            logger.info(f"PIGEON: Kart assembling {len(chunks)} sections ({len(sections_text)} chars)")
+            resp = llm_router.ask(assembly_prompt, preferred_tier="free",
+                                  task_type="general_completion", max_tokens=8192)
+            if resp and resp.content:
+                response = resp.content.strip()
+                logger.info(f"PIGEON: Kart assembled via {resp.provider} ({len(response)} chars)")
+            else:
+                # Fallback: concatenate sections without assembly
+                response = "\n\n".join(s for s in section_results if s)
+                logger.warning(f"PIGEON: Kart assembly failed, using raw concatenation")
+
+        # Record in mailbox (Crown-witnessed)
+        try:
+            from core import agent_registry as _ar
+            _ar.send_message(
+                username, from_agent=agent_name, to_agent="user",
+                subject=f"reply:{message[:60]}",
+                body=f"Q: {message[:500]}...\n\nA: {response[:2000]}...",
+            )
+        except Exception:
+            pass  # mailbox recording is best-effort
+
+        return response
+    except Exception as e:
+        logger.error(f"PIGEON: _call_agent({agent_name}) failed: {e}")
+        return None
+
+
+def _call_chain(agents: list[str], message: str, username: str,
+                 thread_id: str = None) -> dict:
+    """Route a task through a chain of agents. Each agent sees accumulated context.
+
+    Pipeline: agent_1 responds → agent_2 sees original + agent_1's response → ...
+    Each exchange is Crown-witnessed via mailbox. Full audit trail.
+
+    Returns: {
+        "thread_id": str,
+        "exchanges": [{agent, response, chars, provider_note}],
+        "final_response": str,  # last agent's response
+        "transcript": str,      # full formatted transcript
+    }
+    """
+    sys.path.insert(0, _REPO)
+    sys.path.insert(0, os.path.join(_REPO, "core"))
+    import llm_router
+    import local_api
+    llm_router.load_keys_from_json()
+
+    if not thread_id:
+        thread_id = f"chain_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{agents[0]}"
+
+    exchanges = []
+    accumulated = f"## Original Task\n\n{message}\n"
+
+    for i, agent_name in enumerate(agents):
+        # Resolve persona
+        persona = agent_name.capitalize()
+        if persona not in local_api.PERSONAS:
+            if agent_name not in local_api.PERSONAS:
+                logger.warning(f"PIGEON: chain skipping {agent_name} — no persona config")
+                exchanges.append({
+                    "agent": agent_name, "response": "[no persona config — skipped]",
+                    "chars": 0, "provider_note": "skipped",
+                })
+                continue
+            persona = agent_name
+
+        persona_prompt = local_api.PERSONAS.get(persona, "")
+
+        # Build context: persona + accumulated conversation so far
+        is_first = (i == 0)
+        is_last = (i == len(agents) - 1)
+
+        if is_first:
+            chain_context = (
+                f"You are {persona} in a faculty discussion with: {', '.join(agents)}.\n"
+                f"You speak first. Respond to the task below in your voice.\n"
+            )
+        else:
+            prev_names = [e["agent"] for e in exchanges if e["chars"] > 0]
+            chain_context = (
+                f"You are {persona} in a faculty discussion with: {', '.join(agents)}.\n"
+                f"You've heard from: {', '.join(prev_names)}. "
+                f"{'You have the final word. ' if is_last else ''}"
+                f"Respond to what's been said. Add your perspective. "
+                f"You may agree, disagree, extend, or redirect.\n"
+            )
+
+        full_prompt = f"{persona_prompt}\n\n{chain_context}\n\n{accumulated}"
+
+        # Use chunked pipeline for this agent
+        resp = _call_agent(agent_name, full_prompt, username)
+
+        if resp:
+            exchanges.append({
+                "agent": agent_name,
+                "response": resp,
+                "chars": len(resp),
+                "provider_note": "chunked" if len(full_prompt) > 2000 else "single",
+            })
+            accumulated += f"\n\n---\n\n## {persona}'s Response\n\n{resp}\n"
+            logger.info(f"PIGEON: chain [{i+1}/{len(agents)}] {agent_name} → {len(resp)} chars")
+        else:
+            exchanges.append({
+                "agent": agent_name,
+                "response": "[no response]",
+                "chars": 0,
+                "provider_note": "failed",
+            })
+            logger.warning(f"PIGEON: chain [{i+1}/{len(agents)}] {agent_name} → failed")
+
+        # Crown witness: record exchange in mailbox
+        try:
+            from core import agent_registry as _ar
+            prev_agent = agents[i - 1] if i > 0 else "user"
+            _ar.send_message(
+                username, from_agent=agent_name, to_agent=agents[i + 1] if i < len(agents) - 1 else "user",
+                subject=f"chain:{thread_id}:{agent_name}",
+                body=f"{resp[:2000] if resp else '[no response]'}",
+                thread_id=thread_id,
+            )
+        except Exception:
+            pass
+
+    # Build full transcript
+    transcript_parts = [f"# Agent Chain: {' → '.join(agents)}\n"]
+    transcript_parts.append(f"**Thread:** {thread_id}\n")
+    transcript_parts.append(f"**Date:** {datetime.now(UTC).isoformat()}\n\n")
+    transcript_parts.append(f"## Original Task\n\n{message}\n")
+    for ex in exchanges:
+        transcript_parts.append(f"\n---\n\n## {ex['agent'].capitalize()}'s Response\n")
+        transcript_parts.append(f"*({ex['chars']} chars)*\n\n")
+        transcript_parts.append(f"{ex['response']}\n")
+
+    transcript = "\n".join(transcript_parts)
+
+    return {
+        "thread_id": thread_id,
+        "exchanges": exchanges,
+        "final_response": exchanges[-1]["response"] if exchanges else "",
+        "transcript": transcript,
+    }
+
+
 def _process_one(item: Path, username: str, file_hash: str = None):
-    """Stage a single file into the Nest review queue. File stays put until user confirms."""
+    """Stage a single file into the Nest review queue, then remove the source file."""
+    # Bug 2: Quarantine files that have failed too many times
+    if _error_count(item.name) >= QUARANTINE_THRESHOLD:
+        logger.warning(f"PIGEON: Quarantined after {QUARANTINE_THRESHOLD} failures: {item.name}")
+        return None
+
     try:
         from core.nest_intake import stage_file
         result = stage_file(username, str(item), file_hash)
         logger.info(f"PIGEON: staged {item.name} → review queue #{result['id']}")
+
+        # Agent-addressed files: deliver to inbox AND trigger the agent conversation
+        if result.get("proposed_category") == "agent_task":
+            target_agent = result.get("proposed_subcategory", "")
+            if target_agent:
+                content = _read_snippet(str(item), max_bytes=50000)  # full content for agent
+                try:
+                    send_to_inbox(
+                        to_app=target_agent, from_app="pigeon", username=username,
+                        subject=f"Incoming task: {item.name}",
+                        body=content,
+                    )
+                    logger.info(f"PIGEON: delivered {item.name} → {target_agent} inbox")
+                except Exception as inbox_err:
+                    logger.warning(f"PIGEON: inbox delivery failed for {target_agent}: {inbox_err}")
+
+                # Knock on the door: call the agent and capture the reply
+                try:
+                    reply = _call_agent(target_agent, content, username)
+                    if reply:
+                        # Drop reply into Documents/Willow (user's file tree, outside Nest scan)
+                        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+                        reply_dir = Path(_BASE) / "Documents" / "Willow" / "agent_replies"
+                        reply_dir.mkdir(parents=True, exist_ok=True)
+                        reply_file = reply_dir / f"REPLY_FROM_{target_agent.upper()}_{ts}.md"
+                        reply_file.write_text(
+                            f"# Reply from {target_agent.capitalize()}\n"
+                            f"**Task:** {item.name}\n"
+                            f"**Date:** {datetime.now(UTC).isoformat()}\n\n"
+                            f"---\n\n{reply}\n",
+                            encoding="utf-8",
+                        )
+                        logger.info(f"PIGEON: {target_agent} replied → {reply_file.name}")
+                except Exception as call_err:
+                    logger.warning(f"PIGEON: agent call failed for {target_agent}: {call_err}")
+
+        # Agent chain / conf call: route through multiple agents in sequence
+        elif result.get("proposed_category") == "agent_chain":
+            chain_str = result.get("proposed_subcategory", "")
+            agents = [a.strip() for a in chain_str.split("→") if a.strip()]
+            if len(agents) >= 2:
+                content = _read_snippet(str(item), max_bytes=50000)
+                try:
+                    chain_result = _call_chain(agents, content, username)
+                    if chain_result and chain_result["transcript"]:
+                        # Save full transcript to Documents/Willow
+                        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+                        reply_dir = Path(_BASE) / "Documents" / "Willow" / "agent_replies"
+                        reply_dir.mkdir(parents=True, exist_ok=True)
+                        chain_name = "_".join(a[:4].upper() for a in agents)
+                        reply_file = reply_dir / f"CHAIN_{chain_name}_{ts}.md"
+                        reply_file.write_text(chain_result["transcript"], encoding="utf-8")
+                        logger.info(
+                            f"PIGEON: chain {' → '.join(agents)} complete → {reply_file.name} "
+                            f"({len(chain_result['exchanges'])} exchanges, "
+                            f"{sum(e['chars'] for e in chain_result['exchanges'])} total chars)"
+                        )
+                except Exception as chain_err:
+                    logger.warning(f"PIGEON: chain call failed: {chain_err}")
+
+        # Auto-remove source after successful staging
+        try:
+            item.unlink()
+            logger.info(f"PIGEON: removed staged file {item.name}")
+        except OSError as rm_err:
+            logger.warning(f"PIGEON: could not remove {item.name}: {rm_err}")
         return {"id": result["id"], "filename": item.name,
                 "category": result["proposed_category"], "summary": result["proposed_summary"],
                 "filed_to": None, "staged_for_review": True}
+    except FileNotFoundError:
+        # Bug 3: File moved/deleted between scan and process — expected, not an error
+        return None
+    except OSError as e:
+        if e.errno == 2:
+            # Bug 3: errno 2 = ENOENT, same as FileNotFoundError
+            return None
+        logger.error(f"PIGEON: error staging {item.name}: {e}")
+        _log_error(username, item.name, e)
+        return None
     except Exception as e:
         logger.error(f"PIGEON: error staging {item.name}: {e}")
         _log_error(username, item.name, e)
@@ -259,7 +599,6 @@ def _process_one(item: Path, username: str, file_hash: str = None):
 
 
 PIGEON_WORKERS = 2  # concurrent fleet calls (DB write bottleneck, not fleet)
-_DB_LOCK = threading.Lock()  # serialize SQLite writes
 
 
 def scan_and_process(username: str) -> list:
@@ -289,19 +628,17 @@ def scan_and_process(username: str) -> list:
 
     conn.close()
 
-    # Collect from root Nest + all per-agent subdirs
+    # Collect from root Nest + all per-agent subdirs (don't create — just check existing)
     scan_dirs = [Path(get_nest_path(username))]
     for agent in AGENT_NAMES:
-        agent_nest = Path(get_agent_nest_path(agent))
+        agent_nest = Path(os.path.join(NEST_BASE, agent))
         if agent_nest.exists():
             scan_dirs.append(agent_nest)
 
     pending = []
     for nest_dir in scan_dirs:
-        for item in nest_dir.iterdir():
+        for item in nest_dir.rglob("*"):
             if not item.is_file() or item.name.startswith("."):
-                continue
-            if item.name in already_filed_names:
                 continue
             fh = _file_hash(item)
             if fh in already_filed_hashes:
@@ -366,7 +703,8 @@ def send_to_inbox(to_app: str, from_app: str, username: str,
     cur = conn.execute(
         "INSERT INTO pigeon_inbox (to_app, from_app, username, subject, body, thread_id, sent_at) "
         "VALUES (?,?,?,?,?,?,?)",
-        (to_app, from_app, username, subject, body, thread_id, sent_at)
+        (_pg_safe(to_app), _pg_safe(from_app), _pg_safe(username), _pg_safe(subject),
+         _pg_safe(body), _pg_safe(thread_id), sent_at)
     )
     msg_id = cur.lastrowid
     conn.commit()
@@ -485,7 +823,7 @@ def receive_drop(dropping: dict) -> dict:
         conn = _connect()
         conn.execute(
             "INSERT INTO bus_drops (source_app, topic, session_id, status, created_at) VALUES (?,?,?,?,?)",
-            (app_id, topic, session_id, "received", datetime.now(UTC).isoformat())
+            (_pg_safe(app_id), _pg_safe(topic), _pg_safe(session_id), "received", datetime.now(UTC).isoformat())
         )
         conn.commit()
         conn.close()

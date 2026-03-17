@@ -20,7 +20,6 @@ CHECKSUM: DS=42
 import os
 import re
 import json
-import sqlite3
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict
@@ -369,14 +368,22 @@ def _extract_entities_llm(text: str) -> List[Dict]:
     return []
 
 
-def _upsert_entities(conn: sqlite3.Connection, knowledge_id: int, entities: List[Dict]):
-    """Insert/update entities and link them to a knowledge atom."""
+def _upsert_entities(conn, knowledge_id: int, entities: List[Dict],
+                     context_tags: dict = None):
+    """Insert/update entities and link them to a knowledge atom.
+    Delegates to loam._upsert_entities for chrome detection + Crown witness."""
+    try:
+        from core.loam import _upsert_entities as _loam_upsert
+        _loam_upsert(conn, knowledge_id, entities, context_tags=context_tags)
+        return
+    except ImportError:
+        pass
+
+    # Fallback if loam not available
     cur = conn.cursor()
     for ent in entities:
         name = ent["name"]
         etype = ent.get("type", "concept")
-
-        # Upsert entity
         cur.execute(
             "INSERT INTO entities (name, entity_type, mention_count) VALUES (?, ?, 1) "
             "ON CONFLICT(name) DO UPDATE SET mention_count = entities.mention_count + 1",
@@ -386,8 +393,6 @@ def _upsert_entities(conn: sqlite3.Connection, knowledge_id: int, entities: List
         if not row:
             continue
         entity_id = row[0]
-
-        # Link to knowledge atom
         cur.execute(
             "INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) VALUES (?, ?)",
             (knowledge_id, entity_id)
@@ -405,6 +410,7 @@ def ingest_file_knowledge(
     category: str,
     content_text: str,
     provider: str = "unknown",
+    context_tags: dict = None,
 ):
     """
     Ingest a processed file into the knowledge DB.
@@ -472,7 +478,9 @@ def ingest_file_knowledge(
         if existing:
             knowledge_id = existing[0]
             if entities:
-                _upsert_entities(conn, knowledge_id, entities)
+                tags = dict(context_tags or {})
+                tags.setdefault("username", username)
+                _upsert_entities(conn, knowledge_id, entities, context_tags=tags)
             conn.commit()
             return
 
@@ -487,7 +495,9 @@ def ingest_file_knowledge(
         knowledge_id = cur.lastrowid
 
         if knowledge_id:
-            _upsert_entities(conn, knowledge_id, entities)
+            tags = dict(context_tags or {})
+            tags.setdefault("username", username)
+            _upsert_entities(conn, knowledge_id, entities, context_tags=tags)
             if embed_vec:
                 conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (embed_vec, knowledge_id))
 
@@ -621,7 +631,6 @@ def search(username: str, query: str, max_results: int = 10) -> List[Dict]:
     """
     init_db(username)
     conn = _connect(username)
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
     # FTS5 match query — escape special chars for safety
@@ -634,28 +643,53 @@ def search(username: str, query: str, max_results: int = 10) -> List[Dict]:
     terms = fts_query.split()
     fts_expr = " OR ".join(terms)
 
-    try:
-        rows = cur.execute("""
-            SELECT k.id, k.source_type, k.title, k.summary,
-                   k.content_snippet, k.category, k.created_at,
-                   rank
-            FROM knowledge_fts
-            JOIN knowledge k ON k.id = knowledge_fts.rowid
-            WHERE knowledge_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-        """, (fts_expr, max_results)).fetchall()
-    except Exception:
-        # FTS match syntax error — fall back to simple LIKE
-        rows = cur.execute("""
-            SELECT id, source_type, title, summary,
-                   content_snippet, category, created_at,
-                   0 as rank
-            FROM knowledge
-            WHERE title LIKE ? OR summary LIKE ? OR content_snippet LIKE ?
-            ORDER BY created_at DESC
-            LIMIT ?
-        """, (f"%{query}%", f"%{query}%", f"%{query}%", max_results)).fetchall()
+    from core.db import is_postgres as _is_pg
+    if _is_pg():
+        # PostgreSQL: use tsvector search_vector column (maintained by trigger in pg_schema.sql)
+        try:
+            rows = cur.execute("""
+                SELECT id, source_type, title, summary,
+                       content_snippet, category, created_at,
+                       0 as rank
+                FROM knowledge
+                WHERE search_vector @@ plainto_tsquery('english', %s)
+                ORDER BY ts_rank(search_vector, plainto_tsquery('english', %s)) DESC
+                LIMIT %s
+            """, (query, query, max_results)).fetchall()
+        except Exception:
+            conn._conn.rollback()
+            rows = cur.execute("""
+                SELECT id, source_type, title, summary,
+                       content_snippet, category, created_at,
+                       0 as rank
+                FROM knowledge
+                WHERE title ILIKE %s OR summary ILIKE %s OR content_snippet ILIKE %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (f"%{query}%", f"%{query}%", f"%{query}%", max_results)).fetchall()
+    else:
+        try:
+            rows = cur.execute("""
+                SELECT k.id, k.source_type, k.title, k.summary,
+                       k.content_snippet, k.category, k.created_at,
+                       rank
+                FROM knowledge_fts
+                JOIN knowledge k ON k.id = knowledge_fts.rowid
+                WHERE knowledge_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (fts_expr, max_results)).fetchall()
+        except Exception:
+            # FTS match syntax error — fall back to simple LIKE
+            rows = cur.execute("""
+                SELECT id, source_type, title, summary,
+                       content_snippet, category, created_at,
+                       0 as rank
+                FROM knowledge
+                WHERE title LIKE ? OR summary LIKE ? OR content_snippet LIKE ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", f"%{query}%", max_results)).fetchall()
 
     results = []
     for row in rows:
@@ -730,7 +764,7 @@ def build_knowledge_context(username: str, query: str, max_chars: int = 3000) ->
     # 2. Recent relevant conversations
     init_db(username)
     conn = _connect(username)
-    conn.row_factory = sqlite3.Row
+    # row_factory handled by db.py
     try:
         convos = conn.execute("""
             SELECT persona, user_input, assistant_response, delta_e, created_at
@@ -758,7 +792,7 @@ def build_knowledge_context(username: str, query: str, max_chars: int = 3000) ->
     # 3. Top entities by mention count
     if total_len < max_chars:
         conn = _connect(username)
-        conn.row_factory = sqlite3.Row
+        # row_factory handled by db.py
         try:
             top_ents = conn.execute("""
                 SELECT name, entity_type, mention_count
@@ -801,21 +835,54 @@ def backfill_summaries(username: str, batch_size: int = 5):
 
     # Fleet calls outside DB connection (each takes 10-60s)
     updates = []
-    for row_id, title, snippet, category in rows:
+    def _backfill_one(item):
+        row_id, title, snippet, category = item
         if not snippet:
-            continue
-        try:
-            prompt = (
-                f"Summarize this document in 2-3 sentences.\n\n"
-                f"Title: {title}\nCategory: {category}\n\n"
-                f"Content:\n{snippet}\n\nSummary:"
-            )
-            resp = llm_router.ask(prompt, preferred_tier="free")
-            if resp and resp.content:
-                updates.append((resp.content.strip()[:500], row_id))
-        except Exception as e:
-            logging.debug(f"KNOWLEDGE: Backfill failed for id={row_id}: {e}")
-            break  # Stop batch on failure (likely rate-limited)
+            return ""  # truthy-ish skip, not a fleet failure
+        prompt = (
+            f"Summarize this document in 2-3 sentences.\n\n"
+            f"Title: {title}\nCategory: {category}\n\n"
+            f"Content:\n{snippet}\n\nSummary:"
+        )
+        resp = llm_router.ask(prompt, preferred_tier="free")
+        if resp and resp.content:
+            return resp.content.strip()[:500]
+        return None  # signals retry
+
+    try:
+        from core.fleet_retry import fleet_batch
+
+        def _on_save(results):
+            _updates = [(res, item[0]) for item, res in results if res]
+            if _updates:
+                c = _connect(username)
+                c.executemany("UPDATE knowledge SET summary=? WHERE id=?", _updates)
+                c.commit()
+                c.close()
+
+        completed = fleet_batch(
+            list(rows), _backfill_one,
+            max_retries=5, delay=1.5,
+            save_every=25, on_save=_on_save,
+        )
+        updates = [(res, item[0]) for item, res in completed if res]
+    except ImportError:
+        # Fallback if fleet_retry not available — old behavior but continue on failure
+        for row_id, title, snippet, category in rows:
+            if not snippet:
+                continue
+            try:
+                prompt = (
+                    f"Summarize this document in 2-3 sentences.\n\n"
+                    f"Title: {title}\nCategory: {category}\n\n"
+                    f"Content:\n{snippet}\n\nSummary:"
+                )
+                resp = llm_router.ask(prompt, preferred_tier="free")
+                if resp and resp.content:
+                    updates.append((resp.content.strip()[:500], row_id))
+            except Exception as e:
+                logging.info(f"KNOWLEDGE: Backfill failed for id={row_id}: {e}")
+                continue  # keep going, don't break
 
     # Fast batch write — no slow I/O inside
     if updates:
@@ -857,7 +924,7 @@ def get_top_gaps(username: str, limit: int = 10) -> List[Dict]:
     """Return the most frequently hit knowledge gaps."""
     init_db(username)
     conn = _connect(username)
-    conn.row_factory = sqlite3.Row
+    # row_factory handled by db.py
     rows = conn.execute(
         """SELECT query, source, gap_type, entity_name, times_hit, first_seen, last_seen
            FROM knowledge_gaps
@@ -902,7 +969,7 @@ def semantic_search(username: str, query: str, max_results: int = 5) -> List[Dic
 
     init_db(username)
     conn = _connect(username)
-    conn.row_factory = sqlite3.Row
+    # row_factory handled by db.py
 
     query_vec = embeddings.embed(query)
     if not query_vec:

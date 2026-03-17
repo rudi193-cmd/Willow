@@ -1,0 +1,22 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-10T17:20 CST
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Phase 3 security fixes — error sanitization, security headers, input validation, dependency pinning.
+
+1. **Error sanitization** — 49 `str(e)` exposures in server.py leak internal paths,
+   DB details, stack traces. Replace with generic messages; log full detail server-side.
+2. **Security headers middleware** — Add X-Content-Type-Options, X-Frame-Options,
+   X-XSS-Protection to all responses.
+3. **Input validation** — knowledge_graph params get Query bounds; die-namic
+   ValidateRequest gets field length constraints.
+4. **Dependency pinning** — Pin key deps in requirements.txt to actual installed versions.
+
+## Risk Assessment
+
+Risk Level: MINIMAL
+Reversible: YES
+Dependencies: none new

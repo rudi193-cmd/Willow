@@ -18,7 +18,6 @@ Multi-routing:
 """
 
 import sys
-import sqlite3
 import shutil
 import hashlib
 from pathlib import Path
@@ -161,7 +160,6 @@ def search_screenshots(
     """
     init_db()
     conn = get_connection()
-    conn.row_factory = sqlite3.Row
 
     query = "SELECT * FROM screenshots WHERE 1=1"
     params = []

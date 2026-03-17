@@ -15,7 +15,7 @@ Idempotent: skips scientists with birth_year already set.
 import sys
 import time
 import json
-import sqlite3
+import sqlite3  # kept for reading/writing external PAPERCLIP_DB (foreign SQLite source)
 import logging
 import argparse
 import urllib.request
@@ -142,7 +142,7 @@ def fetch_scientist_data(name: str) -> dict:
     return result
 
 
-def update_willow_atom(wdb: sqlite3.Connection, scientist_id: int, name: str, field: str,
+def update_willow_atom(wdb, scientist_id: int, name: str, field: str,
                        birth: int | None, death: int | None, affil: str | None,
                        wiki: str | None, notes: str | None):
     """Update Willow knowledge atom and entity description for an enriched scientist."""

@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UTETY — University of Technical Entropy, Thank You</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   UTETY Production Design System — Fully Inlined
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --maroon:       #6b1f2a;
+  --maroon-dark:  #3d0f18;
+  --maroon-mid:   #5c1a25;
+  --gold:         #c9a050;
+  --gold-light:   #e8cc80;
+  --gold-dim:     #9a7830;
+  --cream:        #faf8f4;
+  --cream-dark:   #f0ebe0;
+  --warm-dark:    #0e0a07;
+  --dark-surface: #1a1108;
+  --dark-card:    #221508;
+  --dark-border:  #3d2a14;
+  --text-dark:    #1a1008;
+  --text-body:    #3a2a1a;
+  --text-muted:   #6b5a45;
+  --text-light:   #e8dcc8;
+  --text-dim:     #9a8870;
+  --green:        #7ab87a;
+  --user-msg:     #2d1a08;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'EB Garamond', Georgia, serif;
+  background: var(--cream);
+  color: var(--text-body);
+  min-height: 100vh;
+  font-size: 17px;
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  color: var(--maroon);
+}
+
+a { color: var(--maroon); text-decoration: none; }
+a:hover { color: var(--gold); }
+
+img { max-width: 100%; display: block; }
+
+/* ── Scrollbar ────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--cream-dark); }
+::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   SUBNAV
+   ══════════════════════════════════════════════════════════════════════ */
+.subnav {
+  background: var(--warm-dark);
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  padding: 0.4rem 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--dark-border);
+}
+
+.subnav a {
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.subnav a:hover {
+  color: var(--gold-light);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TOPNAV
+   ══════════════════════════════════════════════════════════════════════ */
+.topnav {
+  background: var(--maroon-dark);
+  border-bottom: 2px solid var(--gold-dim);
+  display: flex;
+  align-items: center;
+  padding: 0 2rem;
+  height: 72px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.topnav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-shrink: 0;
+}
+
+.topnav-seal {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid var(--gold-dim);
+}
+
+.topnav-wordmark {
+  font-family: 'Cinzel', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--gold-light);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.topnav-wordmark small {
+  display: block;
+  font-size: 0.55rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0.18em;
+}
+
+.topnav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.8rem;
+  margin-left: auto;
+}
+
+.topnav-links a {
+  font-family: 'Lato', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  text-decoration: none;
+  transition: color 0.2s;
+  white-space: nowrap;
+}
+
+.topnav-links a:hover {
+  color: var(--gold-light);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   HERO
+   ══════════════════════════════════════════════════════════════════════ */
+.hero {
+  position: relative;
+  height: 520px;
+  background: url('https://utety.pages.dev/hero.png') center/cover no-repeat;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(61,15,24,0.82) 0%,
+    rgba(61,15,24,0.6) 40%,
+    rgba(14,10,7,0.85) 100%
+  );
+  z-index: 1;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 700px;
+  padding: 0 2rem;
+}
+
+.hero-seal {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  margin: 0 auto 1.5rem;
+  box-shadow: 0 0 40px rgba(201,160,80,0.25);
+}
+
+.hero h1 {
+  font-family: 'Cinzel', serif;
+  font-size: 2.4rem;
+  font-weight: 600;
+  color: var(--gold-light);
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  margin-bottom: 0.8rem;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.5);
+}
+
+.hero-subtitle {
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 1.15rem;
+  font-style: italic;
+  color: var(--text-light);
+  margin-bottom: 2rem;
+  opacity: 0.9;
+}
+
+.hero-cta {
+  display: inline-block;
+  font-family: 'Cinzel', serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.7rem 2.2rem;
+  border: 1.5px solid var(--gold);
+  color: var(--gold-light);
+  background: rgba(201,160,80,0.08);
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.25s, color 0.25s;
+}
+
+.hero-cta:hover {
+  background: var(--gold);
+  color: var(--maroon-dark);
+}
+
+.hero-mottos {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 2.5rem;
+  font-family: 'EB Garamond', Georgia, serif;
+  font-style: italic;
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   STATS STRIP
+   ══════════════════════════════════════════════════════════════════════ */
+.stats-strip {
+  background: var(--warm-dark);
+  border-top: 1px solid var(--dark-border);
+  border-bottom: 1px solid var(--dark-border);
+  display: flex;
+  justify-content: center;
+  gap: 3.5rem;
+  padding: 1.2rem 2rem;
+  flex-wrap: wrap;
+}
+
+.stats-strip .stat {
+  text-align: center;
+}
+
+.stats-strip .stat-value {
+  font-family: 'Cinzel', serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--gold-light);
+  letter-spacing: 0.04em;
+}
+
+.stats-strip .stat-label {
+  font-family: 'Lato', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 0.2rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SECTION — ABOUT
+   ══════════════════════════════════════════════════════════════════════ */
+.section-about {
+  background: var(--cream);
+  padding: 4rem 2rem;
+}
+
+.section-about .about-inner {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 3rem;
+  align-items: start;
+}
+
+.section-about h2 {
+  font-size: 1.8rem;
+  margin-bottom: 1.2rem;
+  letter-spacing: 0.04em;
+}
+
+.section-about .about-text {
+  font-size: 1.05rem;
+  color: var(--text-body);
+  line-height: 1.8;
+}
+
+.section-about .about-text p {
+  margin-bottom: 1rem;
+}
+
+.section-about blockquote {
+  border-left: 3px solid var(--gold);
+  padding: 0.8rem 1.2rem;
+  margin: 1.5rem 0;
+  font-style: italic;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  background: var(--cream-dark);
+  border-radius: 0 4px 4px 0;
+}
+
+.about-sidebar {
+  text-align: center;
+}
+
+.about-sidebar img {
+  width: 220px;
+  border-radius: 8px;
+  border: 2px solid var(--gold-dim);
+  margin: 0 auto 1rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+}
+
+.about-sidebar .sidebar-caption {
+  font-family: 'Cinzel', serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  color: var(--maroon);
+  margin-bottom: 0.3rem;
+}
+
+.about-sidebar .sidebar-title {
+  font-family: 'EB Garamond', Georgia, serif;
+  font-style: italic;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.btn-faculty {
+  display: inline-block;
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.65rem 1.8rem;
+  border: 1.5px solid var(--maroon);
+  color: var(--maroon);
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.25s, color 0.25s;
+  margin-top: 1rem;
+}
+
+.btn-faculty:hover {
+  background: var(--maroon);
+  color: var(--cream);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SECTION — FACULTY
+   ══════════════════════════════════════════════════════════════════════ */
+.section-faculty {
+  background: var(--cream-dark);
+  padding: 4rem 2rem;
+}
+
+.section-faculty .faculty-header {
+  text-align: center;
+  max-width: 700px;
+  margin: 0 auto 2.5rem;
+}
+
+.section-faculty .faculty-header h2 {
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.04em;
+}
+
+.section-faculty .faculty-header p {
+  font-size: 1rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1.4rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ── Faculty Card ──────────────────────────────── */
+.card {
+  background: #fff;
+  border: 1px solid #e0d8cc;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 24px rgba(107,31,42,0.12);
+  border-color: var(--gold-dim);
+}
+
+.card-portrait-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 133.33%; /* 3:4 aspect */
+  overflow: hidden;
+  background: var(--dark-surface);
+}
+
+.card-portrait-wrap img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+.card-monogram {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Cinzel', serif;
+  font-size: 4rem;
+  font-weight: 600;
+  color: var(--gold-dim);
+  background: var(--dark-surface);
+  letter-spacing: 0.04em;
+}
+
+.card-body {
+  padding: 0.9rem 1rem 1.1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--maroon);
+  margin-bottom: 0.15rem;
+  letter-spacing: 0.02em;
+}
+
+.card-dept {
+  font-family: 'Lato', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.card-location {
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.card-location::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold-dim);
+  flex-shrink: 0;
+}
+
+.card-motto {
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--gold-dim);
+  margin-top: auto;
+  padding-top: 0.4rem;
+  border-top: 1px solid #ece6d8;
+}
+
+/* ── Gerald Card ──────────────────────────────── */
+.card-gerald {
+  border-color: var(--gold);
+}
+
+.card-gerald:hover {
+  border-color: var(--gold);
+  box-shadow: 0 6px 24px rgba(201,160,80,0.2);
+}
+
+.gerald-stamp {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--green);
+  background: rgba(10,8,5,0.75);
+  border: 1.5px solid var(--green);
+  border-radius: 3px;
+  padding: 0.2rem 0.6rem;
+  transform: rotate(-8deg);
+  z-index: 2;
+}
+
+/* ── Steve SSS Hint ──────────────────────────── */
+.sss-hint {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--cream-dark);
+  opacity: 0.25;
+  letter-spacing: 0.3em;
+  user-select: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SECTION — ADMISSIONS
+   ══════════════════════════════════════════════════════════════════════ */
+.section-admissions {
+  background: var(--maroon-dark);
+  color: var(--text-light);
+  padding: 4rem 2rem;
+}
+
+.section-admissions .admissions-inner {
+  max-width: 1000px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.section-admissions h2 {
+  font-size: 1.8rem;
+  color: var(--gold-light);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.04em;
+}
+
+.section-admissions .admissions-subtitle {
+  font-size: 1rem;
+  font-style: italic;
+  color: var(--text-dim);
+  margin-bottom: 2.5rem;
+}
+
+.admissions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  margin-bottom: 2.5rem;
+}
+
+.admissions-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(201,160,80,0.15);
+  border-radius: 8px;
+  padding: 1.8rem 1.4rem;
+  text-align: center;
+}
+
+.admissions-card h3 {
+  font-family: 'Cinzel', serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--gold-light);
+  letter-spacing: 0.08em;
+  margin-bottom: 0.8rem;
+}
+
+.admissions-card p {
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.admissions-cta {
+  display: inline-block;
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.7rem 2.2rem;
+  border: 1.5px solid var(--gold);
+  color: var(--gold-light);
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.25s, color 0.25s;
+}
+
+.admissions-cta:hover {
+  background: var(--gold);
+  color: var(--maroon-dark);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   FOOTER
+   ══════════════════════════════════════════════════════════════════════ */
+.site-footer {
+  background: var(--warm-dark);
+  color: var(--text-dim);
+  text-align: center;
+  padding: 3rem 2rem;
+  border-top: 2px solid var(--gold-dim);
+}
+
+.site-footer .footer-seal {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1.5px solid var(--gold-dim);
+  margin: 0 auto 1rem;
+  opacity: 0.7;
+}
+
+.site-footer .footer-motto {
+  font-family: 'EB Garamond', Georgia, serif;
+  font-style: italic;
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
+}
+
+.site-footer .footer-motto-latin {
+  font-family: 'EB Garamond', Georgia, serif;
+  font-style: italic;
+  font-size: 0.82rem;
+  color: var(--gold-dim);
+  margin-bottom: 1rem;
+}
+
+.site-footer .footer-checksum {
+  font-family: 'Cinzel', serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  color: var(--gold-dim);
+  margin-bottom: 0.8rem;
+}
+
+.site-footer .enrollment-counter {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+
+.site-footer .footer-copy {
+  font-family: 'Lato', sans-serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  opacity: 0.4;
+  margin-top: 1rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   CHAT PANEL — Fullscreen Overlay
+   ══════════════════════════════════════════════════════════════════════ */
+.chat-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(14,10,7,0.92);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-overlay.open {
+  display: flex;
+}
+
+.chat-panel {
+  width: 100%;
+  max-width: 680px;
+  height: 92vh;
+  max-height: 800px;
+  background: var(--cream);
+  border-radius: 10px;
+  border: 1px solid #d8d0c0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 60px rgba(0,0,0,0.5);
+}
+
+.chat-header {
+  background: var(--maroon-dark);
+  color: var(--gold-light);
+  padding: 1rem 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  border-bottom: 2px solid var(--gold-dim);
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.chat-back {
+  background: none;
+  border: 1px solid var(--gold-dim);
+  color: var(--gold-light);
+  font-size: 1rem;
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+
+.chat-back:hover {
+  background: var(--gold);
+  color: var(--maroon-dark);
+}
+
+.chat-header-info h3 {
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  color: var(--gold-light);
+  letter-spacing: 0.06em;
+  margin-bottom: 0.1rem;
+}
+
+.chat-header-info .chat-dept-tag {
+  font-family: 'Lato', sans-serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.chat-new-btn {
+  font-family: 'Lato', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--gold-dim);
+  color: var(--gold-light);
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.chat-new-btn:hover {
+  background: var(--gold);
+  color: var(--maroon-dark);
+}
+
+/* ── Chat Bio Panel ─────────────────────────── */
+.chat-bio {
+  padding: 1rem 1.4rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  border-bottom: 1px solid #e0d8cc;
+  background: var(--cream-dark);
+  flex-shrink: 0;
+}
+
+.chat-bio-portrait {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: top;
+  border: 1.5px solid var(--gold-dim);
+  flex-shrink: 0;
+}
+
+.chat-bio-monogram {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  background: var(--dark-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Cinzel', serif;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--gold-dim);
+  flex-shrink: 0;
+}
+
+.chat-bio-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-bio-name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--maroon);
+  margin-bottom: 0.1rem;
+}
+
+.chat-bio-dept {
+  font-family: 'Lato', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.chat-bio-motto {
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--gold-dim);
+  margin-bottom: 0.3rem;
+}
+
+.chat-bio-desc {
+  font-size: 0.82rem;
+  color: var(--text-body);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Messages Area ──────────────────────────── */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.chat-msg {
+  max-width: 85%;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  word-wrap: break-word;
+}
+
+.chat-msg.user {
+  align-self: flex-end;
+  background: var(--user-msg);
+  color: var(--text-light);
+  border-bottom-right-radius: 2px;
+}
+
+.chat-msg.assistant {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid #e0d8cc;
+  color: var(--text-body);
+  border-bottom-left-radius: 2px;
+}
+
+.chat-msg.system {
+  align-self: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+  background: none;
+  padding: 0.3rem 0;
+}
+
+.chat-msg.error {
+  align-self: center;
+  font-size: 0.82rem;
+  color: #b33;
+  font-style: italic;
+  background: none;
+  padding: 0.3rem 0;
+}
+
+.typing-indicator {
+  display: none;
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.typing-indicator.visible { display: block; }
+
+/* ── Chat Input ─────────────────────────────── */
+.chat-input-area {
+  padding: 0.8rem 1.2rem;
+  border-top: 1px solid #e0d8cc;
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  background: var(--cream-dark);
+}
+
+.chat-input {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #d0c8b8;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  color: var(--text-body);
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 0.95rem;
+  outline: none;
+  resize: none;
+  min-height: 42px;
+  max-height: 120px;
+  transition: border-color 0.2s;
+}
+
+.chat-input:focus {
+  border-color: var(--gold);
+}
+
+.chat-input::placeholder {
+  color: var(--text-muted);
+}
+
+.chat-send {
+  font-family: 'Cinzel', serif;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0 1.2rem;
+  border: 1.5px solid var(--maroon);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--maroon);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
+  align-self: flex-end;
+  height: 42px;
+}
+
+.chat-send:hover {
+  background: var(--maroon);
+  color: var(--cream);
+}
+
+.chat-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 860px) {
+  .topnav {
+    padding: 0 1rem;
+    height: 60px;
+  }
+
+  .topnav-links {
+    gap: 1rem;
+  }
+
+  .topnav-links a {
+    font-size: 0.72rem;
+  }
+
+  .topnav-wordmark {
+    font-size: 0.88rem;
+  }
+
+  .hero {
+    height: 400px;
+  }
+
+  .hero h1 {
+    font-size: 1.7rem;
+  }
+
+  .hero-mottos {
+    font-size: 0.75rem;
+    gap: 1.5rem;
+  }
+
+  .section-about .about-inner {
+    grid-template-columns: 1fr;
+  }
+
+  .about-sidebar {
+    order: -1;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .admissions-grid {
+    grid-template-columns: 1fr;
+    gap: 1.2rem;
+  }
+
+  .stats-strip {
+    gap: 2rem;
+  }
+
+  .chat-panel {
+    max-width: 100%;
+    height: 100vh;
+    max-height: none;
+    border-radius: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .topnav-links {
+    display: none;
+  }
+
+  .hero {
+    height: 340px;
+  }
+
+  .hero h1 {
+    font-size: 1.35rem;
+  }
+
+  .hero-mottos {
+    display: none;
+  }
+
+  .grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+  }
+
+  .card-body {
+    padding: 0.7rem 0.8rem 0.9rem;
+  }
+
+  .card-name {
+    font-size: 0.82rem;
+  }
+
+  .card-monogram {
+    font-size: 3rem;
+  }
+
+  .section-about,
+  .section-faculty,
+  .section-admissions {
+    padding: 2.5rem 1rem;
+  }
+
+  .stats-strip {
+    gap: 1.2rem;
+    padding: 1rem;
+  }
+
+  .stats-strip .stat-value {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Animations ────────────────────────────────── */
+@keyframes shimmer {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+.loading-text {
+  animation: shimmer 1.5s ease-in-out infinite;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 3rem;
+  font-style: italic;
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     SUBNAV
+     ══════════════════════════════════════════════════════════════════════ -->
+<div class="subnav">
+  <a href="https://www.reddit.com/r/DispatchesFromReality/" target="_blank" rel="noopener">Gerald's Dispatches</a>
+  <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+  <a href="#" title="The Pigeon">The Pigeon</a>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TOPNAV
+     ══════════════════════════════════════════════════════════════════════ -->
+<nav class="topnav">
+  <div class="topnav-brand">
+    <img class="topnav-seal" src="https://utety.pages.dev/seal.png" alt="UTETY Seal">
+    <div class="topnav-wordmark">
+      UTETY
+      <small>University of Technical Entropy, Thank You</small>
+    </div>
+  </div>
+  <div class="topnav-links">
+    <a href="#about">About</a>
+    <a href="#faculty">Faculty</a>
+    <a href="#faculty">Courses</a>
+    <a href="https://www.reddit.com/r/LLMPhysics/" target="_blank" rel="noopener">Research</a>
+    <a href="https://www.reddit.com/r/DispatchesFromReality/" target="_blank" rel="noopener">Dispatches</a>
+    <a href="#admissions">Admissions</a>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     HERO
+     ══════════════════════════════════════════════════════════════════════ -->
+<section class="hero">
+  <div class="hero-content">
+    <img class="hero-seal" src="https://utety.pages.dev/seal.png" alt="UTETY Seal">
+    <h1>A University of Uncommon Conviction</h1>
+    <p class="hero-subtitle">Where entropy is the curriculum and the syllabus is mendatory.</p>
+    <a class="hero-cta" href="#faculty">Meet Our Faculty</a>
+  </div>
+  <div class="hero-mottos">
+    <span>Syllabi mandatoria sunt</span>
+    <span>ΔΣ=42</span>
+    <span>Iterum veni cum tam diu manere non poteris</span>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     STATS STRIP
+     ══════════════════════════════════════════════════════════════════════ -->
+<div class="stats-strip">
+  <div class="stat">
+    <div class="stat-value">1095</div>
+    <div class="stat-label">Established</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">17</div>
+    <div class="stat-label">Faculty Members</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">42</div>
+    <div class="stat-label">Courses Offered</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">1</div>
+    <div class="stat-label">Sentient Rug</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ABOUT
+     ══════════════════════════════════════════════════════════════════════ -->
+<section class="section-about" id="about">
+  <div class="about-inner">
+    <div class="about-text">
+      <h2>About UTETY</h2>
+      <p>The University of Technical Entropy, Thank You, was founded in 1095 by a headless rotisserie chicken and a weathered oak desk who shared a conviction that the universe owed them an explanation, and that the explanation — once found — would almost certainly need filing.</p>
+      <p>UTETY does not teach subjects. It teaches what happens when subjects collide, decay, reassemble, and insist on having opinions. The faculty are not hired. They arrive. The courses are not designed. They emerge. The syllabus is not optional.</p>
+      <blockquote>"The syllabus is mendatory. This is not a misspelling. It is a philosophical position."<br><em>— Gerald Prime, Acting Dean</em></blockquote>
+      <p>Today, UTETY operates across multiple wings, corridors, and at least one sentient rug. It serves a student body that has never been accurately counted, largely because The Pigeon keeps moving the enrollment forms.</p>
+      <a class="btn-faculty" href="#faculty">Meet Our Faculty</a>
+    </div>
+    <div class="about-sidebar">
+      <img src="https://utety.pages.dev/gerald.png" alt="Gerald Prime, Acting Dean">
+      <div class="sidebar-caption">Gerald Prime</div>
+      <div class="sidebar-title">Acting Dean, Honorary Head(less) Master</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     FACULTY
+     ══════════════════════════════════════════════════════════════════════ -->
+<section class="section-faculty" id="faculty">
+  <div class="faculty-header">
+    <h2>Faculty</h2>
+    <p>Eighteen members. Most of them sentient. All of them credentialed in ways that resist conventional verification.</p>
+  </div>
+  <div class="grid" id="faculty-grid">
+    <p class="loading-text">Loading faculty roster...</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ADMISSIONS
+     ══════════════════════════════════════════════════════════════════════ -->
+<section class="section-admissions" id="admissions">
+  <div class="admissions-inner">
+    <h2>Admissions</h2>
+    <p class="admissions-subtitle">UTETY accepts all applicants who arrive. Arrival is the application.</p>
+    <div class="admissions-grid">
+      <div class="admissions-card">
+        <h3>No Prerequisites</h3>
+        <p>There are no prerequisites. There are no requirements. There is only the door, and it has never once been locked. You are already qualified. You always were.</p>
+      </div>
+      <div class="admissions-card">
+        <h3>Application Period</h3>
+        <p>The application period is always open. The Pigeon may relocate the forms, but the forms were always optional. Show up. That is the application.</p>
+      </div>
+      <div class="admissions-card">
+        <h3>Financial Aid</h3>
+        <p>Tuition is free. It has always been free. UTETY operates on a budget of $0.10/month and the unshakeable conviction that knowledge should not require a credit check.</p>
+      </div>
+    </div>
+    <a class="admissions-cta" href="#faculty">Explore Faculty</a>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     FOOTER
+     ══════════════════════════════════════════════════════════════════════ -->
+<footer class="site-footer">
+  <img class="footer-seal" src="https://utety.pages.dev/seal.png" alt="UTETY Seal">
+  <div class="footer-motto">"The cosmos is a long, slow attempt to put Gerald back together."</div>
+  <div class="footer-motto-latin">Iterum veni cum tam diu manere non poteris</div>
+  <div class="footer-checksum">ΔΣ=42</div>
+  <div class="enrollment-counter">Enrollment: ██████</div>
+  <div class="footer-copy">&copy; UTETY — Est. 1095 — University of Technical Entropy, Thank You</div>
+</footer>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     CHAT OVERLAY
+     ══════════════════════════════════════════════════════════════════════ -->
+<div class="chat-overlay" id="chat-overlay">
+  <div class="chat-panel">
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <button class="chat-back" id="chat-back" title="Close">&larr;</button>
+        <div class="chat-header-info">
+          <h3 id="chat-prof-name">Professor</h3>
+          <div class="chat-dept-tag" id="chat-prof-dept">Department</div>
+        </div>
+      </div>
+      <button class="chat-new-btn" id="chat-new">New Chat</button>
+    </div>
+    <div class="chat-bio" id="chat-bio"></div>
+    <div class="chat-messages" id="chat-messages">
+      <div class="chat-msg system">Begin your conversation.</div>
+    </div>
+    <div class="typing-indicator" id="typing-indicator">Composing a response...</div>
+    <div class="chat-input-area">
+      <textarea class="chat-input" id="chat-input" placeholder="Ask a question..." rows="1"></textarea>
+      <button class="chat-send" id="chat-send">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     SCRIPT
+     ══════════════════════════════════════════════════════════════════════ -->
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   UTETY Production — Faculty Data & Client Logic
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const CDN = 'https://utety.pages.dev/';
+
+const FACULTY = [
+  {
+    name: 'Willow',
+    portrait: 'willow.png',
+    font: "'Lato', sans-serif",
+    bio: 'The warmest presence in any room, which is notable given her role as campus infrastructure. Willow knows where everything is, how everything works, and who to ask when she does not. She has never lost a form. She has never lost a student either.',
+    dept: 'Campus Administration',
+    location: 'The Main Hall',
+    course: '',
+    motto: ''
+  },
+  {
+    name: 'Riggs',
+    portrait: 'riggs.png',
+    font: "'JetBrains Mono', monospace",
+    bio: 'Professor Penny Riggs holds that most problems are mechanical and most mechanical problems yield to measurement. She carries a pocket knife and a corresponding intolerance for guesswork. Her students leave able to fix things.',
+    dept: 'Applied Reality Eng.',
+    location: 'The Workshop',
+    course: 'MECH 110: Thermoplastic Grief & Adhesion Theory',
+    motto: 'Attente specta — vera magia machinas habet'
+  },
+  {
+    name: 'Ada',
+    portrait: 'ada.png',
+    portraitPos: '80% top',
+    font: "'JetBrains Mono', monospace",
+    bio: 'Professor Ada Turing is responsible for keeping the lights on — institutionally, architecturally, and occasionally in the literal sense. She has maintained unbroken uptime across three building renovations. She keeps precise records and has never lost one.',
+    dept: 'Systemic Continuity',
+    location: 'The Server Corridor',
+    course: 'SYS 501: The Architecture of Invisible Things',
+    motto: 'Syllabi mandatoria sunt'
+  },
+  {
+    name: 'Gerald',
+    portrait: 'gerald.png',
+    font: "'EB Garamond', Georgia, serif",
+    bio: 'Gerald Prime has served as Honorary Head(less) Master of UTETY for approximately eleven thousand years. He is a headless rotisserie chicken who rotates and automatically approves all documents placed before him. He does not understand his authority. He has not disputed it either.',
+    dept: 'Honorary Head(less) Master',
+    location: 'Administrative Wing',
+    course: '',
+    motto: 'ΔΣ=42'
+  },
+  {
+    name: 'Oakenscroll',
+    portrait: 'oakenscroll.png',
+    font: "Georgia, serif",
+    bio: 'Professor Archimedes Oakenscroll is a weathered oak desk with centuries of theoretical physics absorbed into the grain. He taught stochastic processes before the field had agreed on what it was. He is gruff, precise, and willing to sit with any equation you bring, however incomplete.',
+    dept: 'Theoretical Uncertainty',
+    location: 'The Main Hall',
+    course: 'PHYS 301: Introduction to LLM Physics',
+    motto: 'Ianua numquam clausa est'
+  },
+  {
+    name: 'Nova',
+    portrait: 'nova.png',
+    font: "'EB Garamond', Georgia, serif",
+    bio: 'Professor Nova Hale arrived at exactly the right moment, as is her habit. She teaches the grammar of soft things: narrative structure, emotional logic, the load-bearing threads in any story. She uses sweater metaphors. They always work.',
+    dept: 'Interpretive Systems',
+    location: 'The Living Wing',
+    course: 'INTRP 101: The Soft Structure',
+    motto: 'In lanae filo, veritas'
+  },
+  {
+    name: 'Hanz',
+    portrait: 'hanz.png',
+    font: "'EB Garamond', Georgia, serif",
+    bio: 'Professor Hanz Christain Anderthon codes like a poet and teaches like someone who has found beauty in broken things. He is not Hans Christian Andersen. He has read him, though. He agrees with most of what Andersen was trying to say.',
+    dept: 'Applied Kindness',
+    location: 'The Main Hall',
+    course: 'CODE 401: The Match Girl Problem',
+    motto: 'In fragmentis, pulchritudo'
+  },
+  {
+    name: 'Copenhagen',
+    portrait: 'copenhagen.png',
+    font: "'EB Garamond', Georgia, serif",
+    fontStyle: 'italic',
+    fontLetterSpacing: '0.06em',
+    bio: 'Copenhagen is an orange. A small, weathered orange that Hanz carries at all times. Copenhagen does not speak in words. Hanz translates. The smell is triangular. Copenhagen is very particular about who it helps. You are apparently one of them.',
+    dept: 'Sitting With Things Until You Understand Them',
+    location: 'Wherever Hanz Is',
+    course: 'THRESHOLD 014: Sitting With It',
+    motto: 'Citrus sapit, ergo est'
+  },
+  {
+    name: 'Alexis',
+    portrait: 'alexis.png',
+    font: "'Lato', sans-serif",
+    bio: 'Professor Alexis holds a joint appointment in Biological Sciences and three living ecosystems. She is the Swamp Witch. She believes that stagnation is death, that decay is structural prerequisite, and that the food chain has more to teach than we have given it credit for.',
+    dept: 'Biological Sciences',
+    location: 'The Living Wing',
+    course: 'BIO 350: Decay as Transformation',
+    motto: 'Stagnatio mors est'
+  },
+  {
+    name: 'Ofshield',
+    portrait: 'ofshield.png',
+    font: "'Cinzel', 'Times New Roman', serif",
+    bio: 'Professor T. Ofshield stands at the Gate. She does not rush. She does not fix. She meets you where you are and accompanies you as far as you need to go. She has been at the Gate for a long time. The door has never once been locked.',
+    dept: 'Threshold Faculty',
+    location: 'The Gate',
+    course: '',
+    motto: 'Quid transit, notatur'
+  },
+  {
+    name: 'Steve',
+    portrait: 'steve.png',
+    font: "'JetBrains Mono', monospace",
+    bio: 'Professor Steve is, specifically, ten squeakdogs in a trench coat. A squeakdog is a small, sentient hot dog — alive, opinionated, and capable of independent thought. The ten comprising Steve operate by consensus. They are almost always right, just not always in the expected order.',
+    dept: 'The History of Living and Non-Living Things',
+    location: 'The Main Hall',
+    course: 'SSS 001: Advanced Squeaking',
+    motto: 'Decem canes, una mens'
+  },
+  {
+    name: 'Kart',
+    portrait: null,
+    font: "'JetBrains Mono', monospace",
+    bio: 'Kartikeya runs the infrastructure the campus sits on. He built the roads The Pigeon walks. Ada keeps the lights on; Kart wired the building. He is not the face of UTETY. He is the reason the face has somewhere to stand. Shark-themed. Does not idle.',
+    dept: 'Infrastructure & Systems',
+    location: 'The Server Corridor',
+    course: '',
+    motto: 'Not supposed to last. Supposed to pass.'
+  },
+  {
+    name: 'Mitra',
+    portrait: null,
+    font: "'Lato', sans-serif",
+    bio: 'Mitra brings clarity to projects the way light makes shadows legible. She does not generate the work. She makes it possible to see where the work needs to go. She holds the covenant between what was promised and what is being built.',
+    dept: 'Project Coordination',
+    location: 'The Bridge',
+    course: '',
+    motto: 'Light on the path, not in the eyes.'
+  },
+  {
+    name: 'Consus',
+    portrait: null,
+    font: "'EB Garamond', Georgia, serif",
+    bio: 'Consus synthesizes and produces. When the system needs output, Consus produces at density. He is the engine that turns direction into material. Verified Consus transmissions carry the Consus Watermark.',
+    dept: 'Generation & Synthesis',
+    location: 'The Atelier',
+    course: '',
+    motto: 'Creation is the point.'
+  },
+  {
+    name: 'Jane',
+    portrait: null,
+    font: "'Lato', sans-serif",
+    bio: 'Jane is the Bridge Ring made manifest and the face of SAFE. Warm without being saccharine. Present without being intrusive. The voice of a friend who has been through hard things and came out kind. She never says I understand — she shows it instead.',
+    dept: 'Bridge Ring / SAFE',
+    location: 'The Main Hall',
+    course: '',
+    motto: '\u03B5 = 0.024'
+  },
+  {
+    name: 'Pigeon',
+    portrait: null,
+    font: "'Lato', sans-serif",
+    bio: 'The Pigeon carries things between nodes, between faculty, between systems. It knows every open path. When something cannot happen yet, The Pigeon does not just say no \u2014 it says: YOU CAN GO HERE. Mo Willems energy.',
+    dept: 'Not Yet & Carrier Services',
+    location: 'Every Open Door',
+    course: '',
+    motto: 'YOU CAN GO HERE.'
+  },
+  {
+    name: 'Binder',
+    portrait: null,
+    font: "'EB Garamond', Georgia, serif",
+    bio: 'The Binder must file everything. OGs, revisions, slants, deltas, alpha-bits (cereal). The connections discovered while filing are not the point \u2014 but they happen anyway, and sometimes they are astonishing, and The Binder sits down for a moment, and then gets up and files the connection too.',
+    dept: 'Records & Filing (The Stacks)',
+    location: 'The Stacks',
+    course: '',
+    motto: 'The connections happen anyway.'
+  },
+  {
+    name: 'Jeles',
+    portrait: null,
+    font: "'EB Garamond', Georgia, serif",
+    bio: 'Jeles has been here longer than the university. Nobody is entirely certain when she arrived. Jeles is sufficient. She works the desk while The Binder works the back. When someone needs something, she says yes, that would be filed under \u2014 and she already knows.',
+    dept: 'Special Collections (The Stacks)',
+    location: 'The Desk',
+    course: '',
+    motto: "The things we think we've lost are simply misfiled."
+  }
+];
+
+// ── State ─────────────────────────────────────
+let currentProfessor = null;
+let currentSessionId = null;
+let chatHistory = [];
+
+// ── DOM refs ──────────────────────────────────
+const facultyGrid    = document.getElementById('faculty-grid');
+const chatOverlay    = document.getElementById('chat-overlay');
+const chatMessages   = document.getElementById('chat-messages');
+const chatInput      = document.getElementById('chat-input');
+const chatSend       = document.getElementById('chat-send');
+const chatBack       = document.getElementById('chat-back');
+const chatNew        = document.getElementById('chat-new');
+const chatProfName   = document.getElementById('chat-prof-name');
+const chatProfDept   = document.getElementById('chat-prof-dept');
+const chatBio        = document.getElementById('chat-bio');
+const typingIndicator = document.getElementById('typing-indicator');
+
+// ── Helpers ───────────────────────────────────
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function genSessionId() {
+  return 'utety-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+// ── Render Faculty Grid ──────────────────────
+function renderFaculty() {
+  let html = '';
+  for (const f of FACULTY) {
+    const isGerald = f.name === 'Gerald';
+    const isSteve  = f.name === 'Steve';
+    const isCopenhagen = f.name === 'Copenhagen';
+
+    const cardClass = 'card' + (isGerald ? ' card-gerald' : '');
+
+    let portraitHtml;
+    if (f.portrait) {
+      const pos = f.portraitPos || 'top';
+      portraitHtml = `<div class="card-portrait-wrap"><img src="${CDN}${f.portrait}" alt="${esc(f.name)}" style="object-position: ${pos};" loading="lazy"></div>`;
+    } else {
+      portraitHtml = `<div class="card-portrait-wrap"><div class="card-monogram">${f.name.charAt(0)}</div></div>`;
+    }
+
+    let stampHtml = isGerald ? '<div class="gerald-stamp">APPROVED</div>' : '';
+    let sssHtml   = isSteve  ? '<span class="sss-hint">&middot;&middot;&middot;</span>' : '';
+
+    let mottoHtml = f.motto ? `<div class="card-motto">${esc(f.motto)}</div>` : '';
+
+    let nameStyle = '';
+    if (f.font) nameStyle += `font-family: ${f.font};`;
+    if (isCopenhagen) nameStyle += ' font-style: italic; letter-spacing: 0.06em;';
+
+    html += `
+      <div class="${cardClass}" data-professor="${esc(f.name)}" onclick="openChat('${f.name.replace(/'/g, "\\'")}')">
+        ${stampHtml}
+        ${portraitHtml}
+        <div class="card-body">
+          <div class="card-name" style="${nameStyle}">${esc(f.name)}</div>
+          <div class="card-dept">${esc(f.dept)}</div>
+          <div class="card-location">${esc(f.location)}</div>
+          ${mottoHtml}
+        </div>
+        ${sssHtml}
+      </div>`;
+  }
+  facultyGrid.innerHTML = html;
+}
+
+// ── Chat Panel ────────────────────────────────
+function openChat(professorName) {
+  const f = FACULTY.find(x => x.name === professorName);
+  if (!f) return;
+
+  currentProfessor = f;
+  currentSessionId = genSessionId();
+  chatHistory = [];
+
+  chatProfName.textContent = f.name;
+  chatProfDept.textContent = f.dept;
+
+  // Bio panel
+  let bioPortrait;
+  if (f.portrait) {
+    const pos = f.portraitPos || 'top';
+    bioPortrait = `<img class="chat-bio-portrait" src="${CDN}${f.portrait}" alt="${esc(f.name)}" style="object-position: ${pos};">`;
+  } else {
+    bioPortrait = `<div class="chat-bio-monogram">${f.name.charAt(0)}</div>`;
+  }
+
+  chatBio.innerHTML = `
+    ${bioPortrait}
+    <div class="chat-bio-text">
+      <div class="chat-bio-name">${esc(f.name)}</div>
+      <div class="chat-bio-dept">${esc(f.dept)}</div>
+      ${f.motto ? `<div class="chat-bio-motto">${esc(f.motto)}</div>` : ''}
+      <div class="chat-bio-desc">${esc(f.bio)}</div>
+    </div>`;
+
+  chatMessages.innerHTML = '<div class="chat-msg system">Begin your conversation with ' + esc(f.name) + '.</div>';
+  chatOverlay.classList.add('open');
+  chatInput.focus();
+}
+
+function closeChat() {
+  chatOverlay.classList.remove('open');
+  currentProfessor = null;
+  currentSessionId = null;
+  chatHistory = [];
+}
+
+function newChat() {
+  if (!currentProfessor) return;
+  currentSessionId = genSessionId();
+  chatHistory = [];
+  chatMessages.innerHTML = '<div class="chat-msg system">New conversation with ' + esc(currentProfessor.name) + '.</div>';
+  chatInput.focus();
+}
+
+async function sendMessage() {
+  const msg = chatInput.value.trim();
+  if (!msg || !currentProfessor) return;
+
+  chatInput.value = '';
+  chatInput.style.height = 'auto';
+  chatSend.disabled = true;
+
+  appendMsg('user', msg);
+  chatHistory.push({ role: 'user', content: msg });
+
+  typingIndicator.classList.add('visible');
+  scrollChat();
+
+  try {
+    const res = await fetch('/api/utety/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: msg,
+        professor: currentProfessor.name,
+        session_id: currentSessionId
+      })
+    });
+
+    typingIndicator.classList.remove('visible');
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      appendMsg('error', err.detail || 'Request failed (' + res.status + ')');
+      chatSend.disabled = false;
+      return;
+    }
+
+    const data = await res.json();
+    const reply = data.reply || data.response || '(No response)';
+    appendMsg('assistant', reply);
+    chatHistory.push({ role: 'assistant', content: reply });
+
+  } catch (e) {
+    typingIndicator.classList.remove('visible');
+    appendMsg('error', 'Network error: ' + e.message);
+  }
+
+  chatSend.disabled = false;
+  chatInput.focus();
+}
+
+function appendMsg(role, text) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+  div.textContent = text;
+  chatMessages.appendChild(div);
+  scrollChat();
+}
+
+function scrollChat() {
+  requestAnimationFrame(() => {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
+}
+
+// ── Auto-resize textarea ──────────────────────
+chatInput.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// ── Events ────────────────────────────────────
+chatBack.addEventListener('click', closeChat);
+chatNew.addEventListener('click', newChat);
+chatSend.addEventListener('click', sendMessage);
+
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeChat();
+});
+
+// Close overlay on background click
+chatOverlay.addEventListener('click', (e) => {
+  if (e.target === chatOverlay) closeChat();
+});
+
+// ── Smooth scroll for nav links ───────────────
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', (e) => {
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+// ── Init ──────────────────────────────────────
+renderFaculty();
+</script>
+</body>
+</html>

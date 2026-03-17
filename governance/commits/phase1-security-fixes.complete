@@ -1,0 +1,68 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-10T16:30 CST
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Phase 1 security fixes — three CRITICAL issues identified in the high-risk endpoint
+security audit:
+
+1. **Path traversal** — 8 endpoints construct file paths from user input with no
+   sanitization. `../` sequences escape intended directories.
+2. **Arbitrary Python execution** — `approve_and_apply` extracts and runs Python
+   code blocks from proposal files via subprocess, with no validation.
+3. **Prompt injection + error leakage** — `fleet_ask` has no length limit and
+   leaks internal exception details in error responses.
+
+## Proposed Changes
+
+### Fix 1 — `_safe_path()` helper + apply to all 8 affected sites
+
+Add a helper after `_human_size()` (server.py:1440). Apply it to every file path
+constructed from user input.
+
+```python
+def _safe_path(base: str, *parts: str) -> Path:
+    """Resolve a path and confirm it stays within base. Raises ValueError on traversal."""
+    base_resolved = Path(base).resolve()
+    candidate = Path(base).joinpath(*parts).resolve()
+    if not str(candidate).startswith(str(base_resolved)):
+        raise ValueError(f"Path traversal blocked: {parts}")
+    return candidate
+```
+
+Apply to:
+- `files_list` line 1375: `path = os.path.join(base, folder)` → `path = _safe_path(base, folder)`
+- `files_preview` line 1404: `path = os.path.join(base, folder, file)` → `path = _safe_path(base, folder, file)`
+- `files_move` lines 1452-1454: both `src` and `dest_dir` construction
+- `routing_promote` line 1326: `_proposed/{folder}` construction
+- `governance_diff`, `governance_approve`, `governance_approve_and_apply`:
+  validate `commit_id` matches `^[a-zA-Z0-9_-]+$` before path construction
+  (path resolution alone isn't sufficient for these since they're Path objects
+  not os.path.join — the regex is the right fence here)
+
+### Fix 2 — Remove Python block execution from `approve_and_apply`
+
+Lines 2211-2244: The fallback that extracts and runs `## Implementation` Python
+blocks is removed entirely. `apply_commits.py` is the correct application path.
+If `apply_commits.py` returns `[WARN] No diff block`, the proposal is acknowledged
+as a narrative-only commit (documentation, decisions) and marked `.applied` with
+a note. Code proposals MUST use the unified diff format.
+
+### Fix 3 — `fleet_ask` input validation + error sanitization
+
+- Enforce 10,000 character prompt limit
+- Return generic `"Internal error"` instead of `str(e)` on exceptions
+
+## Risk Assessment
+
+Risk Level: LOW
+Reversible: YES
+Dependencies: none
+
+`_safe_path` is additive — existing valid paths all resolve within base and pass.
+Only `../` traversal attempts are blocked. The Python block execution removal only
+affects proposals that lack a proper unified diff (which should not exist in
+production). `fleet_ask` change only tightens validation — no behavior change for
+valid callers.

@@ -87,14 +87,13 @@ def test_current_vs_projected():
     print("\n[TEST] Current vs Projected Distribution")
     print("-" * 50)
 
-    import sqlite3
-    db = Path(__file__).parent / "artifacts" / "willow" / "patterns.db"
-
-    if not db.exists():
-        print("[SKIP] No patterns.db found")
+    from core.db import get_connection
+    try:
+        conn = get_connection()
+    except Exception:
+        print("[SKIP] Cannot connect to Postgres")
         return None
 
-    conn = sqlite3.connect(db)
     rows = conn.execute('''
         SELECT provider, COUNT(*) as count
         FROM provider_performance

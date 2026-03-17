@@ -1,0 +1,72 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-10T17:00 CST
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Phase 2 security fixes from full surface audit:
+
+1. **CORS restriction** — Willow main server + 7 agent servers all use `allow_origins=["*"]`.
+   Replace with localhost whitelist + `WILLOW_CORS_ORIGINS` env var for tunnel/Neocities/LAN.
+2. **Rate limiting** — Install `slowapi` and apply to highest-risk Willow endpoints.
+3. **die-namic API keys** — `.env` has no `GATEKEEPER_API_KEY` / `GATEKEEPER_HUMAN_KEY`.
+   Defaults (`dev-key-change-me`) are live. Generate strong keys.
+
+Not in this proposal (architectural, needs separate planning):
+- willow-1.4 auth (501 placeholder — needs full auth design)
+- safe-app-utety-chat DB-backed sessions (privacy architecture decision)
+
+## Proposed Changes
+
+### Fix 1 — CORS (server.py + all 7 agent servers)
+
+**server.py:**
+```python
+# Replace:
+allow_origins=["*"],  # LAN + Neocities + tunnel all need access
+
+# With:
+_CORS_ORIGINS = [
+    "http://localhost:8420",
+    "http://127.0.0.1:8420",
+    "http://localhost:5173",   # Vite dev
+    "http://localhost:3000",
+]
+_extra = os.environ.get("WILLOW_CORS_ORIGINS", "")
+if _extra:
+    _CORS_ORIGINS += [o.strip() for o in _extra.split(",") if o.strip()]
+
+app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS, ...)
+```
+
+**All 7 agent servers** (shiva, field_notes, law_gazelle, private_ledger,
+public_ledger, source_trail, the_squirrel): same pattern, agents only need
+localhost:8420 (called from Willow UI).
+
+### Fix 2 — Rate limiting (server.py)
+
+Install: `pip install slowapi`
+
+Apply to highest-risk endpoints:
+- `/api/fleet/ask` — 10/minute (external LLM passthrough)
+- `/api/ingest` — 20/minute (file processor)
+- `/api/admin/restart` — 2/minute (destructive)
+- `/api/governance/approve_and_apply` — 5/minute (apply chain)
+
+### Fix 3 — die-namic-system API keys
+
+Generate cryptographically strong keys and write to
+`/mnt/c/Users/Sean/Documents/GitHub/die-namic-system/.env`.
+
+## Risk Assessment
+
+Risk Level: LOW
+Reversible: YES
+Dependencies: slowapi (new install)
+
+CORS change only affects cross-origin browser requests. All localhost/same-origin
+calls are unaffected. If a tunnel/Neocities URL is needed, add it via
+`WILLOW_CORS_ORIGINS=https://my-tunnel.com` in the Willow .env.
+
+Rate limiting only affects callers exceeding the cap — no impact on normal usage.

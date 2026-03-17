@@ -10,7 +10,6 @@ CHECKSUM: ΔΣ=42
 """
 
 import json
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -93,16 +92,16 @@ def scan_roots(username: str, db_path: Path) -> dict:
         ".bat", ".sh", ".ps1", ".sql",
     }
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    from core.db import get_connection
+    conn = get_connection()
 
-    # Ensure filesystem columns exist
-    try:
-        conn.execute("ALTER TABLE knowledge ADD COLUMN file_path TEXT")
-        conn.execute("ALTER TABLE knowledge ADD COLUMN file_ext TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # columns already exist
+    # Ensure filesystem columns exist (no-op if already present)
+    for col in ("file_path", "file_ext"):
+        try:
+            conn.execute(f"ALTER TABLE knowledge ADD COLUMN {col} TEXT")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
 
     indexed = 0
     skipped = 0

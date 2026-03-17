@@ -91,3 +91,29 @@ export async function setAppConsent(appId, consented) {
   });
   return res.json();
 }
+
+// --- Nest Review Queue ---
+
+export async function fetchNestQueue(status = 'pending') {
+  const res = await fetch(`${BASE}/api/nest/queue?status=${status}`);
+  return res.json();
+}
+
+export async function scanNest() {
+  const res = await fetch(`${BASE}/api/nest/scan`, { method: 'POST' });
+  return res.json();
+}
+
+export async function reviewNestItem(itemId, decision) {
+  const res = await fetch(`${BASE}/api/nest/review/${itemId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(decision),
+  });
+  return res.json();
+}
+
+export async function skipNestItem(itemId) {
+  const res = await fetch(`${BASE}/api/nest/queue/${itemId}`, { method: 'DELETE' });
+  return res.json();
+}

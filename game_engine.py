@@ -92,10 +92,7 @@ def _char_id(session_id: str, name: str) -> str:
 
 def _get_conn():
     _init_db()
-    import sqlite3 as _sqlite3
-    conn = get_connection()
-    conn.row_factory = _sqlite3.Row
-    return conn
+    return get_connection()
 
 # ── Dice Engine ───────────────────────────────────────────────────────────────
 

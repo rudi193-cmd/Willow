@@ -1,4 +1,23 @@
 
 # Authentication endpoints (governance proposal af920eb4)
-bcrypt>=4.0.0
-python-jose[cryptography]>=3.3.0
+bcrypt==5.0.0
+python-jose[cryptography]==3.5.0
+
+# Core server
+fastapi==0.135.1
+uvicorn==0.41.0
+pydantic==2.12.5
+python-multipart==0.0.22
+aiofiles==25.1.0
+
+# Database
+psycopg2-binary>=2.9.0
+
+# HTTP client
+httpx==0.28.1
+
+# Rate limiting
+slowapi==0.1.9
+
+# Security scanning (run: pip-audit)
+# pip install pip-audit && pip-audit

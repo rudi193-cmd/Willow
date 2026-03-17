@@ -25,7 +25,6 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-import sqlite3  # row_factory compat
 from core.db import get_connection as _get_connection
 TOKEN_FILE = Path.home() / ".willow" / "agent_tokens.json"
 TOKEN_TTL_HOURS = 24

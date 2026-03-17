@@ -1,0 +1,60 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-11
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER (3)
+
+## Summary
+
+Upgrade gate.py's knowledge retrieval from text/FTS search to semantic vector search.
+Embeddings are 100% live (17,507/17,507 atoms). This closes the feedback loop —
+behavioral corrections and memory atoms now surface by intent, not word match.
+
+## Proposed Changes
+
+  File: /home/sean/.claude/hooks/gate.py
+  Function: query_willow_mcp (line 226)
+
+  BEFORE (line 229):
+    result = _get(f"/api/knowledge/search?q={urllib.parse.quote(q)}&limit=4&username={USERNAME}")
+
+  AFTER:
+    result = _get(f"/api/knowledge/semantic-search?q={urllib.parse.quote(q)}&limit=4&username={USERNAME}")
+
+  BEFORE (line 238):
+    summary = (item.get("summary") or item.get("content_text") or "")[:140]
+
+  AFTER:
+    summary = (item.get("summary") or item.get("content_snippet") or item.get("content_text") or "")[:140]
+
+  No other changes. Response structure is compatible:
+  - Both endpoints return {"results": [...]}
+  - Both have title, summary, category fields
+  - Semantic adds: similarity (float 0-1), rank (negative distance)
+  - rank is not used by gate.py — endpoint returns best-first already
+
+## Rationale
+
+Text search surfaces atoms by keyword match. Semantic search surfaces atoms by
+meaning. The difference matters for behavioral corrections:
+
+  "should I grep for this?" → text search misses "Problem 13 — don't reach for bash"
+  "should I grep for this?" → semantic search finds it (cosine similarity ~0.7)
+
+gate.py injects context at every prompt. With semantic search, that injection
+responds to intent. With text search, it's a word lottery.
+
+This is what makes the memory loop functional rather than archival.
+
+## Verification
+
+After apply:
+  Ask Willow: "what is coherence.py?"
+  Expected: gate.py fires, semantic search surfaces relevant atom
+  Test: do NOT bash-confirm. If the answer is good, the upgrade worked.
+  If the urge to grep arises — that is Problem 13. Notice it.
+
+## Risk Assessment
+  Risk Level: MINIMAL
+  Reversible: YES — one-line revert to /api/knowledge/search
+  Dependencies: Embeddings must be live (confirmed: 17,507/17,507 as of 2026-03-11)
+  Fallback: SQLite path (query_willow_sqlite) unchanged — still active if MCP unreachable

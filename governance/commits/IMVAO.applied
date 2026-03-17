@@ -1,0 +1,129 @@
+**Proposer:** Ganesha
+**Date:** 2026-03-12
+**Type:** Bug Fix
+**Trust Level:** ENGINEER (3)
+**ID:** IMVAO
+
+## Summary
+
+Willow and all non-shiva/kart agents hallucinate on factual questions because
+(a) context injection is gated to only 3 agents, and (b) RAG only fires on
+keyword-matched "retrieval queries." Most questions get zero knowledge base
+grounding. Fix: extend context injection to all agents, make RAG default-on
+with casual as the only exclusion.
+
+## Root Cause
+
+Two independent gates both prevent RAG from firing:
+
+**Gate 1 — agent_engine.py line 183:**
+```python
+if self.agent_name in ("shiva", "kart", "sean"):
+    memory_header = context_injector.build_context_header(...)
+```
+Willow, Ada, Gerald, Riggs, Steve get no memory injection.
+
+**Gate 2 — local_api.py line 1128:**
+```python
+retrieval_signals = ["history", "remember", "discussed", "said", "mentioned",
+                     "last time", "previous", "earlier"]
+is_retrieval_query = any(kw in retrieval_signals for kw in keywords)
+if not is_casual and is_retrieval_query:
+    retrieved = search_knowledge(prompt)
+```
+RAG only fires if the prompt contains those exact keywords. "What's the status
+of the installer?" gets no RAG. "What did we decide about Tauri?" gets RAG.
+The distinction is arbitrary and causes consistent hallucination on factual
+questions that don't use retrieval phrasing.
+
+## Proposed Changes
+
+### File 1: core/agent_engine.py
+**Location:** lines 183-187 (inside `chat()`, context injection block)
+
+**Before:**
+```python
+if self.agent_name in ("shiva", "kart", "sean"):
+    memory_header = context_injector.build_context_header(
+        self.username, self.agent_name, user_message=user_message
+    )
+    system_content = memory_header + "\n\n" + system_content
+```
+
+**After:**
+```python
+memory_header = context_injector.build_context_header(
+    self.username, self.agent_name, user_message=user_message
+)
+if memory_header:
+    system_content = memory_header + "\n\n" + system_content
+```
+
+**Rationale:** `build_context_header` already accepts any agent_name. The
+agent-name gate was never justified — it was a conservative default that became
+the permanent behavior. All agents should have access to memory.
+
+---
+
+### File 2: local_api.py
+**Location:** lines 1119-1135 (inside `process_smart_stream()`, RAG block)
+
+**Before:**
+```python
+retrieved = ""
+if force_tier is None:
+    keywords = extract_keywords(prompt)
+    retrieval_signals = ["history", "remember", "discussed", "said", "mentioned",
+                         "last time", "previous", "earlier"]
+    is_retrieval_query = any(kw in retrieval_signals for kw in keywords)
+
+    if not is_casual and is_retrieval_query:
+        retrieved = search_knowledge(prompt)
+        if retrieved and len(retrieved) > 300:
+            _log(f"RAG_INJECT | retrieval query, adding context to tier {tier}")
+    elif is_casual:
+        _log(f"TIER_CASUAL | casual question at Tier {tier}, skipping RAG")
+    else:
+        _log(f"TIER_NORMAL | message at Tier {tier}")
+```
+
+**After:**
+```python
+retrieved = ""
+if force_tier is None:
+    if is_casual:
+        _log(f"TIER_CASUAL | casual question at Tier {tier}, skipping RAG")
+    else:
+        retrieved = search_knowledge(prompt)
+        if retrieved and len(retrieved) > 300:
+            _log(f"RAG_INJECT | grounding context added for tier {tier}")
+        else:
+            _log(f"TIER_NORMAL | no matching context found, tier {tier}")
+```
+
+**Rationale:** Invert the logic. RAG is now default-on for all non-casual
+prompts. The keyword-based `is_retrieval_query` check was the hallucination
+source — it excluded most factual questions. Casual exclusion (greetings,
+preferences, roleplay) is still respected.
+
+Also: extract_and_store gating in line 245 is left as-is (shiva/kart/sean only)
+since that writes to memory, not reads from it — a separate decision.
+
+## Rationale
+
+Agents answering from model weights alone about Willow-specific state (tasks,
+decisions, open work, session history) will always hallucinate. The knowledge
+base exists precisely to ground these answers. Both gates preventing that
+grounding are bugs, not features.
+
+## Risk Assessment
+Risk Level: LOW
+Reversible: YES
+Dependencies: context_injector.build_context_header() handles unknown agent
+names gracefully (confirmed: accepts any string, returns "" if no context found).
+search_knowledge() is already in production use on retrieval queries — no new
+code path, just broader invocation.
+
+Potential side effect: slightly higher latency on non-casual prompts due to
+knowledge search on every call. Acceptable given hallucination is the current
+alternative.

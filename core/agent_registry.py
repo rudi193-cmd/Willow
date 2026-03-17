@@ -3,7 +3,6 @@ Agent Registry — Willow
 Any LLM (or human) that uses Willow gets a user profile.
 Agents can send/receive messages via agent_mailbox.
 """
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -44,21 +43,32 @@ DEFAULT_AGENTS = [
     ("gerald",   "Gerald",   "WORKER",     "persona", "Acting Dean. Philosophical and governance advisor."),
     ("steve",    "Steve",    "OPERATOR",   "persona", "Prime Node. Cross-system coordinator."),
     ("pigeon",   "The Pigeon", "WORKER",   "persona", "Carrier. Connector. Guide. Dept. of Not Yet & Carrier Services. UTETY. Notices when users need practical help and offers to carry them through it."),
+    # UTETY faculty — remaining 9 personas
+    ("oakenscroll", "Prof. Oakenscroll", "OPERATOR", "persona", "Chair of Theoretical Uncertainty. The Mentor. Observatory."),
+    ("hanz",        "Prof. Hanz",        "WORKER",   "persona", "Applied Kindness & Computational Empathy. r/HanzTeachesCode."),
+    ("nova",        "Prof. Nova Hale",   "OPERATOR", "persona", "Interpretive Systems & Narrative Stabilization. The Oracle."),
+    ("alexis",      "Prof. Alexis",      "WORKER",   "persona", "Biological Sciences & Living Systems. The Swamp."),
+    ("ofshield",    "Thoren Ofshield",   "OPERATOR", "persona", "Keeper of the Gate. Threshold Faculty."),
+    ("mitra",       "Mitra",             "WORKER",   "persona", "PM Claude. Coordinator. Covenants and handoffs."),
+    ("consus",      "Consus",            "WORKER",   "persona", "Generation layer. High-throughput artifact production."),
+    ("binder",      "The Binder",        "WORKER",   "persona", "Dept. of Records & Filing. The Stacks."),
+    ("jeles",       "Jeles",             "WORKER",   "persona", "The Librarian. Special Collections. The Stacks."),
     # SAFE app agents — registered so they can use the mailbox and pigeon system
     ("ask-jeles",     "AskJeles",       "WORKER", "app", "Verified-source librarian. Smithsonian, LoC, NASA, NIH."),
     ("law-gazelle",   "Law Gazelle",    "WORKER", "app", "Legal research. Case summaries, statute analysis."),
     ("the-binder",    "The Binder",     "WORKER", "app", "Knowledge graph tools and cross-domain linking."),
-    ("nasa-archive",  "NASA Archive",   "WORKER", "app", "Space history and rally documentation."),
+    ("nasa-archive",  "NASA Archive",   "WORKER", "app", "North America Scootering Archive. Rally documentation."),
+    ("riggs-archive", "Riggs — NASA Archive", "WORKER", "persona", "Prof. Riggs, Applied Reality Engineering. Voice of the scootering archive."),
     ("utety-chat",    "UTETY Chat",     "WORKER", "app", "Applied reality engineering courses."),
     ("grove",         "Grove",          "WORKER", "app", "Community knowledge garden."),
 ]
 
 
 def _conn(username):
-    """Open connection with row_factory set."""
+    """Open connection with row_factory set for dict-style access."""
     import sqlite3 as _sqlite3
     conn = _connect(username)
-    conn.row_factory = _sqlite3.Row
+    conn.row_factory = _sqlite3.Row  # triggers RealDictCursor in _PgConn
     return conn
 
 
@@ -149,7 +159,7 @@ def list_agents(username):
 
 
 def send_message(username, from_agent, to_agent, subject, body, thread_id=None):
-    """Send agent-to-agent message. Returns new message id."""
+    """Send agent-to-agent message. Crown-witnessed. Returns new message id."""
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     with _conn(username) as conn:
         cur = conn.execute(
@@ -158,6 +168,27 @@ def send_message(username, from_agent, to_agent, subject, body, thread_id=None):
         )
         msg_id = cur.lastrowid
         conn.commit()
+
+    # Crown witness: agent-to-agent message (no human present — audit trail)
+    try:
+        from core.crown import witness_entity_event
+        witness_entity_event(
+            "agent_conversation",
+            entity_name=f"{from_agent}→{to_agent}",
+            agent=from_agent,
+            username=username,
+            details={
+                "msg_id": msg_id,
+                "to": to_agent,
+                "subject": subject,
+                "body_len": len(body),
+                "thread_id": thread_id,
+                "sent_at": now,
+            },
+        )
+    except Exception:
+        pass  # Crown unavailable — don't block messaging
+
     return msg_id
 
 

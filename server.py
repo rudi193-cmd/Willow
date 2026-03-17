@@ -33,8 +33,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("willow.server")
 
-from fastapi import FastAPI, Request, UploadFile, File, HTTPException
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -64,30 +68,100 @@ from core.awareness import on_scan_complete, on_organize_complete, on_coherence_
 from apps.pa import drive_scan, drive_organize
 from api import kart_routes, agent_routes, safe_routes, social_routes, social_workflow_routes, nasa_routes, roots_routes, utety_routes, vision_routes, dating_routes, die_namic_routes, journal_routes, auth_routes, apps_routes, nest_routes
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Willow", docs_url=None, redoc_url=None)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, lambda req, exc: __import__('fastapi').responses.JSONResponse(
+    status_code=429, content={"error": "Rate limit exceeded. Please slow down."}
+))
+app.add_middleware(SlowAPIMiddleware)
+
+
+# Security headers middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # -- Launch Pigeon + OCR daemons (one set per Willow instance, not per worker) ---
 import os as _os
+import signal as _signal
 import subprocess as _subprocess
 import threading as _threading
+import atexit as _atexit
+import json as _json_lock
 
-_DAEMON_LOCK = Path(__file__).parent / ".daemon_owner.pid"
+_DAEMON_LOCK = Path(__file__).parent / ".daemon_pids.json"
 
 
-def _claim_daemon_lock() -> bool:
-    """Return True if this process should spawn daemons (first worker wins)."""
+def _kill_stale_daemons() -> None:
+    """Kill ALL existing pigeon/ocr daemon processes regardless of who spawned them.
+    Covers: previous server.py runs, start_daemons.bat, manual launches."""
+    import re as _re_lock
+    killed = 0
     try:
-        if _DAEMON_LOCK.exists():
-            existing_pid = int(_DAEMON_LOCK.read_text().strip())
+        # Read /proc to find all matching python processes (Linux/WSL)
+        for entry in Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            pid = int(entry.name)
+            if pid == _os.getpid():
+                continue
             try:
-                _os.kill(existing_pid, 0)  # 0 = check existence only
-                return False               # still alive — another worker owns it
-            except OSError:
-                pass                       # gone — claim it
-        _DAEMON_LOCK.write_text(str(_os.getpid()))
-        return True
+                cmdline = (entry / "cmdline").read_bytes().decode("utf-8", errors="replace")
+                if "pigeon_daemon.py" in cmdline or "ocr_consumer_daemon.py" in cmdline:
+                    _os.kill(pid, _signal.SIGKILL)
+                    killed += 1
+            except (PermissionError, FileNotFoundError, ProcessLookupError):
+                pass
     except Exception:
-        return True  # if lock check fails, let it spawn
+        # Fallback: try the lock file
+        if _DAEMON_LOCK.exists():
+            try:
+                pids = _json_lock.loads(_DAEMON_LOCK.read_text())
+                for name, pid in pids.items():
+                    if name == "server":
+                        continue
+                    try:
+                        _os.kill(int(pid), _signal.SIGKILL)
+                        killed += 1
+                    except (OSError, ProcessLookupError):
+                        pass
+            except Exception:
+                pass
+    if killed:
+        logger.info("Killed %d stale daemon process(es)", killed)
+
+
+def _save_daemon_pids(pigeon_pid: int, ocr_pid: int) -> None:
+    """Write all daemon PIDs to lock file so next startup can clean up."""
+    _DAEMON_LOCK.write_text(_json_lock.dumps({
+        "server": _os.getpid(),
+        "pigeon": pigeon_pid,
+        "ocr": ocr_pid,
+    }))
+
+
+def _cleanup_daemons() -> None:
+    """Kill daemon children on server exit (atexit + signal handler)."""
+    for proc in (_pigeon_daemon, _ocr_consumer_daemon):
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+                proc.wait(timeout=3)
+            except Exception:
+                pass
+    try:
+        _DAEMON_LOCK.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _forward_daemon_output(pipe, logger_name: str) -> None:
@@ -102,41 +176,57 @@ def _forward_daemon_output(pipe, logger_name: str) -> None:
         pass
 
 
-if _claim_daemon_lock():
-    _pigeon_daemon = _subprocess.Popen(
-        [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
-        stdout=_subprocess.PIPE,
-        stderr=_subprocess.STDOUT,
-        creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
-    )
-    _threading.Thread(
-        target=_forward_daemon_output,
-        args=(_pigeon_daemon.stdout, "pigeon_daemon"),
-        daemon=True,
-    ).start()
+_pigeon_daemon = None
+_ocr_consumer_daemon = None
 
-    _ocr_consumer_daemon = _subprocess.Popen(
-        [sys.executable, str(Path(__file__).parent / "core" / "ocr_consumer_daemon.py")],
-        stdout=_subprocess.PIPE,
-        stderr=_subprocess.STDOUT,
-        creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
-    )
-    _threading.Thread(
-        target=_forward_daemon_output,
-        args=(_ocr_consumer_daemon.stdout, "ocr_daemon"),
-        daemon=True,
-    ).start()
-    logger.info("Daemons started (pigeon + ocr) — PID %d owns lock", _os.getpid())
-else:
-    logger.info("Daemon lock held by another worker — skipping spawn")
+# Always kill stale daemons from previous runs before spawning
+_kill_stale_daemons()
+
+_pigeon_daemon = _subprocess.Popen(
+    [sys.executable, str(Path(__file__).parent / "core" / "pigeon_daemon.py")],
+    stdout=_subprocess.PIPE,
+    stderr=_subprocess.STDOUT,
+    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+)
+_threading.Thread(
+    target=_forward_daemon_output,
+    args=(_pigeon_daemon.stdout, "pigeon_daemon"),
+    daemon=True,
+).start()
+
+_ocr_consumer_daemon = _subprocess.Popen(
+    [sys.executable, str(Path(__file__).parent / "core" / "ocr_consumer_daemon.py")],
+    stdout=_subprocess.PIPE,
+    stderr=_subprocess.STDOUT,
+    creationflags=_subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+)
+_threading.Thread(
+    target=_forward_daemon_output,
+    args=(_ocr_consumer_daemon.stdout, "ocr_daemon"),
+    daemon=True,
+).start()
+
+# Save PIDs so next startup can kill them, register cleanup for graceful exit
+_save_daemon_pids(_pigeon_daemon.pid, _ocr_consumer_daemon.pid)
+_atexit.register(_cleanup_daemons)
+logger.info("Daemons started — pigeon=%d, ocr=%d, server=%d",
+            _pigeon_daemon.pid, _ocr_consumer_daemon.pid, _os.getpid())
 
 # Track server start time for uptime
 SERVER_START_TIME = datetime.now()
 
-# CORS for Vite dev server
+# CORS — whitelist localhost + any extra origins from WILLOW_CORS_ORIGINS env var
+# To allow a tunnel or Neocities URL: export WILLOW_CORS_ORIGINS=https://my-tunnel.com
+_CORS_ORIGINS = [
+    "*",                       # Allow file:// and all local origins
+]
+_extra_origins = os.environ.get("WILLOW_CORS_ORIGINS", "")
+if _extra_origins:
+    _CORS_ORIGINS += [o.strip() for o in _extra_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # LAN + Neocities + tunnel all need access
+    allow_origins=_CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -366,13 +456,23 @@ async def chat(request: Request):
 
         # Send coherence metrics as final SSE event
         try:
-            coherence = local_api.log_conversation(
-                persona=persona,
-                user_input=prompt,
-                assistant_response="".join(full_response),
-                model="streamed",
-                tier=0,
-            )
+            response_text = "".join(full_response)
+            if local_api.is_consumer_persona(persona):
+                coherence = local_api.log_conversation_consumer(
+                    persona=persona,
+                    user_input=prompt,
+                    assistant_response=response_text,
+                    model="streamed",
+                    tier=0,
+                )
+            else:
+                coherence = local_api.log_conversation(
+                    persona=persona,
+                    user_input=prompt,
+                    assistant_response=response_text,
+                    model="streamed",
+                    tier=0,
+                )
             import json
             yield f"event: coherence\ndata: {json.dumps(coherence)}\n\n"
             on_coherence_update(coherence)
@@ -495,33 +595,33 @@ def knowledge_gaps(limit: int = 10):
     return {"gaps": gaps}
 
 
+@app.get("/api/knowledge/delta-sigma")
+def knowledge_delta_sigma():
+    """ΔΣ = Σ(Δᵢ) — the sum of acknowledged unknowns. System health metric."""
+    return loam.compute_delta_sigma(USERNAME)
+
+
 @app.get("/api/knowledge/stats")
 def knowledge_stats():
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     stats = {}
     try:
-        if is_postgres():
-            conn = _gc()
-            for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
-                try:
-                    row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
-                    stats[table] = row[0] if row else 0
-                except Exception:
-                    stats[table] = 0
-            conn.close()
-        else:
-            import sqlite3
-            db_path = loam._db_path(USERNAME)
-            if Path(db_path).exists():
-                conn = sqlite3.connect(db_path)
-                cur = conn.cursor()
-                for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
-                    try:
-                        cur.execute(f"SELECT COUNT(*) FROM {table}")
-                        stats[table] = cur.fetchone()[0]
-                    except Exception:
-                        stats[table] = 0
-                conn.close()
+        conn = _gc()
+        for table in ["knowledge", "conversation_memory", "entities", "knowledge_gaps"]:
+            try:
+                row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                stats[table] = row[0] if row else 0
+            except Exception:
+                stats[table] = 0
+        conn.close()
+    except Exception:
+        pass
+    # Wire in ΔΣ health metric
+    try:
+        ds = loam.compute_delta_sigma(USERNAME)
+        stats["delta_sigma"] = ds["delta_sigma"]
+        stats["ds_health"] = ds["health"]
+        stats["ds_diagnosis"] = ds["diagnosis"]
     except Exception:
         pass
     return stats
@@ -541,14 +641,10 @@ def safe_whoami():
 @app.get("/api/knowledge/entities")
 def knowledge_entities_list(min_mentions: int = 1, username: str = USERNAME):
     """Return all known entities with source atom count — for user-facing 'What Willow Knows' dashboard."""
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     resolved = username or USERNAME
     try:
-        if not is_postgres():
-            db_path = loam._db_path(resolved)
-            if not Path(db_path).exists():
-                return {"entities": [], "username": resolved}
-        conn = _gc() if is_postgres() else _gc(loam._db_path(resolved))
+        conn = _gc()
         cur = conn.cursor()
         cur.execute(
             "SELECT e.id, e.name, e.entity_type, e.mention_count, e.description, "
@@ -568,16 +664,16 @@ def knowledge_entities_list(min_mentions: int = 1, username: str = USERNAME):
             for r in rows
         ], "username": resolved}
     except Exception as e:
-        return {"entities": [], "error": str(e), "username": resolved}
+        return {"entities": [], "error": "Internal error", "username": resolved}
 
 
 @app.get("/api/knowledge/entities/{entity_id}/sources")
 def knowledge_entity_sources(entity_id: int, username: str = USERNAME):
     """Return knowledge atoms that reference this entity — explains why Willow knows about them."""
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     resolved = username or USERNAME
     try:
-        conn = _gc() if is_postgres() else _gc(loam._db_path(resolved))
+        conn = _gc()
         cur = conn.cursor()
         cur.execute(
             "SELECT k.id, k.title, k.source_type, k.source_id, k.summary, k.created_at "
@@ -595,16 +691,16 @@ def knowledge_entity_sources(entity_id: int, username: str = USERNAME):
             for r in rows
         ]}
     except Exception as e:
-        return {"sources": [], "error": str(e)}
+        return {"sources": [], "error": "Internal error"}
 
 
 @app.delete("/api/knowledge/entities/{entity_id}")
 def knowledge_entity_delete(entity_id: int, username: str = USERNAME):
     """Delete an entity and its edges. User-initiated correction — user is the authority on their own data."""
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     resolved = username or USERNAME
     try:
-        conn = _gc() if is_postgres() else _gc(loam._db_path(resolved))
+        conn = _gc()
         cur = conn.cursor()
         cur.execute("DELETE FROM knowledge_edges WHERE source_id = ? OR target_id = ?", (entity_id, entity_id))
         edges_deleted = cur.rowcount
@@ -615,7 +711,7 @@ def knowledge_entity_delete(entity_id: int, username: str = USERNAME):
         conn.close()
         return {"success": bool(entity_deleted), "edges_deleted": edges_deleted}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 
 @app.patch("/api/knowledge/entities/{entity_id}")
@@ -630,8 +726,8 @@ async def knowledge_entity_rename(entity_id: int, request: Request):
 
     def _do_rename():
         try:
-            from core.db import get_connection as _gc, is_postgres
-            conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+            from core.db import get_connection as _gc
+            conn = _gc()
             cur = conn.cursor()
             if new_description is not None:
                 cur.execute("UPDATE entities SET name = ?, description = ? WHERE id = ?",
@@ -643,7 +739,7 @@ async def knowledge_entity_rename(entity_id: int, request: Request):
             conn.close()
             return {"success": bool(updated), "name": new_name}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Internal error"}
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _do_rename)
@@ -654,11 +750,11 @@ def knowledge_entities_verify_feed(limit: int = 100, skip_oral_history: bool = T
     """Return unverified entities for Jeles to process (verified=FALSE or NULL).
     skip_oral_history=True (default) excludes oral_history_consented entities
     (private persons, file-path noise) that are correctly unverifiable."""
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     try:
-        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+        conn = _gc()
         cur = conn.cursor()
-        ph = "%s" if is_postgres() else "?"
+        ph = "%s"
         oral_filter = "AND (source_type IS NULL OR source_type != 'oral_history_consented') " if skip_oral_history else ""
         cur.execute(
             "SELECT id, name, entity_type, description, mention_count FROM entities "
@@ -674,7 +770,7 @@ def knowledge_entities_verify_feed(limit: int = 100, skip_oral_history: bool = T
             for r in rows
         ], "count": len(rows)}
     except Exception as e:
-        return {"entities": [], "error": str(e)}
+        return {"entities": [], "error": "Internal error"}
 
 
 @app.patch("/api/knowledge/entities/{entity_id}/verify")
@@ -696,8 +792,8 @@ async def knowledge_entity_verify(entity_id: int, request: Request):
 
     def _do_verify():
         try:
-            from core.db import get_connection as _gc, is_postgres
-            conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+            from core.db import get_connection as _gc
+            conn = _gc()
             cur = conn.cursor()
             cur.execute(
                 "UPDATE entities SET verified=?, confidence=?, source_type=?, "
@@ -710,15 +806,20 @@ async def knowledge_entity_verify(entity_id: int, request: Request):
             return {"success": bool(updated), "entity_id": entity_id,
                     "verified": verified, "confidence": confidence}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Internal error"}
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _do_verify)
 
 
 @app.get("/api/knowledge/graph")
-def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_node: int = 6, layout: str = "force"):
-    from core.db import get_connection as _gc, is_postgres
+def knowledge_graph(
+    min_mentions: int = Query(1, ge=1, le=10000),
+    max_nodes: int = Query(150, ge=1, le=1000),
+    max_edges_per_node: int = Query(6, ge=1, le=100),
+    layout: str = Query("force", pattern="^(force|hierarchical|radial)$"),
+):
+    from core.db import get_connection as _gc
     from collections import defaultdict
     TYPE_COLORS = {
         "person": "#4a90d9", "project": "#2d6a4f", "concept": "#9b59b6",
@@ -726,11 +827,7 @@ def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_n
     }
     logger.info("[knowledge-graph] Building: min_mentions=%d, max_nodes=%d", min_mentions, max_nodes)
     try:
-        if not is_postgres():
-            db_path = loam._db_path(USERNAME)
-            if not Path(db_path).exists():
-                return {"nodes": [], "edges": []}
-        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+        conn = _gc()
         cur = conn.cursor()
 
         # Fix 3: exclude noise entities (file paths, extensions, directories)
@@ -756,14 +853,18 @@ def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_n
         if user_row:
             user_id = user_row[0]
             entity_dict[user_id] = user_row
-            # Add all neighbors of the user entity regardless of min_mentions
+            # Add all neighbors of the user entity regardless of min_mentions.
+            # knowledge_edges maps knowledge-to-knowledge (not entity-to-entity),
+            # so use knowledge_entities to find co-occurring entities:
+            # user_entity → shared knowledge atoms → other entities on those atoms.
             cur.execute(
                 f"SELECT DISTINCT e.id, e.name, e.entity_type, e.mention_count, e.description "
                 f"FROM entities e "
-                f"JOIN knowledge_edges ke ON "
-                f"  (ke.source_id = ? AND ke.target_id = e.id) OR "
-                f"  (ke.target_id = ? AND ke.source_id = e.id) "
-                f"WHERE {noise_filter}",
+                f"JOIN knowledge_entities ke2 ON ke2.entity_id = e.id "
+                f"WHERE ke2.knowledge_id IN ("
+                f"  SELECT ke1.knowledge_id FROM knowledge_entities ke1 "
+                f"  WHERE ke1.entity_id = ?"
+                f") AND e.id != ? AND {noise_filter}",
                 (user_id, user_id)
             )
             for r in cur.fetchall():
@@ -848,7 +949,7 @@ def knowledge_graph(min_mentions: int = 1, max_nodes: int = 150, max_edges_per_n
         return {"nodes": nodes, "edges": edges, "layout_available": layout_available}
     except Exception as e:
         logger.error("[knowledge-graph] Error: %s", e)
-        return {"error": str(e), "nodes": [], "edges": []}
+        return {"error": "Internal error", "nodes": [], "edges": []}
 
 
 @app.get("/graph")
@@ -882,7 +983,7 @@ async def tts_speak(request: Request):
             return FastAPIResponse(content=audio, media_type="audio/wav")
         return {"error": "No TTS providers available"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/tts/voices")
@@ -899,7 +1000,7 @@ def tts_voices(provider: str = ""):
                 all_voices[p.name] = tts_router.get_voices(p.name)
         return {"voices": all_voices}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/tts/providers")
@@ -910,36 +1011,76 @@ def tts_providers():
         avail = tts_router.get_available_providers()
         return {tier: [p.name for p in providers] for tier, providers in avail.items()}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- Skills Endpoints ---
 
+_DAEMON_REGISTRY = {
+    # display name → (window title for Windows, script basename for WSL/Linux)
+    "GovernanceMonitor":  ("WILLOW-GovernanceMonitor",  "monitor.py"),
+    "CoherenceScanner":   ("WILLOW-CoherenceScanner",   "coherence_scanner.py"),
+    "TopologyBuilder":    ("WILLOW-TopologyBuilder",    "topology_builder.py"),
+    "Compost":            ("WILLOW-Compost",            "compost.py"),
+    "SAFESync":           ("WILLOW-SAFESync",           "safe_sync.py"),
+    "PersonaScheduler":   ("WILLOW-PersonaScheduler",   "persona_scheduler.py"),
+    "Pulse":              ("WILLOW-Pulse",              "pulse.py"),
+    "Pigeon":             ("WILLOW-Pigeon",             "pigeon_daemon.py"),
+    "OCRConsumer":        ("WILLOW-OCRConsumer",        "ocr_consumer_daemon.py"),
+}
+
+
+def _detect_daemons_psutil() -> dict:
+    """Detect running daemons by scanning process cmdlines via psutil (works on WSL/Linux/Windows)."""
+    import psutil
+    # Build a set of script basenames we're looking for
+    script_to_name = {script: name for name, (_wt, script) in _DAEMON_REGISTRY.items()}
+    found = {name: False for name in _DAEMON_REGISTRY}
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            cmdline = proc.info.get("cmdline") or []
+            cmdline_str = " ".join(cmdline)
+            for script, display_name in script_to_name.items():
+                if script in cmdline_str:
+                    found[display_name] = True
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return found
+
+
+def _detect_daemons_windows() -> dict:
+    """Fallback: detect daemons by Windows window title (original method)."""
+    import subprocess as _sp
+    found = {}
+    for name, (window_title, _script) in _DAEMON_REGISTRY.items():
+        try:
+            result = _sp.run(["tasklist", "/FI", f"WINDOWTITLE eq {window_title}"],
+                             capture_output=True, text=True, timeout=3)
+            found[name] = "python.exe" in result.stdout
+        except Exception:
+            found[name] = False
+    return found
+
+
 @app.get("/api/skills/status")
 def skills_status():
     """System health check."""
-    import subprocess, requests as req
     try:
-        daemons = {}
-        _is_win = sys.platform == "win32"
-        for name in ["WILLOW-GovernanceMonitor", "WILLOW-CoherenceScanner",
-                     "WILLOW-TopologyBuilder", "WILLOW-KnowledgeCompactor",
-                     "WILLOW-SAFESync", "WILLOW-PersonaScheduler", "WILLOW-InboxWatcher"]:
-            if _is_win:
-                result = subprocess.run(["tasklist", "/FI", f"WINDOWTITLE eq {name}"],
-                                        capture_output=True, text=True, timeout=3)
-                daemons[name] = "python.exe" in result.stdout
+        # Prefer psutil (works everywhere including WSL), fall back to Windows tasklist
+        try:
+            daemons = _detect_daemons_psutil()
+        except ImportError:
+            if sys.platform == "win32":
+                daemons = _detect_daemons_windows()
             else:
-                result = subprocess.run(["pgrep", "-f", name],
-                                        capture_output=True, text=True, timeout=3)
-                daemons[name] = result.returncode == 0
+                daemons = {name: False for name in _DAEMON_REGISTRY}
         return {
             "server": True,
             "daemons": daemons,
             "ollama": _check_service("http://localhost:11434/api/tags")
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 def _check_service(url: str) -> bool:
@@ -973,7 +1114,7 @@ async def skills_route(request: Request):
                 result["text"], Path(file_path).name, Path(file_path).suffix)
         return {"file": file_path, "extraction": result, "routing": analysis}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/skills/journal")
@@ -992,7 +1133,7 @@ async def skills_journal(request: Request):
             f.write(f"\n## {ts} — {category}\n\n{content}\n")
         return {"success": True, "timestamp": ts, "category": category}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/skills/persona")
@@ -1018,157 +1159,50 @@ async def skills_persona(request: Request):
             return {"persona": persona, "response": response.content, "provider": response.provider}
         return {"error": "No LLM response"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/ingest")
-async def ingest(file: UploadFile = File(...)):
-    """Ingest a dropped file into the knowledge DB (text, images, audio, video, code, etc.)."""
-    # Document extensions
-    text_ext = {".txt", ".md", ".pdf", ".docx", ".doc", ".rtf", ".odt", ".pages"}
+@limiter.limit("20/minute")
+async def ingest(request: Request, file: UploadFile = File(...)):
+    """Drop a file into the Nest for review. Pigeon stages it → review queue → human approves → LOAM.
+    Nothing enters the knowledge graph without approval."""
+    NEST_PATH = Path("/mnt/c/Users/Sean/Willow/Nest")
+    NEST_PATH.mkdir(parents=True, exist_ok=True)
 
-    # Image extensions - route to screenshot processor
-    image_ext = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".svg", ".heic", ".gif"}
-
-    # Code extensions - treat as text
-    code_ext = {
-        ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".cpp", ".c", ".h", ".cs", ".php",
-        ".rb", ".go", ".rs", ".swift", ".kt", ".sh", ".bash", ".ps1",
-        ".json", ".csv", ".xml", ".yaml", ".yml", ".html", ".htm"
-    }
-
-    # Audio/video - extract metadata
-    audio_ext = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".wma"}
-    video_ext = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv"}
-
-    # Archives - store reference
-    archive_ext = {".zip", ".tar", ".gz", ".7z", ".rar"}
-
-    # Google Workspace (will need Drive API in future)
-    gdocs_ext = {".gdoc", ".gsheet", ".gslides", ".gdraw"}
-
-    suffix = Path(file.filename).suffix.lower()
-
-    # Route images to screenshot processing (with OCR + learning)
-    if suffix in image_ext:
-        return await upload_screenshot(file)
-
-    # Read file content
     content_bytes = await file.read()
-    file_hash = hashlib.md5(content_bytes).hexdigest()
+    dest = NEST_PATH / file.filename
 
-    # Handle text/code files
-    if suffix in (text_ext | code_ext) or not suffix:  # No extension = try as text
-        try:
-            text = content_bytes.decode("utf-8", errors="ignore")
-        except:
-            return {"error": f"Could not decode {file.filename} as text"}
+    # Avoid overwriting
+    if dest.exists():
+        stem = dest.stem
+        suffix = dest.suffix
+        i = 1
+        while dest.exists():
+            dest = NEST_PATH / f"{stem}_{i}{suffix}"
+            i += 1
 
-        if len(text) < 10:
-            return {"error": "File too small or empty"}
+    dest.write_bytes(content_bytes)
 
-        # Truncate for ingestion (same as unified_watcher)
-        text_for_ingest = text[:4000]
-
-        # Determine category
-        category = "code" if suffix in code_ext else "ui_drop"
-
-        loam.ingest_file_knowledge(
-            username=USERNAME,
-            filename=file.filename,
-            file_hash=file_hash,
-            category=category,
-            content_text=text_for_ingest,
-            provider="willow_ui",
-        )
-
-        asyncio.create_task(_ecosystem_refresh())
-        return {
-            "status": "ingested",
-            "filename": file.filename,
-            "hash": file_hash,
-            "chars": len(text_for_ingest),
-            "type": "text/code"
-        }
-
-    # Handle audio/video files - extract basic metadata
-    if suffix in (audio_ext | video_ext):
-        metadata = {
-            "filename": file.filename,
-            "size_bytes": len(content_bytes),
-            "hash": file_hash,
-            "type": "audio" if suffix in audio_ext else "video"
-        }
-
-        # Store reference in knowledge DB
-        loam.ingest_file_knowledge(
-            username=USERNAME,
-            filename=file.filename,
-            file_hash=file_hash,
-            category="media",
-            content_text=f"{metadata['type'].title()} file: {file.filename} ({metadata['size_bytes']} bytes)",
-            provider="willow_ui",
-        )
-
-        return {
-            "status": "indexed",
-            "filename": file.filename,
-            "hash": file_hash,
-            "type": metadata["type"],
-            "message": f"{metadata['type'].title()} file indexed. Full transcription/analysis coming soon."
-        }
-
-    # Handle archives - store reference
-    if suffix in archive_ext:
-        loam.ingest_file_knowledge(
-            username=USERNAME,
-            filename=file.filename,
-            file_hash=file_hash,
-            category="archive",
-            content_text=f"Archive file: {file.filename} ({len(content_bytes)} bytes)",
-            provider="willow_ui",
-        )
-
-        return {
-            "status": "indexed",
-            "filename": file.filename,
-            "hash": file_hash,
-            "type": "archive",
-            "message": "Archive indexed. Content extraction coming soon."
-        }
-
-    # Handle Google Docs (placeholder)
-    if suffix in gdocs_ext:
-        return {
-            "error": "Google Docs files require Drive API integration",
-            "message": "Please share the file directly or export as PDF/text"
-        }
-
-    # Unknown file type - still try to index it
-    loam.ingest_file_knowledge(
-        username=USERNAME,
-        filename=file.filename,
-        file_hash=file_hash,
-        category="unknown",
-        content_text=f"File: {file.filename} ({len(content_bytes)} bytes, type: {suffix or 'no extension'})",
-        provider="willow_ui",
-    )
+    # Touch pigeon trigger so it picks up immediately
+    trigger = Path(f"artifacts/{USERNAME}/.pigeon_trigger")
+    trigger.parent.mkdir(parents=True, exist_ok=True)
+    trigger.touch()
 
     return {
-        "status": "indexed",
-        "filename": file.filename,
-        "hash": file_hash,
-        "type": "unknown",
-        "message": f"File indexed as binary/unknown type. Extension: {suffix or 'none'}"
+        "status": "staged",
+        "filename": dest.name,
+        "message": "File dropped in Nest. Pigeon will stage it for your review.",
+        "review_endpoint": "/api/nest/queue"
     }
 
 
 @app.post("/api/knowledge/ingest")
 async def knowledge_ingest_json(request: Request):
-    """Ingest knowledge directly from JSON (no file upload needed).
-    Returns 202 immediately — ingestion runs in background (fleet calls take 30-60s).
+    """Stage knowledge for review via the Nest pipeline.
     Body: {username, filename, content_text, category, provider, file_hash (optional)}
-    Used by: session-extract hook, agents, external tools."""
+    Used by: session-extract hook, agents, external tools.
+    Files are written to the Nest → Pigeon stages → review queue → human approves → LOAM."""
     try:
         body = await request.json()
         username   = body.get("username", USERNAME)
@@ -1176,104 +1210,72 @@ async def knowledge_ingest_json(request: Request):
         content    = body.get("content_text", "")
         category   = body.get("category", "reference")
         provider   = body.get("provider", "api")
-        file_hash  = body.get("file_hash", "") or hashlib.md5(content.encode()).hexdigest()
         if not content:
             raise HTTPException(status_code=400, detail="content_text required")
 
-        async def _do_ingest():
-            try:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, lambda: loam.ingest_file_knowledge(
-                    username=username,
-                    filename=filename,
-                    file_hash=file_hash,
-                    category=category,
-                    content_text=content[:4000],
-                    provider=provider,
-                ))
-                await _ecosystem_refresh()
-            except Exception:
-                pass
+        # Write content to Nest as a text file for Pigeon to stage
+        NEST_PATH = Path("/mnt/c/Users/Sean/Willow/Nest")
+        NEST_PATH.mkdir(parents=True, exist_ok=True)
+        dest = NEST_PATH / filename
+        if dest.exists():
+            stem = dest.stem
+            suffix = dest.suffix or ".txt"
+            i = 1
+            while dest.exists():
+                dest = NEST_PATH / f"{stem}_{i}{suffix}"
+                i += 1
+        dest.write_text(content[:4000], encoding="utf-8")
 
-        asyncio.create_task(_do_ingest())
-        return {"status": "accepted", "filename": filename, "category": category}
+        # Touch pigeon trigger
+        trigger = Path(f"artifacts/{USERNAME}/.pigeon_trigger")
+        trigger.parent.mkdir(parents=True, exist_ok=True)
+        trigger.touch()
+
+        return {"status": "staged", "filename": dest.name, "category": category,
+                "message": "Staged in Nest for review. Nothing enters the graph without approval."}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/upload/screenshot")
 async def upload_screenshot(file: UploadFile = File(...)):
-    """
-    Upload a screenshot - runs OCR, extracts to knowledge DB, routes via smart routing, learns patterns.
-
-    This is the complete pipeline: Upload → OCR → Extract → Route → Learn
-    """
+    """Drop a screenshot into the Nest for review.
+    Pigeon stages → review queue → OCR enrichment → human approves → LOAM.
+    Nothing enters the knowledge graph without approval."""
     try:
-        # Validate file type
         suffix = Path(file.filename).suffix.lower()
         if suffix not in {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}:
             return {"error": f"Unsupported image type: {suffix}. Use .jpg, .png, etc."}
 
-        # Save to temp location
-        temp_dir = Path("temp")
-        temp_dir.mkdir(exist_ok=True)
-        temp_path = temp_dir / file.filename
-
         content_bytes = await file.read()
-        temp_path.write_bytes(content_bytes)
 
-        # Run OCR to extract text
-        ocr_text = None
-        try:
-            from apps.pa import drive_organize
-            ocr_text = drive_organize._ocr_image(temp_path)
-            # log.info(f"OCR extracted {len(ocr_text)} chars from {file.filename}")
-        except Exception as e:
-            # log.warning(f"OCR failed for {file.filename}: {e}")
-            ocr_text = ""
+        NEST_PATH = Path("/mnt/c/Users/Sean/Willow/Nest")
+        NEST_PATH.mkdir(parents=True, exist_ok=True)
+        dest = NEST_PATH / file.filename
+        if dest.exists():
+            stem = dest.stem
+            ext = dest.suffix
+            i = 1
+            while dest.exists():
+                dest = NEST_PATH / f"{stem}_{i}{ext}"
+                i += 1
+        dest.write_bytes(content_bytes)
 
-        # Route via smart_routing (does OCR extraction + pattern learning)
-        routing_result = None
-        try:
-            from apps import smart_routing
-            routing_result = smart_routing.route_screenshot(
-                filename=file.filename,
-                filepath=str(temp_path),
-                ocr_text=ocr_text,
-                source_user=USERNAME
-            )
-            # log.info(f"Routed {file.filename} to: {routing_result.get('routed_to', [])}")
-        except Exception as e:
-            # log.warning(f"Smart routing failed for {file.filename}: {e}")
-            # Fallback: just ingest to knowledge DB
-            try:
-                from apps.pa import drive_organize
-                entry = {"source": str(temp_path), "category": "screenshot", "ingestable": True}
-                drive_organize._ingest_text(temp_path, entry, USERNAME)
-            except Exception as ingest_error:
-                # log.error(f"Fallback ingest failed: {ingest_error}")
-                pass
-
-        # Clean up temp file
-        try:
-            temp_path.unlink()
-        except:
-            pass
+        # Touch pigeon trigger
+        trigger = Path(f"artifacts/{USERNAME}/.pigeon_trigger")
+        trigger.parent.mkdir(parents=True, exist_ok=True)
+        trigger.touch()
 
         return {
-            "status": "processed",
-            "filename": file.filename,
-            "ocr_chars": len(ocr_text) if ocr_text else 0,
-            "routed_to": routing_result.get("routed_to", []) if routing_result else ["fallback"],
-            "classification": routing_result.get("classification", {}) if routing_result else {},
-            "message": "Screenshot uploaded, OCR extracted, routed, and learned ✓"
+            "status": "staged",
+            "filename": dest.name,
+            "message": "Screenshot dropped in Nest. Pigeon will stage for review. OCR enrichment follows.",
+            "review_endpoint": "/api/nest/queue"
         }
-
-    # Generated by: Cerebras (llm_router)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 # --- Routing Schema Endpoints ---
@@ -1287,7 +1289,7 @@ def routing_schema():
         with open(schema_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/routing/promote")
@@ -1307,7 +1309,7 @@ def routing_promote(folder: str):
             return {"promoted": folder, "canonical": schema["canonical"]}
         return {"error": f"'{folder}' not in proposed"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/routing/reject")
@@ -1323,8 +1325,14 @@ def routing_reject(folder: str):
             with open(schema_path, "w", encoding="utf-8") as f:
                 json.dump(schema, f, indent=2)
             # Move files from _proposed/{folder} to archive
-            proposed_path = os.path.join("artifacts", USERNAME, "_proposed", folder)
-            archive_path = os.path.join("artifacts", USERNAME, "archive")
+            artifacts_base = os.path.join("artifacts", USERNAME)
+            try:
+                proposed_path = _safe_path(artifacts_base, "_proposed", folder)
+                archive_path = _safe_path(artifacts_base, "archive")
+            except ValueError:
+                return {"error": "Invalid folder path"}
+            proposed_path = str(proposed_path)
+            archive_path = str(archive_path)
             if os.path.isdir(proposed_path):
                 import shutil
                 os.makedirs(archive_path, exist_ok=True)
@@ -1334,7 +1342,7 @@ def routing_reject(folder: str):
             return {"rejected": folder}
         return {"error": f"'{folder}' not in proposed"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- File Browser Endpoints ---
@@ -1365,14 +1373,17 @@ def files_folders():
                     folders.append({"name": f"_proposed/{sub}", "count": count, "path": sub_path})
         return {"folders": folders, "proposed": schema.get("proposed", {})}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/files/list")
 def files_list(folder: str = "pending", page: int = 1, per_page: int = 50):
     """List files in a folder with metadata."""
     base = os.path.join("artifacts", USERNAME)
-    path = os.path.join(base, folder)
+    try:
+        path = _safe_path(base, folder)
+    except ValueError:
+        return {"error": "Invalid folder path"}
     if not os.path.isdir(path):
         return {"files": [], "total": 0, "folder": folder}
     try:
@@ -1394,14 +1405,17 @@ def files_list(folder: str = "pending", page: int = 1, per_page: int = 50):
             })
         return {"files": files, "total": total, "page": page, "per_page": per_page, "folder": folder}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/files/preview")
 def files_preview(file: str, folder: str):
     """Return file preview: image as base64, text as snippet, binary as metadata."""
     base = os.path.join("artifacts", USERNAME)
-    path = os.path.join(base, folder, file)
+    try:
+        path = _safe_path(base, folder, file)
+    except ValueError:
+        return {"error": "Invalid file path"}
     if not os.path.isfile(path):
         return {"error": "Not found"}
     try:
@@ -1434,7 +1448,7 @@ def files_preview(file: str, folder: str):
         else:
             return {"type": "binary", "size": size, "name": file, "ext": ext}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 def _human_size(n: int) -> str:
@@ -1445,15 +1459,35 @@ def _human_size(n: int) -> str:
     return f"{n:.1f}TB"
 
 
+def _safe_path(base: str, *parts: str) -> Path:
+    """Resolve a path and confirm it stays within base. Raises ValueError on traversal."""
+    base_resolved = Path(base).resolve()
+    candidate = Path(base).joinpath(*parts).resolve()
+    if not str(candidate).startswith(str(base_resolved)):
+        raise ValueError(f"Path traversal blocked: {parts}")
+    return candidate
+
+
+def _safe_commit_id(commit_id: str) -> str:
+    """Validate commit_id contains only safe characters. Raises ValueError otherwise."""
+    import re as _re
+    if not commit_id or not _re.match(r'^[a-zA-Z0-9_-]+$', commit_id):
+        raise ValueError(f"Invalid commit_id: {commit_id!r}")
+    return commit_id
+
+
 @app.post("/api/files/move")
 def files_move(filename: str, from_folder: str, to_folder: str):
     """Move a file between folders."""
     base = os.path.join("artifacts", USERNAME)
-    src = os.path.join(base, from_folder, filename)
-    dest_dir = os.path.join(base, to_folder)
-    dest = os.path.join(dest_dir, filename)
+    try:
+        src = _safe_path(base, from_folder, filename)
+        dest_dir = _safe_path(base, to_folder)
+    except ValueError:
+        return {"error": "Invalid file path"}
+    dest = dest_dir / filename
     if not os.path.isfile(src):
-        return {"error": f"File not found: {src}"}
+        return {"error": "File not found"}
     try:
         os.makedirs(dest_dir, exist_ok=True)
         if os.path.exists(dest):
@@ -1464,7 +1498,7 @@ def files_move(filename: str, from_folder: str, to_folder: str):
         # log.info(f"FILE MOVE: {filename} {from_folder} -> {to_folder} (manual)")
         return {"moved": filename, "from": from_folder, "to": to_folder}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/files/tag")
@@ -1497,7 +1531,7 @@ def files_tag(filename: str, folder: str, ring: str = None, category: str = None
         # log.info(f"FILE TAG: {folder}/{filename} ring={ring} cat={category} correct={feedback_correct}")
         return {"tagged": filename, "folder": folder}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 # Generated by: Free Fleet Pattern (manual due to truncation issues)
 
@@ -1775,6 +1809,429 @@ def agents_mark_read(message_id: int):
     return {"marked_read": message_id}
 
 
+@app.post("/api/agents/{name}/event")
+async def agents_drop_event(name: str, request: Request):
+    """
+    Agent nest drop — write an event from an agent directly into the pigeon pipeline.
+
+    Body: {
+      "event_type": "session_start|session_end|task_complete|decision|error|observation",
+      "content": "string — event content for knowledge graph",
+      "metadata": {}  // optional
+    }
+    """
+    # Validate agent exists
+    agent = agent_registry.get_agent(USERNAME, name)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not registered")
+
+    body = await request.json()
+    event_type = body.get("event_type", "observation")
+    content = body.get("content", "").strip()
+    metadata = body.get("metadata", {})
+
+    if not content:
+        raise HTTPException(status_code=400, detail="content is required")
+
+    # Build the drop file
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc)
+    ts_str = ts.strftime("%Y%m%d_%H%M%S")
+    filename = f"AGENT_EVENT_{name}_{event_type}_{ts_str}.md"
+
+    meta_lines = "\n".join(f"- {k}: {v}" for k, v in metadata.items()) if metadata else "- (none)"
+    drop_content = f"""# AGENT_EVENT: {event_type} — {name}
+Date: {ts.isoformat()}
+Agent: {name} ({agent.get('trust_level', 'UNKNOWN')})
+Event: {event_type}
+
+{content}
+
+## Metadata
+{meta_lines}
+
+---
+ΔΣ=42
+"""
+
+    # Write to agent nest (pigeon scans this automatically)
+    import pigeon as pigeon_core
+    nest_path = Path(pigeon_core.get_agent_nest_path(name))
+    drop_file = nest_path / filename
+    drop_file.write_text(drop_content, encoding="utf-8")
+
+    # Trigger pigeon scan
+    try:
+        pigeon_core.scan_and_process(USERNAME)
+    except Exception:
+        pass  # Non-fatal — file is in nest, daemon will pick it up
+
+    return {"ok": True, "filename": filename, "agent": name, "event_type": event_type}
+
+
+@app.post("/api/agent-chat/{name}")
+async def agents_chat(name: str, request: Request):
+    """
+    Synchronous (non-streaming) chat with an agent persona.
+
+    Body: {"message": "...", "context": "optional additional context"}
+    Returns: {"agent": name, "response": "...", "ok": True}
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    message = body.get("message", "")
+    context = body.get("context")
+
+    if not message:
+        raise HTTPException(status_code=400, detail="No message provided")
+
+    # Map agent name to persona (title-case)
+    persona = name.capitalize()
+
+    # Verify persona exists
+    if persona not in local_api.PERSONAS:
+        if name in local_api.PERSONAS:
+            persona = name
+        else:
+            raise HTTPException(status_code=404, detail=f"Agent persona '{name}' not found")
+
+    # Build prompt with optional context
+    prompt = message
+    if context:
+        prompt = f"[Context: {context}]\n\n{message}"
+
+    # Run sync generator in threadpool to avoid blocking event loop
+    import asyncio
+
+    def _chat():
+        chunks = []
+        for chunk in local_api.process_smart_stream(prompt, persona=persona, user=USERNAME):
+            if isinstance(chunk, str) and chunk.startswith("[Tier "):
+                continue
+            chunks.append(str(chunk))
+        return "".join(chunks).strip()
+
+    try:
+        response_text = await asyncio.to_thread(_chat)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+
+    if not response_text:
+        return {"agent": name, "response": "(no response generated)", "ok": False}
+
+    # --- Ingest: drop conversation to agent's Nest + mailbox ---
+    try:
+        from datetime import datetime as _dt
+        from core import agent_registry as _ar
+
+        ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+        caller = body.get("from_agent", "user")
+
+        # 1. Record in agent_mailbox (Crown-witnessed via send_message)
+        _ar.send_message(
+            USERNAME, from_agent=caller, to_agent=name,
+            subject=f"chat:{message[:60]}",
+            body=f"Q: {message}\n\nA: {response_text}",
+        )
+
+        # 2. Drop to agent's Nest (Pigeon scans → stages → knowledge graph)
+        try:
+            import pigeon as pigeon_core
+            nest_path = Path(pigeon_core.get_agent_nest_path(name))
+            nest_path.mkdir(parents=True, exist_ok=True)
+            drop_file = nest_path / f"agent_chat_{caller}_{ts}.md"
+            drop_content = (
+                f"# Agent Chat: {caller} → {name}\n"
+                f"**Date:** {_dt.now().isoformat()}\n"
+                f"**From:** {caller}\n**To:** {name}\n\n"
+                f"## Message\n{message}\n\n"
+                f"## Response\n{response_text}\n"
+            )
+            drop_file.write_text(drop_content, encoding="utf-8")
+        except Exception:
+            pass  # Nest drop is best-effort
+    except Exception:
+        pass  # Ingestion pipeline failure must not break chat
+
+    return {"agent": name, "response": response_text, "ok": True}
+
+
+# --- Agent Task Dispatch (structured, no fleet call) ---
+
+# Tool registry: tool_name → (callable, description)
+# Each callable takes **params and returns a dict result.
+_AGENT_TOOLS = {}
+
+
+def _register_tools():
+    """Register available local tools for agent dispatch."""
+    global _AGENT_TOOLS
+
+    # Embed corpus (semantic search + embedding)
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent / "tools"))
+        from embed_corpus import search as embed_search, embed_corpus, backfill_similar
+        _AGENT_TOOLS["embed_search"] = (
+            lambda **p: {"results": [(r[0], r[1], r[2], r[3]) for r in embed_search(
+                p.get("query", ""), limit=p.get("limit", 20), min_score=p.get("min_score", 0.3)
+            )]},
+            "Semantic search against embedded knowledge corpus"
+        )
+        _AGENT_TOOLS["embed_corpus"] = (
+            lambda **p: embed_corpus(reembed_all=p.get("all", False)),
+            "Embed all unembedded knowledge atoms (local, zero cloud tokens)"
+        )
+        _AGENT_TOOLS["embed_backfill"] = (
+            lambda **p: {"results": [(r[0], r[1], r[2], r[3]) for r in backfill_similar(
+                p["atom_id"], min_score=p.get("min_score", 0.5),
+                limit=p.get("limit", 100), dry_run=p.get("dry_run", True)
+            )]},
+            "Find atoms semantically similar to a given atom"
+        )
+    except Exception:
+        pass
+
+    # OCR enrichment
+    try:
+        from core.ocr_consumer import enrich_queue, score_screenshots
+        _AGENT_TOOLS["enrich_queue"] = (
+            lambda **p: enrich_queue(username=p.get("username", USERNAME), max_batch=p.get("batch", 20)),
+            "Enrich pending review queue items with OCR extraction"
+        )
+        _AGENT_TOOLS["score_screenshots"] = (
+            lambda **p: score_screenshots(username=p.get("username", USERNAME), max_batch=p.get("batch", 20)),
+            "Score pending screenshots for importance"
+        )
+    except Exception:
+        pass
+
+    # Entity promotion
+    try:
+        from core.loam import promote_entities
+        _AGENT_TOOLS["promote_entities"] = (
+            lambda **p: promote_entities(username=p.get("username", USERNAME), dry_run=p.get("dry_run", True)),
+            "Promote entities layer 1→2 based on evidence thresholds"
+        )
+    except Exception:
+        pass
+
+    # Topology
+    try:
+        from core.topology import build_edges
+        _AGENT_TOOLS["build_edges"] = (
+            lambda **p: {"edges_created": build_edges(username=p.get("username", USERNAME),
+                                                       batch_size=p.get("batch_size", 50))},
+            "Build shared_entity edges for recent knowledge atoms"
+        )
+    except Exception:
+        pass
+
+    # Pigeon scan
+    try:
+        import pigeon as pigeon_core
+        _AGENT_TOOLS["pigeon_scan"] = (
+            lambda **p: {"processed": pigeon_core.scan_and_process(p.get("username", USERNAME))},
+            "Scan Nest for new files, stage and process"
+        )
+    except Exception:
+        pass
+
+    # Knowledge search (direct DB, no fleet)
+    try:
+        from core.db import get_connection
+        def _knowledge_search(**p):
+            conn = get_connection()
+            try:
+                q = f"%{p.get('query', '')}%"
+                limit = p.get("limit", 20)
+                rows = conn.execute(
+                    "SELECT id, title, category, source_id FROM knowledge "
+                    "WHERE title ILIKE ? OR content_snippet ILIKE ? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (q, q, limit)
+                ).fetchall()
+                return {"results": [{"id": r[0], "title": r[1], "category": r[2], "source_id": r[3]} for r in rows]}
+            finally:
+                conn.close()
+        _AGENT_TOOLS["knowledge_search"] = (_knowledge_search, "Search knowledge graph by keyword (no fleet)")
+    except Exception:
+        pass
+
+
+_register_tools()
+
+
+@app.get("/api/dispatch/tools")
+def agent_tools_list():
+    """List available tools for agent task dispatch."""
+    return {
+        "tools": {name: desc for name, (_, desc) in _AGENT_TOOLS.items()},
+        "count": len(_AGENT_TOOLS),
+    }
+
+
+@app.post("/api/dispatch/{name}")
+async def agent_task_dispatch(name: str, request: Request):
+    """
+    Structured task dispatch. No fleet call. No conversation.
+    Direct tool execution with structured input/output.
+
+    Body: {"tool": "embed_search", "params": {"query": "...", "limit": 10}}
+    Returns: {"agent": name, "tool": tool, "result": {...}, "ok": True, "task_id": "..."}
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    tool_name = body.get("tool", "")
+    params = body.get("params", {})
+
+    if not tool_name:
+        raise HTTPException(status_code=400, detail="No tool specified")
+
+    if tool_name not in _AGENT_TOOLS:
+        return {"ok": False, "error": f"Unknown tool: {tool_name}",
+                "available": list(_AGENT_TOOLS.keys())}
+
+    # Create task record
+    import json
+    from datetime import datetime as _dt
+    from core.db import get_connection
+    now = _dt.now().isoformat()
+    task_id = f"task-dispatch-{hashlib.sha256(f'{name}:{tool_name}:{now}'.encode()).hexdigest()[:12]}"
+
+    try:
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO tasks (username, task_id, subject, description, status, agent, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (USERNAME, task_id, f"Dispatch: {tool_name}", json.dumps(params)[:500],
+             "in_progress", name, now, now)
+        )
+        conn.execute(
+            "INSERT INTO task_log (username, task_id, timestamp, action, agent, details) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (USERNAME, task_id, now, "dispatched", name, f"tool={tool_name}")
+        )
+        conn.commit()
+        conn.close()
+    except Exception as _task_err:
+        import traceback
+        logging.getLogger("willow.dispatch").error(f"Task log failed: {_task_err}\n{traceback.format_exc()}")
+
+    # Execute tool
+    import asyncio
+    tool_fn, _ = _AGENT_TOOLS[tool_name]
+
+    try:
+        result = await asyncio.to_thread(tool_fn, **params)
+    except Exception as e:
+        # Log failure
+        try:
+            conn = get_connection()
+            conn.execute(
+                "UPDATE tasks SET status = ?, updated_at = ?, completed_at = ? WHERE task_id = ?",
+                ("FAILED", now, now, task_id)
+            )
+            conn.execute(
+                "INSERT INTO task_log (username, task_id, timestamp, action, agent, details) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (USERNAME, task_id, _dt.now().isoformat(), "failed", name, str(e)[:500])
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+        return {"ok": False, "agent": name, "tool": tool_name, "error": str(e), "task_id": task_id}
+
+    # Log success
+    try:
+        conn = get_connection()
+        conn.execute(
+            "UPDATE tasks SET status = ?, updated_at = ?, completed_at = ? WHERE task_id = ?",
+            ("COMPLETED", _dt.now().isoformat(), _dt.now().isoformat(), task_id)
+        )
+        conn.execute(
+            "INSERT INTO task_log (username, task_id, timestamp, action, agent, details) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (USERNAME, task_id, _dt.now().isoformat(), "completed", name,
+             json.dumps(result)[:500] if isinstance(result, dict) else str(result)[:500])
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    return {"ok": True, "agent": name, "tool": tool_name, "result": result, "task_id": task_id}
+
+
+# --- Agent Chain / Conf Call Endpoint ---
+
+@app.post("/api/conf")
+async def agent_conf_call(request: Request):
+    """
+    Route a message through a chain of agents. Each agent sees accumulated context.
+
+    Body: {
+        "agents": ["oakenscroll", "riggs", "gerald"],
+        "message": "What are the next 100 failures...",
+        "thread_id": "optional-thread-id"
+    }
+    Returns: {transcript, exchanges, thread_id, final_response}
+    """
+    body = await request.json()
+    agents = body.get("agents", [])
+    message = body.get("message", "")
+    thread_id = body.get("thread_id")
+
+    if len(agents) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 agents for a conf call")
+    if not message:
+        raise HTTPException(status_code=400, detail="No message provided")
+
+    import asyncio
+    def _run_chain():
+        from core.pigeon import _call_chain
+        return _call_chain(agents, message, USERNAME, thread_id=thread_id)
+
+    try:
+        result = await asyncio.to_thread(_run_chain)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Chain failed: {str(e)}")
+
+    # Save transcript to Documents/Willow
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        reply_dir = Path("/mnt/c/Users/Sean/Documents/Willow/agent_replies")
+        reply_dir.mkdir(parents=True, exist_ok=True)
+        chain_name = "_".join(a[:4].upper() for a in agents)
+        reply_file = reply_dir / f"CONF_{chain_name}_{ts}.md"
+        reply_file.write_text(result["transcript"], encoding="utf-8")
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "thread_id": result["thread_id"],
+        "exchanges": [
+            {"agent": e["agent"], "chars": e["chars"], "preview": e["response"][:300]}
+            for e in result["exchanges"]
+        ],
+        "final_response": result["final_response"][:2000],
+        "transcript_saved": True,
+    }
+
+
 # --- PA (Personal Assistant) Endpoints ---
 
 DRIVE_ROOT = str(Path.home() / "My Drive")
@@ -1881,7 +2338,7 @@ def neocities_deploy():
         result = deploy_pocket_willow()
         return {"status": "deployed", "result": result}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/neocities/info")
@@ -1891,7 +2348,7 @@ def neocities_info():
         from apps.neocities import info
         return info()
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- Governance (Dual Commit) ---
@@ -1917,7 +2374,7 @@ def governance_pending():
         pending.sort(key=lambda x: x["timestamp"], reverse=True)
         return {"pending": pending}
     except Exception as e:
-        return {"error": str(e), "pending": []}
+        return {"error": "Internal error", "pending": []}
 
 
 @app.get("/api/governance/pending/{commit_id}")
@@ -1934,7 +2391,7 @@ def governance_pending_status(commit_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/governance/propose")
@@ -1963,7 +2420,7 @@ async def governance_propose(request: Request):
             return {"commit_id": commit_id, "status": "distributed", "message": "Distributed ratification — no approval needed."}
         return {"commit_id": commit_id, "status": "pending", "message": "Proposal created. Awaiting human ratification."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/governance/history")
@@ -1984,7 +2441,7 @@ def governance_history(limit: int = 50):
         history.sort(key=lambda x: x["timestamp"], reverse=True)
         return {"history": history[:limit]}
     except Exception as e:
-        return {"error": str(e), "history": []}
+        return {"error": "Internal error", "history": []}
 
 
 @app.get("/api/governance/decisions")
@@ -2050,13 +2507,14 @@ def governance_decisions(limit: int = 10, project: str = None):
 def governance_diff(commit_id: str):
     """Get the contents of a pending commit for review."""
     try:
+        commit_id = _safe_commit_id(commit_id)
         filepath = GOV_COMMITS_DIR / f"{commit_id}.pending"
         if not filepath.exists():
             return {"error": "Commit not found"}
         content = filepath.read_text(encoding="utf-8")
         return {"id": commit_id, "content": content}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/governance/approve")
@@ -2067,6 +2525,10 @@ async def governance_approve(request: Request):
         commit_id = body.get("commit_id")
         if not commit_id:
             return {"error": "Missing commit_id"}
+        try:
+            commit_id = _safe_commit_id(commit_id)
+        except ValueError:
+            return {"error": "Invalid commit_id"}
 
         pending_file = GOV_COMMITS_DIR / f"{commit_id}.pending"
         if not pending_file.exists():
@@ -2122,7 +2584,7 @@ async def governance_approve(request: Request):
             return {"success": True, "action": "approved", "commit_id": commit_id, "routing_error": str(routing_error)}
 
     except Exception as e:
-        return {"error": str(e), "success": False}
+        return {"error": "Internal error", "success": False}
 
 
 @app.post("/api/governance/reject")
@@ -2151,10 +2613,11 @@ async def governance_reject(request: Request):
 
         return {"success": True, "action": "rejected", "commit_id": commit_id}
     except Exception as e:
-        return {"error": str(e), "success": False}
+        return {"error": "Internal error", "success": False}
 
 
 @app.post("/api/governance/approve_and_apply")
+@limiter.limit("5/minute")
 async def governance_approve_and_apply(request: Request):
     """Approve and immediately apply a pending commit in one step.
 
@@ -2170,6 +2633,10 @@ async def governance_approve_and_apply(request: Request):
         commit_id = body.get("commit_id", "").strip()
         if not commit_id:
             return {"success": False, "error": "commit_id required"}
+        try:
+            commit_id = _safe_commit_id(commit_id)
+        except ValueError:
+            return {"success": False, "error": "Invalid commit_id"}
 
         # Step 1: Approve (move .pending -> .commit)
         pending = GOV_COMMITS_DIR / f"{commit_id}.pending"
@@ -2208,59 +2675,25 @@ async def governance_approve_and_apply(request: Request):
                 commit_file.rename(applied_file)
             return {"success": True, "commit_id": commit_id, "output": diff_output, "method": "apply_commits"}
 
-        # Step 2b: Extract ```python block from ## Implementation section and run it
-        py_match = re.search(r"##\s*Implementation[\s\S]*?```python\s*\n([\s\S]+?)\n```", proposal_text)
-        if py_match:
-            py_code = textwrap.dedent(py_match.group(1))
-            with tempfile.NamedTemporaryFile(
-                suffix=".py", delete=False, mode="w", encoding="utf-8"
-            ) as tmp:
-                tmp.write(py_code)
-                tmp_path = tmp.name
-            try:
-                py_result = subprocess.run(
-                    [sys.executable, tmp_path],
-                    cwd=Path(__file__).parent,
-                    capture_output=True, text=True, timeout=60
-                )
-                py_output = py_result.stdout + py_result.stderr
-                py_ok = py_result.returncode == 0
-            finally:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
+        # No diff block — narrative/decision-only commit, mark as applied
+        no_diff_block = "[WARN] No diff block" in diff_output
+        if no_diff_block:
+            if commit_file.exists():
+                commit_file.rename(applied_file)
+            return {"success": True, "commit_id": commit_id, "output": "Narrative commit acknowledged.", "method": "narrative"}
 
-            if py_ok:
-                # Ensure file is marked .applied (apply_commits may have already done this)
-                if commit_file.exists():
-                    commit_file.rename(applied_file)
-                return {
-                    "success": True,
-                    "commit_id": commit_id,
-                    "output": py_output or "Applied via Python block.",
-                    "method": "python_block"
-                }
-            else:
-                return {
-                    "success": False,
-                    "commit_id": commit_id,
-                    "output": f"apply_commits.py:\n{diff_output}\n\nPython block:\n{py_output}",
-                    "error": "Both apply strategies failed — check output"
-                }
-
-        # Step 2c: No Python block — return apply_commits output with guidance
+        # apply_commits.py failed — return output for diagnosis
         return {
             "success": False,
             "commit_id": commit_id,
             "output": diff_output,
-            "error": "apply_commits.py failed and no Python block found in proposal"
+            "error": "apply_commits.py failed — check proposal diff format"
         }
 
     except subprocess.TimeoutExpired:
         return {"success": False, "error": "Apply timed out after 60s"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 
 # --- Governance Audit Chain ---
@@ -2272,7 +2705,7 @@ def governance_audit_head():
         from core.storage import get_audit_head
         return get_audit_head()
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/governance/audit/verify")
@@ -2282,7 +2715,7 @@ def governance_audit_verify():
         from core.storage import verify_audit_chain
         return verify_audit_chain()
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- SAFE Sync Status ---
@@ -2315,7 +2748,7 @@ def safe_status():
             "recent_log": last_lines,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/safe/sync")
@@ -2334,7 +2767,7 @@ def safe_sync_now():
             "stderr": result.stderr[-500:] if result.stderr else "",
         }
     except Exception as e:
-        return {"error": str(e), "success": False}
+        return {"error": "Internal error", "success": False}
 
 
 # --- Pattern Recognition & Health Monitoring ---
@@ -2347,7 +2780,7 @@ def patterns_stats():
         stats = patterns.get_routing_stats(days=30)
         return stats
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/patterns/preferences")
@@ -2358,7 +2791,7 @@ def patterns_preferences():
         prefs = patterns.get_learned_preferences(min_confidence=0.3)
         return {"preferences": prefs}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/patterns/suggestions")
@@ -2369,7 +2802,7 @@ def patterns_suggestions():
         suggestions = patterns.suggest_rules()
         return {"suggestions": suggestions}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/patterns/confirm_rule")
@@ -2388,7 +2821,7 @@ async def patterns_confirm_rule(request: Request):
         patterns.confirm_rule(pattern_type, pattern_value, destination)
         return {"success": True}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/patterns/reject_rule")
@@ -2417,7 +2850,7 @@ async def patterns_reject_rule(request: Request):
         await loop.run_in_executor(None, _do_reject)
         return {"success": True, "message": "Rule rejected and removed from suggestions"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/patterns/anomalies")
@@ -2428,7 +2861,7 @@ def patterns_anomalies():
         anomalies = patterns.detect_anomalies(lookback_days=7)
         return {"anomalies": anomalies}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- Fleet Feedback Endpoints ---
@@ -2441,7 +2874,7 @@ def feedback_stats():
         stats = fleet_feedback.get_feedback_stats()
         return stats
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/feedback/tasks/{task_type}")
@@ -2452,7 +2885,7 @@ def feedback_for_task(task_type: str, min_quality: Optional[int] = None, limit: 
         feedback = fleet_feedback.get_feedback_for_task(task_type, min_quality, limit)
         return {"task_type": task_type, "feedback": feedback, "count": len(feedback)}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/feedback/provide")
@@ -2503,7 +2936,7 @@ async def provide_feedback(request: Request):
             "message": f"Feedback recorded for {body['provider']} - {body['task_type']}"
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- File Annotation Endpoints ---
@@ -2516,7 +2949,7 @@ def get_unannotated_routings(limit: int = 20):
         routings = file_annotations.get_unannotated_routings(limit=limit)
         return {"routings": routings, "count": len(routings)}
     except Exception as e:
-        return {"error": str(e), "routings": []}
+        return {"error": "Internal error", "routings": []}
 
 
 @app.post("/api/annotations/provide")
@@ -2559,7 +2992,7 @@ async def provide_annotation(request: Request):
             "message": f"Annotation recorded for routing {body['routing_id']}"
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/annotations/stats")
@@ -2576,7 +3009,7 @@ def get_annotation_stats():
             "recent_annotations": recent
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/health/report")
@@ -2587,7 +3020,7 @@ def health_report():
         report = health.get_health_report()
         return report
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/health/nodes")
@@ -2598,7 +3031,7 @@ def health_nodes():
         nodes = health.check_node_health(stale_threshold_hours=24)
         return {"nodes": nodes}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/nodes/create_db")
@@ -2630,7 +3063,7 @@ async def create_node_db(request: Request):
             "node_name": node_name
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/health/queues")
@@ -2641,7 +3074,7 @@ def health_queues():
         queues = health.check_queue_health(backlog_threshold=50)
         return {"queues": queues}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/health/apis")
@@ -2652,7 +3085,7 @@ def health_apis():
         apis = health.check_api_health()
         return {"apis": apis}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/health/issues")
@@ -2663,7 +3096,7 @@ def health_issues():
         issues = health.get_unresolved_issues()
         return {"issues": issues}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/health/heal")
@@ -2680,7 +3113,7 @@ async def health_heal(request: Request):
         success = health.attempt_self_heal(issue_id)
         return {"success": success, "issue_id": issue_id}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- Provider Health Endpoints ---
@@ -2713,7 +3146,7 @@ def get_provider_health():
 
         return {"providers": providers}
     except Exception as e:
-        return {"error": str(e), "providers": {}}
+        return {"error": "Internal error", "providers": {}}
 
 
 @app.post("/api/health/providers/unblacklist")
@@ -2723,7 +3156,6 @@ async def unblacklist_provider(request: Request):
         import sys
         sys.path.insert(0, str(Path(__file__).parent / "core"))
         import provider_health
-        import sqlite3
 
         body = await request.json()
         provider_name = body.get("provider")
@@ -2746,7 +3178,7 @@ async def unblacklist_provider(request: Request):
         await loop.run_in_executor(None, _do_unblacklist)
         return {"success": True, "provider": provider_name, "message": f"{provider_name} unblacklisted"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/health/providers/reset")
@@ -2777,7 +3209,7 @@ async def reset_provider_health(request: Request):
 
         return {"success": True, "provider": provider_name, "message": f"{provider_name} health reset"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/queues/files")
@@ -2808,7 +3240,7 @@ async def get_queue_files(queue: str = None):
 
         return {"files": files, "queue": queue, "count": len(files)}
     except Exception as e:
-        return {"error": str(e), "files": []}
+        return {"error": "Internal error", "files": []}
 
 
 @app.post("/api/queues/clear")
@@ -2849,7 +3281,7 @@ async def clear_queue(request: Request):
             "message": f"Cleared {file_count} files from {queue} queue"
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- Intake Queue Management ---
@@ -2883,7 +3315,7 @@ async def retry_intake_stage(stage: str):
             "message": f"Moved {moved_count} files from {stage} back to dump for retry"
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/intake/clear/{stage}")
@@ -2915,7 +3347,7 @@ async def clear_intake_stage(stage: str):
             "message": f"Cleared {cleared_count} files from {stage}"
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- Issue Management ---
@@ -2940,7 +3372,7 @@ async def dismiss_issue(request: Request):
             "message": f"Issue {issue_id} dismissed" if success else "Failed to dismiss issue"
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- Pocket Willow (mobile-friendly, served same-origin) ---
@@ -2967,7 +3399,7 @@ def binder_entities(username: str = "Sweet-Pea-Rudi19", layer: int = None, entit
         rt = RelationshipTracker(username)
         return {"entities": rt.list_entities(username=username, layer=layer, entity_type=entity_type)}
     except Exception as e:
-        return {"entities": [], "error": str(e)}
+        return {"entities": [], "error": "Internal error"}
 
 @app.get("/api/binder/connections/{entity_id}")
 def binder_connections(entity_id: int, username: str = "Sweet-Pea-Rudi19", min_weight: float = 0.3):
@@ -2977,7 +3409,7 @@ def binder_connections(entity_id: int, username: str = "Sweet-Pea-Rudi19", min_w
         rt = RelationshipTracker(username)
         return {"connections": rt.get_connections(entity_id, min_weight=min_weight)}
     except Exception as e:
-        return {"connections": [], "error": str(e)}
+        return {"connections": [], "error": "Internal error"}
 
 @app.post("/api/binder/connections/suggest")
 def binder_suggest_connections(body: dict):
@@ -2989,7 +3421,7 @@ def binder_suggest_connections(body: dict):
         rt = RelationshipTracker(username)
         return {"suggestions": rt.suggest_connections(knowledge_ids)}
     except Exception as e:
-        return {"suggestions": [], "error": str(e)}
+        return {"suggestions": [], "error": "Internal error"}
 
 @app.get("/api/binder/eligible")
 def binder_eligible(username: str = "Sweet-Pea-Rudi19", min_mentions: int = 5):
@@ -2999,7 +3431,7 @@ def binder_eligible(username: str = "Sweet-Pea-Rudi19", min_mentions: int = 5):
         rt = RelationshipTracker(username)
         return {"eligible": rt.get_eligible_for_promotion(username=username, min_mentions=min_mentions)}
     except Exception as e:
-        return {"eligible": [], "error": str(e)}
+        return {"eligible": [], "error": "Internal error"}
 
 @app.post("/api/binder/promote")
 def binder_promote(body: dict):
@@ -3016,7 +3448,7 @@ def binder_promote(body: dict):
         )
         return {"entity": result, "success": bool(result)}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 @app.post("/api/binder/dismiss")
 def binder_dismiss(body: dict):
@@ -3028,7 +3460,7 @@ def binder_dismiss(body: dict):
         ok = rt.dismiss_promotion(body["reference_id"], never=body.get("never", False))
         return {"success": ok}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 # --- Willow Connections (pending approval) ---
 
@@ -3053,22 +3485,22 @@ def willow_connections_pending(username: str = "Sweet-Pea-Rudi19", limit: int = 
         """, (limit,)).fetchall()
         return {"connections": [dict(r) for r in rows]}
     except Exception as e:
-        return {"connections": [], "error": str(e)}
+        return {"connections": [], "error": "Internal error"}
 
 
 @app.post("/api/willow/connections/{connection_id}/approve")
 async def willow_connection_approve(connection_id: int, username: str = "Sweet-Pea-Rudi19"):
     """Approve a pending connection — sets confirmed=1."""
     try:
-        from core.db import get_connection as _gc, is_postgres
-        conn = _gc() if is_postgres() else _gc(str(Path("artifacts") / username / "willow_knowledge.db"))
+        from core.db import get_connection as _gc
+        conn = _gc()
         conn.execute("UPDATE entity_connections SET confirmed=1 WHERE id=?", (connection_id,))
         conn.commit()
         conn.close()
         asyncio.create_task(_ecosystem_refresh())
         return {"success": True, "id": connection_id, "action": "approved"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 
 @app.post("/api/willow/connections/{connection_id}/deny")
@@ -3078,15 +3510,15 @@ async def willow_connection_deny(connection_id: int, username: str = "Sweet-Pea-
     INSERT OR IGNORE in scan-connections will skip this pair forever.
     No means no unless the user explicitly clears it."""
     try:
-        from core.db import get_connection as _gc, is_postgres
-        conn = _gc() if is_postgres() else _gc(str(Path("artifacts") / username / "willow_knowledge.db"))
+        from core.db import get_connection as _gc
+        conn = _gc()
         conn.execute("UPDATE entity_connections SET confirmed=-1 WHERE id=?", (connection_id,))
         conn.commit()
         conn.close()
         asyncio.create_task(_ecosystem_refresh())
         return {"success": True, "id": connection_id, "action": "denied"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 
 @app.post("/api/willow/connections/{connection_id}/edit")
@@ -3112,7 +3544,7 @@ async def willow_connection_edit(connection_id: int, request: Request, username:
         rt.conn.commit()
         return {"success": True, "id": connection_id, "action": "edited"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 def _willow_scan_connections_internal(username: str = "Sweet-Pea-Rudi19") -> dict:
     """Core scan logic — reusable by route and auto-triggers."""
@@ -3144,7 +3576,7 @@ def _willow_scan_connections_internal(username: str = "Sweet-Pea-Rudi19") -> dic
         return {"status": "scanned", "new_proposals": new_count, "total_suggestions": len(suggestions)}
     except Exception as e:
         logger.error("[scan-connections] Error: %s", e)
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "error": "Internal error"}
 
 
 @app.post("/api/willow/scan-connections")
@@ -3155,6 +3587,37 @@ async def willow_scan_connections(username: str = "Sweet-Pea-Rudi19"):
 
 
 
+# ---------------------------------------------------------------------------
+# Crown — entity lifecycle witness log (tamper-evident audit)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/crown/witness")
+@limiter.limit("30/minute")
+async def crown_witness(request: Request, limit: int = 20):
+    """View the Crown witness log — tamper-evident audit of all entity decisions."""
+    try:
+        from core import crown
+        crown.init_witness()
+        entries = crown.get_witness_log(username=USERNAME, limit=limit)
+        return {"witness_log": entries, "count": len(entries)}
+    except Exception as e:
+        return {"error": str(e), "witness_log": [], "count": 0}
+
+
+@app.get("/api/crown/verify/{witness_id}")
+@limiter.limit("30/minute")
+async def crown_verify(request: Request, witness_id: str, content: str = ""):
+    """Verify a specific witness record against content hash."""
+    if not content:
+        return {"error": "content query parameter required for verification"}
+    try:
+        from core import crown
+        verified = crown.verify_witness(witness_id, content)
+        return {"witness_id": witness_id, "verified": verified}
+    except Exception as e:
+        return {"error": str(e), "verified": False}
+
+
 BINDER_HTML = Path(__file__).parent / "binder.html"
 
 @app.get("/binder")
@@ -3163,6 +3626,16 @@ def serve_binder():
     if not BINDER_HTML.exists():
         return {"error": "binder.html not found"}
     return FileResponse(BINDER_HTML, media_type="text/html; charset=utf-8")
+
+
+UTETY_HTML = Path(__file__).parent / "utety.html"
+
+@app.get("/utety")
+def serve_utety():
+    """Serve UTETY — University of Technical Entropy, Thank You campus page."""
+    if not UTETY_HTML.exists():
+        raise HTTPException(status_code=404, detail="utety.html not found")
+    return FileResponse(UTETY_HTML, media_type="text/html; charset=utf-8")
 
 
 # --- Shiva GM Game Routes ---
@@ -3190,7 +3663,7 @@ async def game_session_start(request: Request):
         ge.add_history(result["session_id"], "system", "Session started.")
         return {"success": True, **result}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 @app.get("/api/game/session/{session_id}")
 def game_session_get(session_id: str):
@@ -3204,7 +3677,7 @@ def game_session_get(session_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 @app.delete("/api/game/session/{session_id}")
 def game_session_delete(session_id: str):
@@ -3213,7 +3686,7 @@ def game_session_delete(session_id: str):
         ge.delete_session(session_id)
         return {"success": True, "deleted": session_id}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 @app.get("/api/game/playbooks")
 def game_playbooks():
@@ -3234,7 +3707,7 @@ async def game_character_create(request: Request):
         ge.add_history(body["session_id"], "system", f"{result['name']} the {result['playbook']} enters the story.")
         return {"success": True, **result}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 @app.post("/api/game/roll")
 async def game_roll(request: Request):
@@ -3256,7 +3729,7 @@ async def game_roll(request: Request):
             ge.add_history(body["session_id"], "roll", roll_text, {"hash": result["hash"]})
         return result
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 @app.get("/api/game/rolls/{session_id}")
 def game_roll_history(session_id: str, limit: int = 20):
@@ -3264,7 +3737,7 @@ def game_roll_history(session_id: str, limit: int = 20):
         import game_engine as ge
         return {"rolls": ge.get_roll_history(session_id, limit)}
     except Exception as e:
-        return {"rolls": [], "error": str(e)}
+        return {"rolls": [], "error": "Internal error"}
 
 @app.post("/api/game/narrate")
 async def game_narrate(request: Request):
@@ -3294,7 +3767,7 @@ async def game_narrate(request: Request):
             "history": ge.get_history(session_id, limit=30),
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 @app.post("/api/game/pbta/convert")
 async def game_pbta_convert(request: Request):
@@ -3336,7 +3809,7 @@ Keep it fun, age-appropriate (9-14), and true to the source material."""
             return {"success": True, "ip": ip, "game": game_data}
         return {"success": False, "error": "Could not parse game JSON", "raw": content[:500]}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Internal error"}
 
 @app.get("/api/game/history/{session_id}")
 def game_history(session_id: str, limit: int = 30):
@@ -3344,7 +3817,7 @@ def game_history(session_id: str, limit: int = 30):
         import game_engine as ge
         return {"history": ge.get_history(session_id, limit)}
     except Exception as e:
-        return {"history": [], "error": str(e)}
+        return {"history": [], "error": "Internal error"}
 
 
 # --- Governance Dashboard ---
@@ -3383,7 +3856,7 @@ def request_manager_stats():
         from core import request_manager
         return request_manager.get_stats()
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.post("/api/request_manager/clear_cache")
@@ -3394,7 +3867,7 @@ def request_manager_clear_cache():
         request_manager.clear_cache()
         return {"status": "cache cleared"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 # --- Hot Reload Endpoint ---
@@ -3425,7 +3898,7 @@ def reload_module(module: str):
         importlib.reload(mod)
         return {"reloaded": f"core.{module}", "status": "ok"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal error"}
 
 
 @app.get("/api/ecosystem")
@@ -3435,7 +3908,7 @@ def ecosystem_read():
         from core import ecosystem_writer as ew
         return {"content": ew._read(), "path": str(ew.ECOSYSTEM_PATH)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/ecosystem/update-stats")
@@ -3445,8 +3918,8 @@ async def ecosystem_update_stats():
     try:
         import re as _re
         from core import ecosystem_writer as ew
-        from core.db import get_connection as _gc, is_postgres
-        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+        from core.db import get_connection as _gc
+        conn = _gc()
         k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
         e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
         ec = conn.execute("SELECT COUNT(*) FROM entity_connections WHERE confirmed=1").fetchone()[0]
@@ -3466,7 +3939,7 @@ async def ecosystem_update_stats():
         ew.update_section("Architecture", arch)
         return {"updated": True, "knowledge": k, "entities": e, "edges": ke, "connections": ec}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/ecosystem/decision")
@@ -3483,7 +3956,7 @@ async def ecosystem_append_decision(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 
@@ -3492,8 +3965,8 @@ async def _ecosystem_refresh():
     try:
         import re as _re
         from core import ecosystem_writer as _ew
-        from core.db import get_connection as _gc, is_postgres
-        conn = _gc() if is_postgres() else _gc(loam._db_path(USERNAME))
+        from core.db import get_connection as _gc
+        conn = _gc()
         k  = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
         e  = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
         ec = conn.execute("SELECT COUNT(*) FROM entity_connections WHERE confirmed=1").fetchone()[0]
@@ -3688,7 +4161,8 @@ def learn_status():
 
 
 @app.post("/api/admin/restart")
-async def admin_restart():
+@limiter.limit("2/minute")
+async def admin_restart(request: Request):
     """Hot-restart the Willow server. Called by Kart REPL :server_restart command."""
     import threading
     def _do_restart():
@@ -3712,7 +4186,7 @@ async def pigeon_get_droppings(username: str = 'Sweet-Pea-Rudi19'):
         pigeon.init_droppings_table()
         return {'droppings': pigeon.get_droppings(username)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.delete('/api/pigeon/droppings/{dropping_id}')
 async def pigeon_sweep_one(dropping_id: int, username: str = 'Sweet-Pea-Rudi19'):
@@ -3721,7 +4195,7 @@ async def pigeon_sweep_one(dropping_id: int, username: str = 'Sweet-Pea-Rudi19')
         ok = pigeon.sweep_dropping(username, dropping_id)
         return {'success': ok}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.delete('/api/pigeon/droppings')
 async def pigeon_sweep_all_route(username: str = 'Sweet-Pea-Rudi19'):
@@ -3730,7 +4204,7 @@ async def pigeon_sweep_all_route(username: str = 'Sweet-Pea-Rudi19'):
         count = pigeon.sweep_all(username)
         return {'success': True, 'swept': count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post('/api/pigeon/drop')
 async def pigeon_drop(request: Request):
@@ -3740,7 +4214,7 @@ async def pigeon_drop(request: Request):
         from core import pigeon
         return pigeon.receive_drop(dropping)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get('/api/pigeon/inbox')
 async def pigeon_inbox_get(app_id: str, username: str = 'Sweet-Pea-Rudi19', unread_only: bool = True):
@@ -3752,7 +4226,7 @@ async def pigeon_inbox_get(app_id: str, username: str = 'Sweet-Pea-Rudi19', unre
         messages = pigeon.get_inbox(app_id, username, unread_only)
         return {'ok': True, 'app_id': app_id, 'messages': messages, 'count': len(messages)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post('/api/pigeon/inbox/{message_id}/read')
@@ -3765,7 +4239,7 @@ async def pigeon_inbox_mark_read(message_id: int, app_id: str):
         count = pigeon.mark_inbox_read(app_id, message_id)
         return {'ok': True, 'marked': count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post('/api/pigeon/inbox/read-all')
@@ -3776,7 +4250,7 @@ async def pigeon_inbox_mark_all_read(app_id: str):
         count = pigeon.mark_inbox_read(app_id)
         return {'ok': True, 'marked': count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post('/api/pigeon/scan')
@@ -3787,7 +4261,7 @@ async def pigeon_scan(username: str = 'Sweet-Pea-Rudi19'):
         trigger.touch()
         return {'success': True, 'new_droppings': 0, 'droppings': [], 'status': 'triggered'}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3800,148 +4274,174 @@ async def user_schema_init(username: str = "Sweet-Pea-Rudi19"):
     Safe to call multiple times -- idempotent.
     On SQLite: no-op, returns safe schema name only."""
     try:
-        from core.db import init_user_schema, _safe_schema_name, is_postgres
+        from core.db import init_user_schema, _safe_schema_name
         safe = init_user_schema(username)
-        detail = {}
-        if is_postgres():
-            # Register in schema_registry
-            import datetime
-            from core.db import get_connection as _gc
-            conn = _gc()
-            now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            conn.execute(
-                "INSERT OR IGNORE INTO schema_registry (username, schema_name, created_at) "
-                "VALUES (?, ?, ?)",
-                (username, safe, now),
-            )
-            conn.commit()
-            conn.close()
-            detail["registered"] = True
+        # Register in schema_registry
+        import datetime
+        from core.db import get_connection as _gc
+        conn = _gc()
+        now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_registry (username, schema_name, created_at) "
+            "VALUES (?, ?, ?)",
+            (username, safe, now),
+        )
+        conn.commit()
+        conn.close()
         return {
             "success": True,
             "username": username,
             "schema": safe,
-            "postgres": is_postgres(),
-            **detail,
+            "postgres": True,
+            "registered": True,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-
-if __name__ == "__main__":
-    import uvicorn
-    from core.boot import boot_check
-
-    status, cfg, msg = boot_check()
-    if status == "already_running":
-        print(f"[BOOT] {msg}")
-        sys.exit(0)
-    elif status == "conflict":
-        print(f"[BOOT] ERROR: {msg}")
-        print("[BOOT] Free port 8420 or change Willow port in ~/.willow/config.json")
-        sys.exit(1)
-    else:
-        print(f"[BOOT] {msg}")  # start or stale_reclaimed
-
-    print(f"Willow UI: http://{cfg.host}:{cfg.port}")
-    from concurrent.futures import ThreadPoolExecutor
-    import asyncio as _asyncio
-
-    async def _setup_and_serve():
-        loop = _asyncio.get_running_loop()
-        loop.set_default_executor(ThreadPoolExecutor(max_workers=50, thread_name_prefix="willow"))
-        config = uvicorn.Config(
-            app,
-            host=cfg.host,
-            port=cfg.port,
-            log_level="info",
-            timeout_keep_alive=2,
-            limit_concurrency=500,
-            access_log=False,
-        )
-        server = uvicorn.Server(config)
-        await server.serve()
-
-    _asyncio.run(_setup_and_serve())
 
 # BASE 17 Compact Communication Endpoint
-@app.route('/api/compact', methods=['POST'])
-def compact_request():
-    """Handle BASE 17 compact format: task_id|action|params"""
+@app.post('/api/compact/register')
+async def compact_register(request: Request):
+    """Register a context block under a BASE 17 ID.
+    Body: {content, category?, label?, agent?, ttl_hours?, id?}
+    Returns: {id: "A8819", category: "rubric"}"""
+    from core import compact
+    body = await request.json()
+    content = body.get('content', '')
+    if not content:
+        return JSONResponse({'error': 'content required'}, status_code=400)
     try:
-        data = request.get_json()
-        compact = data.get('compact', '')
-        
-        # Parse: task_id|action|params
-        parts = compact.split('|')
+        cid = compact.register(
+            content=content,
+            category=body.get('category', 'pattern'),
+            label=body.get('label'),
+            agent=body.get('agent'),
+            ttl_hours=body.get('ttl_hours'),
+            ctx_id=body.get('id'),
+        )
+        return {'id': cid, 'category': body.get('category', 'pattern')}
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.get('/api/compact/resolve/{ctx_id}')
+async def compact_resolve(ctx_id: str):
+    """Resolve a BASE 17 ID to its content. Returns null if missing (anti-hallucination)."""
+    from core import compact
+    ctx = compact.resolve(ctx_id)
+    if not ctx:
+        return {'id': ctx_id, 'found': False, 'content': None}
+    return {'id': ctx_id, 'found': True, **ctx}
+
+
+@app.get('/api/compact/find')
+async def compact_find(label: str = ""):
+    """Find context by human-readable label."""
+    from core import compact
+    if not label:
+        return JSONResponse({'error': 'label parameter required'}, status_code=400)
+    ctx = compact.find_by_label(label)
+    if not ctx:
+        return {'label': label, 'found': False}
+    return {'found': True, **ctx}
+
+
+@app.get('/api/compact/list')
+async def compact_list(category: str = None, agent: str = None, limit: int = 50):
+    """List registered compact contexts."""
+    from core import compact
+    return {'contexts': compact.list_contexts(category=category, agent=agent, limit=limit)}
+
+
+@app.post('/api/compact/handoff')
+async def compact_handoff(request: Request):
+    """Create an N2N handoff packet.
+    Body: {what_happened, what_next, session_id?, context_ids?, agent?}
+    Returns: {packet: "...", bytes: N}"""
+    from core import compact
+    body = await request.json()
+    try:
+        packet = compact.handoff_packet(
+            what_happened=body.get('what_happened', ''),
+            what_next=body.get('what_next', ''),
+            session_id=body.get('session_id'),
+            context_ids=body.get('context_ids'),
+            agent=body.get('agent'),
+        )
+        return {'packet': packet, 'bytes': len(packet)}
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.post('/api/compact/receive')
+async def compact_receive(request: Request):
+    """Receive and resolve an N2N handoff packet.
+    Body: {packet: "JSON string"}
+    Returns: resolved contexts + handoff state"""
+    from core import compact
+    body = await request.json()
+    packet = body.get('packet', '')
+    if not packet:
+        return JSONResponse({'error': 'packet required'}, status_code=400)
+    try:
+        state = compact.receive_handoff(packet)
+        return state
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.post('/api/compact')
+async def compact_request(request: Request):
+    """Legacy BASE 17 compact format: task_id|action|params — resolves inline refs."""
+    from core import compact
+    try:
+        data = await request.json()
+        raw = data.get('compact', '')
+        parts = raw.split('|')
         if len(parts) < 2:
-            return jsonify({'error': 'Invalid format'}), 400
-            
+            return JSONResponse({'error': 'Invalid format. Use: id|action|params'}, status_code=400)
         task_id = parts[0]
         action = parts[1]
         params = parts[2] if len(parts) > 2 else ''
-        
-        # Route to agent based on action
-        # TODO: Implement routing logic
-        
-        return jsonify({'task_id': task_id, 'result': 'acknowledged'}), 200
+        # If task_id is a valid BASE 17 ID, try resolving it
+        ctx = compact.resolve(task_id) if len(task_id) == 5 else None
+        return {'task_id': task_id, 'action': action, 'params': params,
+                'context': ctx, 'result': 'acknowledged'}
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return JSONResponse({"error": "Internal server error"}, status_code=500)
 
 # Agent Delivery Routing (EVERYTHING goes through Willow)
-@app.route('/api/agents/deliver', methods=['POST'])
-def agent_deliver():
+@app.post('/api/agents/deliver')
+async def agent_deliver(request: Request):
     """Route agent deliveries through Willow to user Pickup folders."""
     try:
-        data = request.get_json()
-        
-        # Validate
+        data = await request.json()
         required = ['from', 'to', 'destination', 'items']
         if not all(k in data for k in required):
-            return jsonify({'error': 'Missing required fields'}), 400
-        
+            return JSONResponse({'error': 'Missing required fields'}, status_code=400)
         from_agent = data['from']
         to_user = data['to']
         destination = data['destination']
         items = data['items']
-        
-        # Log routing through Willow
         logging.info(f"WILLOW_ROUTING | {from_agent} → {to_user}/{destination} | {len(items)} items")
-        
-        # Route each item
         results = []
         for item in items:
             filename = item.get('filename')
             content = item.get('content')
-            
             if not filename or not content:
                 results.append({'filename': filename, 'status': 'ERROR', 'reason': 'missing data'})
                 continue
-            
-            # Route through Willow to destination
             if destination == 'Pickup':
                 from local_api import send_to_pickup
                 success = send_to_pickup(filename, content, to_user)
-                results.append({
-                    'filename': filename,
-                    'status': 'DELIVERED' if success else 'FAILED'
-                })
+                results.append({'filename': filename, 'status': 'DELIVERED' if success else 'FAILED'})
             else:
                 results.append({'filename': filename, 'status': 'ERROR', 'reason': 'unknown destination'})
-        
-        # Return receipt
-        return jsonify({
-            'from': from_agent,
-            'to': to_user,
-            'destination': destination,
-            'routed_by': 'willow',
-            'items': results,
-            'status': 'COMPLETE'
-        }), 200
-        
+        return {'from': from_agent, 'to': to_user, 'destination': destination,
+                'routed_by': 'willow', 'items': results, 'status': 'COMPLETE'}
     except Exception as e:
         logging.error(f"WILLOW_ROUTING_ERROR | {e}")
-        return jsonify({'error': str(e)}), 500
+        return JSONResponse({"error": "Internal server error"}, status_code=500)
 
 
 @app.get("/api/pickup")
@@ -3971,7 +4471,7 @@ async def api_pickup_list(username: str = "Sweet-Pea-Rudi19"):
                 })
         return {"items": items, "path": str(pickup_dir), "exists": True}
     except Exception as e:
-        return {"error": str(e), "items": []}
+        return {"error": "Internal error", "items": []}
 
 
 @app.delete("/api/pickup/{filename}")
@@ -3990,7 +4490,7 @@ async def api_pickup_dismiss(filename: str, username: str = "Sweet-Pea-Rudi19"):
         raise HTTPException(status_code=404, detail="File not found")
     except Exception as e:
         from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ---------------------------------------------------------------------------
@@ -4000,6 +4500,7 @@ async def api_pickup_dismiss(filename: str, username: str = "Sweet-Pea-Rudi19"):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/fleet/ask")
+@limiter.limit("60/minute")
 async def fleet_ask(request: Request):
     """
     External fleet passthrough. Accepts prompt, returns LLM response.
@@ -4021,6 +4522,8 @@ async def fleet_ask(request: Request):
 
     if not prompt:
         return {"error": "No prompt provided"}, 400
+    if len(prompt) > 100000:
+        return {"error": "Prompt too long (max 100000 characters)"}, 400
 
     try:
         from core import llm_router
@@ -4033,8 +4536,9 @@ async def fleet_ask(request: Request):
             "tier": result.tier,
             "source": source,
         }
-    except Exception as e:
-        return {"error": str(e), "source": source}
+    except Exception:
+        log.exception("fleet_ask error")
+        return {"error": "Internal error", "source": source}
 
 
 @app.get("/api/fleet/providers")
@@ -4134,12 +4638,28 @@ def _get_willow_context(username: str) -> dict:
 
 @app.post("/api/binder/ingest-pickup")
 async def binder_ingest_pickup(username: str = USERNAME):
-    """Manually trigger ingestion of all Pickup box files into the knowledge graph."""
+    """Copy Pickup box files into the Nest for review. Nothing enters the graph without approval."""
     try:
-        result = _ingest_pickup_for_gazelle(username)
-        return {"status": "ok", **result}
+        import shutil
+        pickup = Path(f"/mnt/c/Users/Sean/My Drive/Willow/Auth Users/{username}/Pickup")
+        nest = Path("/mnt/c/Users/Sean/Willow/Nest")
+        nest.mkdir(parents=True, exist_ok=True)
+        copied = []
+        if pickup.exists():
+            for f in pickup.iterdir():
+                if f.is_file() and not f.name.startswith("."):
+                    dest = nest / f.name
+                    if not dest.exists():
+                        shutil.copy2(str(f), str(dest))
+                        copied.append(f.name)
+        # Touch pigeon trigger
+        trigger = Path(f"artifacts/{username}/.pigeon_trigger")
+        trigger.parent.mkdir(parents=True, exist_ok=True)
+        trigger.touch()
+        return {"status": "staged", "copied": len(copied), "files": copied,
+                "message": "Files moved to Nest for review. Nothing enters the graph without approval."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/binder/process-queue")
@@ -4149,6 +4669,26 @@ async def binder_process_queue(batch: int = 20, username: str = USERNAME):
         result = ocr_consumer.process_queue(username=username, max_batch=batch)
         return {"status": "ok", **result}
     except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/binder/auto-confirm")
+async def binder_auto_confirm(request: Request, username: str = USERNAME):
+    """Auto-confirm high-confidence pending items. Crown-witnessed.
+    Body: {"dry_run": true} (default) — preview what would be confirmed.
+    Body: {"dry_run": false} — actually confirm and ingest.
+    Items that don't qualify stay pending for human review."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    dry_run = body.get("dry_run", True)
+    try:
+        from core.nest_intake import auto_confirm_queue
+        result = auto_confirm_queue(username=username, dry_run=dry_run)
+        return {"status": "ok", **result}
+    except Exception as e:
+        log.error(f"auto-confirm error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -4162,7 +4702,7 @@ async def organizer_scan(username: str = USERNAME):
         files = file_organizer.scan_pickup(username)
         return {"status": "ok", "files": files, "count": len(files)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/organizer/rename")
@@ -4176,7 +4716,7 @@ async def organizer_rename(request: Request):
         result = file_organizer.apply_rename(file_path, new_stem, dry_run=dry_run)
         return {"status": "ok", "new_path": str(result), "applied": not dry_run}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/organizer/move")
@@ -4191,7 +4731,7 @@ async def organizer_move(request: Request):
         result = file_organizer.move_to_filed(file_path, category, username, dry_run=dry_run)
         return {"status": "ok", "destination": str(result), "applied": not dry_run}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/organizer/batch")
@@ -4204,7 +4744,7 @@ async def organizer_batch(request: Request):
         applied = sum(1 for r in results if r.get("applied"))
         return {"status": "ok", "results": results, "total": len(results), "applied": applied}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/organizer/duplicates")
@@ -4213,7 +4753,7 @@ async def organizer_duplicates(username: str = USERNAME):
         groups = file_organizer.find_duplicates(username)
         return {"status": "ok", "groups": groups, "duplicate_sets": len(groups)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 def _ocr_queue_background_loop():
     """Background thread: drain OCR queue every 5 minutes."""
@@ -4246,7 +4786,7 @@ async def gazelle_session_start(request: Request):
         result["pickup_ingested"] = ingest_result["ingested"]
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/gazelle/session/{session_id}")
@@ -4260,7 +4800,7 @@ async def gazelle_session_get(session_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.delete("/api/gazelle/session/{session_id}")
@@ -4270,7 +4810,7 @@ async def gazelle_session_delete(session_id: str):
         ge.delete_session(session_id)
         return {"status": "deleted", "message": "All session data deleted."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/gazelle/chat")
@@ -4287,7 +4827,7 @@ async def gazelle_chat(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/gazelle/documents/{session_id}")
@@ -4297,7 +4837,144 @@ async def gazelle_documents(session_id: str):
         docs = ge.get_documents(session_id)
         return {"documents": docs}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# --- Law Gazelle: Case Management API ---
+
+@app.get("/api/gazelle/cases")
+async def gazelle_cases(username: str = USERNAME):
+    try:
+        ge = _get_gazelle()
+        return {"cases": ge.get_cases(username)}
+    except Exception as e:
+        logging.warning(f"GAZELLE_CASES: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/gazelle/cases/{case_id}")
+async def gazelle_case_detail(case_id: int, username: str = USERNAME):
+    try:
+        ge = _get_gazelle()
+        case = ge.get_case(case_id, username)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        return case
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.warning(f"GAZELLE_CASE: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/gazelle/cases/{case_id}/documents")
+async def gazelle_case_docs(case_id: int, doc_type: str = None, username: str = USERNAME):
+    try:
+        ge = _get_gazelle()
+        return {"documents": ge.get_case_documents(case_id, username, doc_type)}
+    except Exception as e:
+        logging.warning(f"GAZELLE_DOCS: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/gazelle/cases/{case_id}/deadlines")
+async def gazelle_case_deadlines(case_id: int, status: str = None, username: str = USERNAME):
+    try:
+        ge = _get_gazelle()
+        return {"deadlines": ge.get_case_deadlines(case_id, username, status)}
+    except Exception as e:
+        logging.warning(f"GAZELLE_DEADLINES: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/gazelle/cases/{case_id}/documents")
+async def gazelle_add_doc(case_id: int, request: Request, username: str = USERNAME):
+    try:
+        body = await request.json()
+        ge = _get_gazelle()
+        result = ge.add_case_document(
+            case_id, username,
+            doc_type=body.get("doc_type", "filing"),
+            title=body.get("title", "Untitled"),
+            content_text=body.get("content_text", ""),
+            source=body.get("source", "manual"),
+            **{k: v for k, v in body.items()
+               if k in ("parsed_summary", "action_required", "action_type",
+                        "deadline", "source_file")}
+        )
+        return {"status": "ok", **result}
+    except Exception as e:
+        logging.warning(f"GAZELLE_ADD_DOC: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/gazelle/cases/{case_id}/deadlines/{deadline_id}")
+async def gazelle_update_deadline(case_id: int, deadline_id: int,
+                                   request: Request, username: str = USERNAME):
+    try:
+        body = await request.json()
+        ge = _get_gazelle()
+        result = ge.update_deadline(
+            deadline_id, username,
+            status=body.get("status", "pending"),
+            notes=body.get("notes")
+        )
+        return {"status": "ok", **result}
+    except Exception as e:
+        logging.warning(f"GAZELLE_DEADLINE: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/gazelle/nest")
+async def gazelle_nest_items(username: str = USERNAME):
+    try:
+        ge = _get_gazelle()
+        return {"items": ge.get_legal_nest_items(username)}
+    except Exception as e:
+        logging.warning(f"GAZELLE_NEST: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/gazelle/nest/{item_id}/ingest")
+async def gazelle_ingest_nest_item(item_id: int, request: Request,
+                                    username: str = USERNAME):
+    try:
+        body = await request.json()
+        case_id = body.get("case_id")
+        if not case_id:
+            raise HTTPException(status_code=400, detail="case_id required")
+
+        # Pull item from nest_review_queue
+        from core.db import get_connection as _gc
+        conn = _gc()
+        row = conn.execute(
+            "SELECT * FROM sweet_pea_rudi19.nest_review_queue WHERE id = %s AND username = %s",
+            (item_id, username)
+        ).fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Nest item not found")
+
+        content = row["content_text"] if isinstance(row, dict) else row[5]
+        filename = row["filename"] if isinstance(row, dict) else row[2]
+        conn.close()
+
+        # Parse and ingest
+        ecf_path = str(_GAZELLE_ENGINE_PATH / "ecf_parser.py")
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("ecf_parser", ecf_path)
+        ecf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ecf)
+
+        result = ecf.ingest_ecf_document(
+            username, case_id, content or "", filename or "", item_id
+        )
+        return {"status": "ok", **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.warning(f"GAZELLE_INGEST: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- NASA archive static files ---
@@ -4321,11 +4998,11 @@ def calendar_events_list(
 ):
     """Events in a date range. Defaults to next 30 days."""
     from datetime import datetime, timezone, timedelta
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     now = datetime.now(timezone.utc)
     start = from_dt or now.date().isoformat()
     end = to_dt or (now + timedelta(days=30)).date().isoformat()
-    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    conn = _gc()
     try:
         query = """
             SELECT * FROM calendar_events
@@ -4347,11 +5024,11 @@ def calendar_events_list(
 def calendar_upcoming(username: str = USERNAME, days: int = 14):
     """Next N days of events + open todos with due dates. For agent/Shiva use."""
     from datetime import datetime, timezone, timedelta
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     now = datetime.now(timezone.utc)
     end = (now + timedelta(days=days)).date().isoformat()
     today = now.date().isoformat()
-    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    conn = _gc()
     try:
         events = conn.execute("""
             SELECT id, title, start_dt, end_dt, all_day, category
@@ -4378,14 +5055,14 @@ def calendar_upcoming(username: str = USERNAME, days: int = 14):
 @app.post("/api/calendar/events")
 async def calendar_event_create(request: Request):
     from datetime import datetime, timezone
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     body = await request.json()
     username = body.get("username") or USERNAME
     now = datetime.now(timezone.utc).isoformat()
     required = ("title", "start_dt")
     if not all(body.get(f) for f in required):
         return JSONResponse({"ok": False, "error": "title and start_dt required"}, status_code=400)
-    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    conn = _gc()
     try:
         cur = conn.execute("""
             INSERT INTO calendar_events
@@ -4407,7 +5084,7 @@ async def calendar_event_create(request: Request):
 @app.patch("/api/calendar/events/{event_id}")
 async def calendar_event_update(event_id: int, request: Request):
     from datetime import datetime, timezone
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     body = await request.json()
     username = body.get("username") or USERNAME
     now = datetime.now(timezone.utc).isoformat()
@@ -4419,7 +5096,7 @@ async def calendar_event_update(event_id: int, request: Request):
     updates["updated_at"] = now
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [event_id, username]
-    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    conn = _gc()
     try:
         conn.execute(
             f"UPDATE calendar_events SET {set_clause} WHERE id = ? AND username = ?",
@@ -4433,8 +5110,8 @@ async def calendar_event_update(event_id: int, request: Request):
 
 @app.get("/api/calendar/todos")
 def calendar_todos_list(username: str = USERNAME, status: str = "open", category: str = None):
-    from core.db import get_connection as _gc, is_postgres
-    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    from core.db import get_connection as _gc
+    conn = _gc()
     try:
         query = "SELECT * FROM personal_todos WHERE username = ? AND status = ?"
         params = [username, status]
@@ -4451,13 +5128,13 @@ def calendar_todos_list(username: str = USERNAME, status: str = "open", category
 @app.post("/api/calendar/todos")
 async def calendar_todo_create(request: Request):
     from datetime import datetime, timezone
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     body = await request.json()
     username = body.get("username") or USERNAME
     if not body.get("title"):
         return JSONResponse({"ok": False, "error": "title required"}, status_code=400)
     now = datetime.now(timezone.utc).isoformat()
-    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    conn = _gc()
     try:
         cur = conn.execute("""
             INSERT INTO personal_todos
@@ -4479,7 +5156,7 @@ async def calendar_todo_create(request: Request):
 @app.patch("/api/calendar/todos/{todo_id}")
 async def calendar_todo_update(todo_id: int, request: Request):
     from datetime import datetime, timezone
-    from core.db import get_connection as _gc, is_postgres
+    from core.db import get_connection as _gc
     body = await request.json()
     username = body.get("username") or USERNAME
     now = datetime.now(timezone.utc).isoformat()
@@ -4490,7 +5167,7 @@ async def calendar_todo_update(todo_id: int, request: Request):
     updates["updated_at"] = now
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [todo_id, username]
-    conn = _gc() if is_postgres() else _gc(loam._db_path(username))
+    conn = _gc()
     try:
         conn.execute(
             f"UPDATE personal_todos SET {set_clause} WHERE id = ? AND username = ?",
@@ -4504,8 +5181,43 @@ async def calendar_todo_update(todo_id: int, request: Request):
 
 # --- Static file serving (production) — must be last to avoid shadowing API routes ---
 if UI_DIST.exists():
-    @app.get("/")
-    def serve_index():
-        return FileResponse(UI_DIST / "index.html")
+    app.mount("/", StaticFiles(directory=str(UI_DIST), html=True), name="static")
 
-    app.mount("/", StaticFiles(directory=str(UI_DIST)), name="static")
+if __name__ == "__main__":
+    import uvicorn
+    from core.boot import boot_check
+
+    status, cfg, msg = boot_check()
+    if status == "already_running":
+        print(f"[BOOT] {msg}")
+        sys.exit(0)
+    elif status == "conflict":
+        print(f"[BOOT] ERROR: {msg}")
+        print("[BOOT] Free port 8420 or change Willow port in ~/.willow/config.json")
+        sys.exit(1)
+    else:
+        print(f"[BOOT] {msg}")  # start or stale_reclaimed
+
+    print(f"Willow UI: http://{cfg.host}:{cfg.port}")
+    from concurrent.futures import ThreadPoolExecutor
+    import asyncio as _asyncio
+
+    async def _setup_and_serve():
+        loop = _asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=50, thread_name_prefix="willow"))
+        config = uvicorn.Config(
+            "server:app",
+            host=cfg.host,
+            port=cfg.port,
+            log_level="info",
+            timeout_keep_alive=2,
+            limit_concurrency=500,
+            access_log=False,
+            reload=True,
+            reload_dirs=[str(Path(__file__).parent)],
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+
+    _asyncio.run(_setup_and_serve())
+

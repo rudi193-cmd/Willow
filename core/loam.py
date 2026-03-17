@@ -20,7 +20,6 @@ CHECKSUM: DS=42
 import os
 import re
 import json
-import sqlite3
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict
@@ -48,6 +47,20 @@ KNOWN_ENTITIES = {
     "tool": [
         "Ollama", "Gemini", "Claude", "llm_router",
     ],
+    "location": [
+        "Huntsville", "Albuquerque", "New Mexico", "Alabama",
+        "London", "Cricklewood", "North London", "Oxford", "Cambridge",
+        "Copenhagen", "Denmark", "Tivoli", "Germany",
+        "United States",
+        "The Main Hall", "The Living Wing", "The Gate", "The Workshop",
+        "The Server Corridor", "The Observatory", "The Lantern Office",
+        "The Candlelit Corner", "The Swamp", "Loop Room", "UTETY Campus",
+    ],
+    "persona": [
+        "Gerald", "Oakenscroll", "Riggs", "Hanz", "Nova", "Ada",
+        "Alexis", "Ofshield", "Steve", "Shiva", "Kart", "Mitra",
+        "Consus", "Jeles", "Binder", "Pigeon",
+    ],
 }
 
 # Pre-compile regex patterns for entity extraction
@@ -66,8 +79,11 @@ def _db_path(username: str) -> str:
 
 
 def _connect(username: str):
+    import sqlite3 as _sqlite3
     from core.db import get_connection
-    return get_connection()
+    conn = get_connection()
+    conn.row_factory = _sqlite3.Row  # triggers RealDictCursor in _PgConn
+    return conn
 
 
 def init_db(username: str):
@@ -294,29 +310,252 @@ def _extract_entities_llm(text: str) -> List[Dict]:
     return []
 
 
-def _upsert_entities(conn: sqlite3.Connection, knowledge_id: int, entities: List[Dict]):
-    """Insert/update entities and link them to a knowledge atom."""
+# Canonical entity types — fleet models get normalized to these on ingestion
+_CANONICAL_TYPES = {
+    "concept", "project", "tool", "person", "organization",
+    "persona", "location", "date", "platform", "event", "community",
+    "credential",
+}
+
+_TYPE_NORMALIZE = {
+    "organizaiton": "organization", "concepts": "concept",
+    "tool/concept": "tool", "tool/file": "tool", "tool/command": "tool",
+    "tool/person": "person", "tool/session_id/task_id": "tool",
+    "tool/organization/project": "tool", "project/concept": "project",
+    "project/tool": "project", "concept/project": "project",
+    "concept/tool": "tool", "platform/tool": "platform",
+    "location/concept": "location", "organization/project": "organization",
+    "organization/person": "person", "organization/medium": "organization",
+    "person/concept/project": "person", "geographic location": "location",
+    "geolocation": "location", "program": "tool", "library": "tool",
+    "endpoint": "tool", "system": "tool", "repository": "project",
+    "work": "project", "document": "concept", "book": "concept",
+    "statement": "concept", "abbreviation": "concept", "attribute": "concept",
+    "commit": "concept", "no type found": "concept", "table": "concept",
+    "unknown": "concept", "company": "organization", "place": "location",
+    "type": "concept", "character": "persona", "agent": "persona",
+    "key": "credential", "variable": "concept", "class": "concept",
+    "function": "concept", "file": "concept", "session_id": "concept",
+    "timestamp": "date",
+}
+
+
+def _normalize_entity_type(raw: str) -> str:
+    """Normalize fleet-generated entity types to canonical set."""
+    t = raw.strip().lower()
+    # Check explicit map first
+    if t in _TYPE_NORMALIZE:
+        return _TYPE_NORMALIZE[t]
+    # Check if already canonical (case-insensitive)
+    for canon in _CANONICAL_TYPES:
+        if t == canon:
+            return canon
+    # Compound type — take first segment
+    if "/" in t:
+        first = t.split("/")[0].strip()
+        for canon in _CANONICAL_TYPES:
+            if first == canon:
+                return canon
+    # Unknown — default to concept
+    return "concept"
+
+
+_CHROME_ENTITY_PATTERNS = [
+    re.compile(r"https?://"),                          # URLs
+    re.compile(r"\.(com|org|io|net|dev)$"),             # Domain suffixes
+    re.compile(r"^localhost:\d+"),                      # Local dev URLs
+    re.compile(r"^\d+$"),                              # Pure numbers
+    re.compile(r"^\d{4}-\d{2}-\d{2}"),                 # Date strings (2026-03-02)
+    re.compile(r"^\d+\.\d+"),                          # Timestamps / version numbers
+    re.compile(r"^.{1,2}$"),                           # 1-2 char entities (R, D)
+    re.compile(r"^(dash|www\.)\S+", re.IGNORECASE),    # Dashboard/www prefixes
+    re.compile(r"^[/\\]"),                             # File paths (/handoff, C:\...)
+    re.compile(r"^[A-Z]:\\"),                          # Windows paths
+    # Claude Code tool names — these are tool invocations, not real entities
+    re.compile(r"^(Read|Write|Edit|Bash|Grep|Glob|Agent|Skill|"
+               r"TaskOutput|TaskCreate|TaskUpdate|TaskStop|TaskList|TaskGet|"
+               r"WebFetch|WebSearch|NotebookEdit|AskUserQuestion|"
+               r"ToolSearch|ExitPlanMode|EnterPlanMode|CronCreate|CronDelete|CronList|"
+               r"SESSION_HANDOFF|SESSION_META|LAST_USER_MESSAGES|HARD STOPS)$"),
+]
+
+# Entities that match chrome patterns but are actually legitimate.
+# Updated as false positives are discovered.
+_CHROME_ENTITY_ALLOWLIST = {
+    "Ru", "AI", "ΔE", "ΔΣ", "ξ", "δ", "ℏ",  # Real names / math symbols
+}
+
+
+def _is_chrome_name(name: str) -> bool:
+    """Heuristic: does this entity name look like browser chrome / OCR garbage?"""
+    if name in _CHROME_ENTITY_ALLOWLIST:
+        return False
+    return any(p.search(name) for p in _CHROME_ENTITY_PATTERNS)
+
+
+def _upsert_entities(conn, knowledge_id: int, entities: List[Dict],
+                     context_tags: dict = None):
+    """
+    Insert/update entities and link them to a knowledge atom.
+    Chrome-context entities get never_promote=1 + confidence='chrome'.
+    Crown witnesses chrome flagging events.
+    """
     cur = conn.cursor()
+    chrome_ratio = (context_tags or {}).get("chrome_ratio", 0.0)
+    username = (context_tags or {}).get("username", "Sweet-Pea-Rudi19")
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     for ent in entities:
         name = ent["name"]
-        etype = ent.get("type", "concept")
+        etype = _normalize_entity_type(ent.get("type", "concept"))
 
-        # Upsert entity
-        cur.execute(
-            "INSERT INTO entities (name, entity_type, mention_count) VALUES (?, ?, 1) "
-            "ON CONFLICT(name) DO UPDATE SET mention_count = entities.mention_count + 1",
-            (name, etype)
+        is_chrome_entity = (
+            chrome_ratio > 0.5
+            or _is_chrome_name(name)
+            or ent.get("context") == "chrome"
         )
+
+        if is_chrome_entity:
+            cur.execute(
+                "INSERT INTO entities (name, entity_type, mention_count, never_promote, "
+                "first_seen, last_mentioned) "
+                "VALUES (?, ?, 1, 1, ?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET "
+                "mention_count = entities.mention_count + 1, last_mentioned = ?",
+                (name, etype, now, now, now)
+            )
+            # Crown witness: entity born as chrome (tamper-evident timestamp)
+            try:
+                from core.crown import witness_entity_event
+                witness_entity_event(
+                    "entity_chrome_flagged", name, agent="loam",
+                    username=username,
+                    details={
+                        "chrome_ratio": chrome_ratio,
+                        "entity_type": etype,
+                        "flagged_at": now,
+                    },
+                    conn=conn,
+                )
+            except Exception:
+                pass  # Crown unavailable — don't block ingestion
+        else:
+            cur.execute(
+                "INSERT INTO entities (name, entity_type, mention_count, "
+                "first_seen, last_mentioned) "
+                "VALUES (?, ?, 1, ?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET "
+                "mention_count = entities.mention_count + 1, last_mentioned = ?",
+                (name, etype, now, now, now)
+            )
+
         row = cur.execute("SELECT id FROM entities WHERE name = ?", (name,)).fetchone()
         if not row:
             continue
         entity_id = row[0]
 
-        # Link to knowledge atom
+        # Link to knowledge atom (always — chrome entities still linked for traceability)
         cur.execute(
             "INSERT OR IGNORE INTO knowledge_entities (knowledge_id, entity_id) VALUES (?, ?)",
             (knowledge_id, entity_id)
         )
+
+
+# =========================================================================
+# Entity Promotion Pipeline
+# =========================================================================
+
+# Insight Layer mapping (PRODUCT_SPEC lines 147-160):
+#   Layer 1 = anonymous ("147 items captured")
+#   Layer 2 = pseudonymous ("You keep saving mid-century furniture")
+#   Layer 3 = named ("Dream Kitchen board created") — human ratified
+PROMOTION_MIN_MENTIONS = 5
+PROMOTION_MIN_CATEGORIES = 2
+
+
+def promote_entities(username: str = "Sweet-Pea-Rudi19",
+                     dry_run: bool = True) -> dict:
+    """
+    Automatic promotion: layer 1 → 2 based on evidence thresholds.
+    Layer 2 → 3 requires human ratification (not done here).
+
+    Governance: 1→2 is pattern detection (PRODUCT_SPEC "pseudonymous/detected").
+    Crown witnesses every promotion for tamper-evident audit.
+
+    Returns: {promoted: [{name, mentions, categories}], skipped: int}
+    """
+    conn = _connect(username)
+    # Clear any inherited dirty transaction state from pool
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        # Find layer-1 entities that meet promotion thresholds
+        candidates = conn.execute(
+            """SELECT e.id, e.name, e.entity_type, e.mention_count,
+                      COUNT(DISTINCT k.category) as cat_count
+               FROM entities e
+               JOIN knowledge_entities ke ON ke.entity_id = e.id
+               JOIN knowledge k ON k.id = ke.knowledge_id
+               WHERE e.layer = 1
+                 AND e.never_promote = 0
+                 AND e.mention_count >= ?
+               GROUP BY e.id, e.name, e.entity_type, e.mention_count
+               HAVING COUNT(DISTINCT k.category) >= ?""",
+            (PROMOTION_MIN_MENTIONS, PROMOTION_MIN_CATEGORIES)
+        ).fetchall()
+
+        promoted = []
+        for row in candidates:
+            eid = row["id"] if isinstance(row, dict) else row[0]
+            name = row["name"] if isinstance(row, dict) else row[1]
+            etype = row["entity_type"] if isinstance(row, dict) else row[2]
+            mentions = row["mention_count"] if isinstance(row, dict) else row[3]
+            cats = row["cat_count"] if isinstance(row, dict) else row[4]
+            if not dry_run:
+                conn.execute(
+                    "UPDATE entities SET layer = 2, promotion_status = 'auto_promoted', "
+                    "last_mentioned = ? WHERE id = ?",
+                    (now, eid)
+                )
+                # Crown witness: promotion event
+                try:
+                    from core.crown import witness_entity_event
+                    witness_entity_event(
+                        "entity_promoted_1_2", name, agent="loam",
+                        username=username,
+                        details={
+                            "mention_count": mentions,
+                            "category_spread": cats,
+                            "promoted_at": now,
+                        },
+                        conn=conn,
+                    )
+                except Exception:
+                    pass
+            promoted.append({
+                "name": name, "type": etype,
+                "mentions": mentions, "categories": cats,
+            })
+
+        if not dry_run:
+            conn.commit()
+
+        skip_row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM entities WHERE layer = 1 AND never_promote = 1"
+        ).fetchone()
+        skipped = skip_row["cnt"] if isinstance(skip_row, dict) else skip_row[0]
+
+        logging.info(
+            f"PROMOTE: {'[DRY RUN] ' if dry_run else ''}"
+            f"{len(promoted)} promoted, {skipped} chrome/blocked"
+        )
+        return {"promoted": promoted, "skipped": skipped, "dry_run": dry_run}
+    finally:
+        conn.close()
 
 
 # =========================================================================
@@ -330,6 +569,7 @@ def ingest_file_knowledge(
     category: str,
     content_text: str,
     provider: str = "unknown",
+    context_tags: dict = None,
 ):
     """
     Ingest a processed file into the knowledge DB.
@@ -397,7 +637,9 @@ def ingest_file_knowledge(
         if existing:
             knowledge_id = existing[0]
             if entities:
-                _upsert_entities(conn, knowledge_id, entities)
+                tags = dict(context_tags or {})
+                tags.setdefault("username", username)
+                _upsert_entities(conn, knowledge_id, entities, context_tags=tags)
             conn.commit()
             return
 
@@ -412,7 +654,9 @@ def ingest_file_knowledge(
         knowledge_id = cur.lastrowid
 
         if knowledge_id:
-            _upsert_entities(conn, knowledge_id, entities)
+            tags = dict(context_tags or {})
+            tags.setdefault("username", username)
+            _upsert_entities(conn, knowledge_id, entities, context_tags=tags)
             if embed_vec:
                 conn.execute("UPDATE knowledge SET embedding=? WHERE id=?", (embed_vec, knowledge_id))
 
@@ -546,7 +790,6 @@ def search(username: str, query: str, max_results: int = 10) -> List[Dict]:
     """
     init_db(username)
     conn = _connect(username)
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
     # FTS5 match query — escape special chars for safety
@@ -574,15 +817,31 @@ def search(username: str, query: str, max_results: int = 10) -> List[Dict]:
             """, (query, query, max_results)).fetchall()
         except Exception:
             conn._conn.rollback()
-            rows = cur.execute("""
-                SELECT id, source_type, title, summary,
-                       content_snippet, category, created_at,
-                       0 as rank
-                FROM knowledge
-                WHERE title ILIKE %s OR summary ILIKE %s OR content_snippet ILIKE %s
-                ORDER BY created_at DESC
-                LIMIT %s
-            """, (f"%{query}%", f"%{query}%", f"%{query}%", max_results)).fetchall()
+            rows = []
+
+        # Fallback: if FTS returned nothing, try ILIKE on each term (handles nicknames, partial names)
+        if not rows:
+            _terms = [t for t in fts_query.split() if len(t) >= 3]
+            if _terms:
+                # Match any term in title/summary/content (OR logic)
+                _clauses = []
+                _params = []
+                for t in _terms:
+                    _clauses.append("(title ILIKE %s OR summary ILIKE %s OR content_snippet ILIKE %s)")
+                    _params.extend([f"%{t}%", f"%{t}%", f"%{t}%"])
+                try:
+                    rows = cur.execute(f"""
+                        SELECT id, source_type, title, summary,
+                               content_snippet, category, created_at,
+                               0 as rank
+                        FROM knowledge
+                        WHERE {' OR '.join(_clauses)}
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                    """, (*_params, max_results)).fetchall()
+                except Exception:
+                    conn._conn.rollback()
+                    rows = []
     else:
         try:
             rows = cur.execute("""
@@ -680,7 +939,7 @@ def build_knowledge_context(username: str, query: str, max_chars: int = 3000) ->
     # 2. Recent relevant conversations
     init_db(username)
     conn = _connect(username)
-    conn.row_factory = sqlite3.Row
+    # row_factory set in _connect() → RealDictCursor
     try:
         convos = conn.execute("""
             SELECT persona, user_input, assistant_response, delta_e, created_at
@@ -708,7 +967,7 @@ def build_knowledge_context(username: str, query: str, max_chars: int = 3000) ->
     # 3. Top entities by mention count
     if total_len < max_chars:
         conn = _connect(username)
-        conn.row_factory = sqlite3.Row
+        # row_factory set in _connect() → RealDictCursor
         try:
             top_ents = conn.execute("""
                 SELECT name, entity_type, mention_count
@@ -751,21 +1010,53 @@ def backfill_summaries(username: str, batch_size: int = 5):
 
     # Fleet calls outside DB connection (each takes 10-60s)
     updates = []
-    for row_id, title, snippet, category in rows:
+    def _backfill_one(item):
+        row_id, title, snippet, category = item
         if not snippet:
-            continue
-        try:
-            prompt = (
-                f"Summarize this document in 2-3 sentences.\n\n"
-                f"Title: {title}\nCategory: {category}\n\n"
-                f"Content:\n{snippet}\n\nSummary:"
-            )
-            resp = llm_router.ask(prompt, preferred_tier="free")
-            if resp and resp.content:
-                updates.append((resp.content.strip()[:500], row_id))
-        except Exception as e:
-            logging.debug(f"KNOWLEDGE: Backfill failed for id={row_id}: {e}")
-            break  # Stop batch on failure (likely rate-limited)
+            return ""  # truthy-ish skip, not a fleet failure
+        prompt = (
+            f"Summarize this document in 2-3 sentences.\n\n"
+            f"Title: {title}\nCategory: {category}\n\n"
+            f"Content:\n{snippet}\n\nSummary:"
+        )
+        resp = llm_router.ask(prompt, preferred_tier="free")
+        if resp and resp.content:
+            return resp.content.strip()[:500]
+        return None  # signals retry
+
+    try:
+        from core.fleet_retry import fleet_batch
+
+        def _on_save(results):
+            _updates = [(res, item[0]) for item, res in results if res]
+            if _updates:
+                c = _connect(username)
+                c.executemany("UPDATE knowledge SET summary=? WHERE id=?", _updates)
+                c.commit()
+                c.close()
+
+        completed = fleet_batch(
+            list(rows), _backfill_one,
+            max_retries=5, delay=1.5,
+            save_every=25, on_save=_on_save,
+        )
+        updates = [(res, item[0]) for item, res in completed if res]
+    except ImportError:
+        for row_id, title, snippet, category in rows:
+            if not snippet:
+                continue
+            try:
+                prompt = (
+                    f"Summarize this document in 2-3 sentences.\n\n"
+                    f"Title: {title}\nCategory: {category}\n\n"
+                    f"Content:\n{snippet}\n\nSummary:"
+                )
+                resp = llm_router.ask(prompt, preferred_tier="free")
+                if resp and resp.content:
+                    updates.append((resp.content.strip()[:500], row_id))
+            except Exception as e:
+                logging.info(f"KNOWLEDGE: Backfill failed for id={row_id}: {e}")
+                continue  # keep going, don't break
 
     # Fast batch write — no slow I/O inside
     if updates:
@@ -815,7 +1106,7 @@ def get_top_gaps(username: str, limit: int = 10) -> List[Dict]:
     """Return the most frequently hit knowledge gaps."""
     init_db(username)
     conn = _connect(username)
-    conn.row_factory = sqlite3.Row
+    # row_factory set in _connect() → RealDictCursor
     rows = conn.execute(
         """SELECT query, source, gap_type, entity_name, times_hit, first_seen, last_seen
            FROM knowledge_gaps
@@ -843,6 +1134,253 @@ def resolve_gap(username: str, query: str, source: str, knowledge_id: int):
 
 
 # =========================================================================
+# ΔΣ Gap Layer — Acknowledged Unknowns as First-Class Data
+# ΔΣ = Σ(Δᵢ) = 42 — the sum of what we know we don't know
+# =========================================================================
+
+def register_atom_gap(username: str, knowledge_id: int, gap_text: str,
+                      gap_type: str, registered_by: str, specificity: float = 0.5) -> dict:
+    """Register an acknowledged unknown on a knowledge atom. Crown-witnessed."""
+    conn = _connect(username)
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    witness_id = None
+    try:
+        from core import crown
+        witness_id = crown.witness_entity_event(
+            "gap_registered", f"atom:{knowledge_id}",
+            agent=registered_by, username=username,
+            details={"gap_text": gap_text, "gap_type": gap_type,
+                     "specificity": specificity, "target": "atom", "target_id": knowledge_id}
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            """INSERT INTO atom_gaps (knowledge_id, gap_text, gap_type, specificity,
+                   registered_by, registered_at, witness_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(knowledge_id, gap_text) DO UPDATE SET
+                   specificity = EXCLUDED.specificity,
+                   registered_at = EXCLUDED.registered_at""",
+            (knowledge_id, gap_text.strip()[:500], gap_type, specificity,
+             registered_by, now, witness_id)
+        )
+        conn.commit()
+        return {"ok": True, "witness_id": witness_id}
+    except Exception as e:
+        conn.rollback()
+        logging.warning(f"register_atom_gap failed: {e}")
+        return {"ok": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
+def register_entity_gap(username: str, entity_id: int, gap_text: str,
+                        gap_type: str, registered_by: str, specificity: float = 0.5) -> dict:
+    """Register an acknowledged unknown on an entity. Crown-witnessed."""
+    conn = _connect(username)
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    witness_id = None
+    try:
+        from core import crown
+        witness_id = crown.witness_entity_event(
+            "gap_registered", f"entity:{entity_id}",
+            agent=registered_by, username=username,
+            details={"gap_text": gap_text, "gap_type": gap_type,
+                     "specificity": specificity, "target": "entity", "target_id": entity_id}
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            """INSERT INTO entity_gaps (entity_id, gap_text, gap_type, specificity,
+                   registered_by, registered_at, witness_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(entity_id, gap_text) DO UPDATE SET
+                   specificity = EXCLUDED.specificity,
+                   registered_at = EXCLUDED.registered_at""",
+            (entity_id, gap_text.strip()[:500], gap_type, specificity,
+             registered_by, now, witness_id)
+        )
+        conn.commit()
+        return {"ok": True, "witness_id": witness_id}
+    except Exception as e:
+        conn.rollback()
+        logging.warning(f"register_entity_gap failed: {e}")
+        return {"ok": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
+def register_edge_gap(username: str, edge_id: int, gap_text: str,
+                      gap_type: str, registered_by: str, specificity: float = 0.5) -> dict:
+    """Register an acknowledged unknown on an edge. Crown-witnessed."""
+    conn = _connect(username)
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    witness_id = None
+    try:
+        from core import crown
+        witness_id = crown.witness_entity_event(
+            "gap_registered", f"edge:{edge_id}",
+            agent=registered_by, username=username,
+            details={"gap_text": gap_text, "gap_type": gap_type,
+                     "specificity": specificity, "target": "edge", "target_id": edge_id}
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            """INSERT INTO edge_gaps (edge_id, gap_text, gap_type, specificity,
+                   registered_by, registered_at, witness_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(edge_id, gap_text) DO UPDATE SET
+                   specificity = EXCLUDED.specificity,
+                   registered_at = EXCLUDED.registered_at""",
+            (edge_id, gap_text.strip()[:500], gap_type, specificity,
+             registered_by, now, witness_id)
+        )
+        conn.commit()
+        return {"ok": True, "witness_id": witness_id}
+    except Exception as e:
+        conn.rollback()
+        logging.warning(f"register_edge_gap failed: {e}")
+        return {"ok": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
+def resolve_atom_gap(username: str, gap_id: int, resolved_by: str) -> dict:
+    """Resolve an atom gap. Crown-witnessed."""
+    conn = _connect(username)
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        from core import crown
+        crown.witness_entity_event(
+            "gap_resolved", f"atom_gap:{gap_id}",
+            agent=resolved_by, username=username,
+            details={"gap_id": gap_id, "target": "atom"}
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            "UPDATE atom_gaps SET resolved = 1, resolved_at = ?, resolved_by = ? WHERE id = ?",
+            (now, resolved_by, gap_id)
+        )
+        conn.commit()
+        return {"ok": True}
+    except Exception as e:
+        conn.rollback()
+        return {"ok": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
+def resolve_entity_gap(username: str, gap_id: int, resolved_by: str) -> dict:
+    """Resolve an entity gap. Crown-witnessed."""
+    conn = _connect(username)
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        from core import crown
+        crown.witness_entity_event(
+            "gap_resolved", f"entity_gap:{gap_id}",
+            agent=resolved_by, username=username,
+            details={"gap_id": gap_id, "target": "entity"}
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            "UPDATE entity_gaps SET resolved = 1, resolved_at = ?, resolved_by = ? WHERE id = ?",
+            (now, resolved_by, gap_id)
+        )
+        conn.commit()
+        return {"ok": True}
+    except Exception as e:
+        conn.rollback()
+        return {"ok": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
+def compute_delta_sigma(username: str) -> dict:
+    """
+    ΔΣ = Σ(Δᵢ) — the sum of acknowledged unknowns.
+    The answer isn't a score. It's the sum of what you know you don't know.
+
+    Health:
+      ΔΣ=0 with real data → critical (system claims perfect knowledge — lying)
+      ΔΣ>0, high specificity → healthy (system knows what it doesn't know)
+      ΔΣ>0, low specificity → warning (gaps are vague)
+    """
+    conn = _connect(username)
+    try:
+        def _count(sql):
+            row = conn.execute(sql).fetchone()
+            if row is None:
+                return 0
+            if isinstance(row, dict):
+                return list(row.values())[0] or 0
+            return row[0] or 0
+
+        system_gaps = _count("SELECT COUNT(*) as cnt FROM knowledge_gaps WHERE resolved = 0")
+        atom_gaps = _count("SELECT COUNT(*) as cnt FROM atom_gaps WHERE resolved = 0")
+        entity_gaps = _count("SELECT COUNT(*) as cnt FROM entity_gaps WHERE resolved = 0")
+        edge_gaps = _count("SELECT COUNT(*) as cnt FROM edge_gaps WHERE resolved = 0")
+
+        delta_sigma = system_gaps + atom_gaps + entity_gaps + edge_gaps
+
+        # Average specificity across all gap tables
+        spec_rows = conn.execute("""
+            SELECT specificity FROM atom_gaps WHERE resolved = 0
+            UNION ALL
+            SELECT specificity FROM entity_gaps WHERE resolved = 0
+            UNION ALL
+            SELECT specificity FROM edge_gaps WHERE resolved = 0
+        """).fetchall()
+
+        def _val(r):
+            if isinstance(r, dict):
+                return list(r.values())[0] or 0.0
+            return r[0] or 0.0
+
+        avg_spec = sum(_val(r) for r in spec_rows) / max(len(spec_rows), 1) if spec_rows else 0.0
+
+        total_atoms = _count("SELECT COUNT(*) as cnt FROM knowledge")
+
+        # Health diagnosis
+        if delta_sigma == 0 and total_atoms > 50:
+            health = "critical"
+            diagnosis = "System claims perfect knowledge. This is a lie."
+        elif delta_sigma == 0:
+            health = "nascent"
+            diagnosis = "Too early to judge — not enough data yet."
+        elif avg_spec >= 0.6:
+            health = "healthy"
+            diagnosis = f"System acknowledges {delta_sigma} unknowns with {avg_spec:.0%} specificity."
+        elif avg_spec >= 0.3:
+            health = "warning"
+            diagnosis = f"System has {delta_sigma} gaps but specificity is low ({avg_spec:.0%}). Needs precision."
+        else:
+            health = "warning"
+            diagnosis = f"System has {delta_sigma} vague gaps ({avg_spec:.0%} specificity). Quality over quantity."
+
+        return {
+            "delta_sigma": delta_sigma,
+            "system_gaps": system_gaps,
+            "atom_gaps": atom_gaps,
+            "entity_gaps": entity_gaps,
+            "edge_gaps": edge_gaps,
+            "avg_specificity": round(avg_spec, 3),
+            "total_atoms": total_atoms,
+            "health": health,
+            "diagnosis": diagnosis,
+        }
+    finally:
+        conn.close()
+
+
+# =========================================================================
 # Semantic Search (embeddings)
 # =========================================================================
 
@@ -860,7 +1398,7 @@ def semantic_search(username: str, query: str, max_results: int = 5) -> List[Dic
 
     init_db(username)
     conn = _connect(username)
-    conn.row_factory = sqlite3.Row
+    # row_factory set in _connect() → RealDictCursor
 
     query_vec = embeddings.embed(query)
     if not query_vec:

@@ -76,13 +76,31 @@ def dispatch_to_agent(agent_name: str, dropping: dict) -> dict:
 
 
 def _handle_ask(payload: dict) -> dict:
-    """Route ask → Willow agent → LLM response via fleet."""
+    """Route ask → Willow agent → LLM response via fleet.
+    Supports context_ids: list of BASE 17 IDs to prepend as pre-shared context."""
     prompt = payload.get("prompt", "")
     tier = payload.get("tier", "free")
     persona = payload.get("persona")
+    context_ids = payload.get("context_ids", [])
 
     if not prompt:
         return {"ok": False, "topic": "ask", "error": "missing prompt"}
+
+    # Resolve BASE 17 compact context references if provided
+    if context_ids:
+        try:
+            from core import compact
+            resolved_sections = []
+            for cid in context_ids:
+                ctx = compact.resolve(cid)
+                if ctx:
+                    resolved_sections.append(f"[CTX:{cid}:{ctx['category']}]\n{ctx['content']}")
+                else:
+                    resolved_sections.append(f"[MISSING:{cid}] — Context not found. Acknowledge this gap.")
+            if resolved_sections:
+                prompt = "\n\n".join(resolved_sections) + "\n\n" + prompt
+        except Exception as e:
+            logger.warning(f"BUS: compact resolve failed: {e}")
 
     if persona:
         prompt = f"[Acting as: {persona}]\n\n{prompt}"

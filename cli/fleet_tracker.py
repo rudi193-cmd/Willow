@@ -98,9 +98,7 @@ def inject_env(creds: dict):
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 def health_conn():
-    import sqlite3 as _sqlite3
     conn = get_connection()
-    conn.row_factory = _sqlite3.Row
     conn.execute("""
         CREATE TABLE IF NOT EXISTS provider_health (
             provider TEXT PRIMARY KEY,
@@ -121,9 +119,7 @@ def health_conn():
 
 
 def patterns_conn():
-    import sqlite3 as _sqlite3
     conn = get_connection()
-    conn.row_factory = _sqlite3.Row
     conn.execute("""
         CREATE TABLE IF NOT EXISTS provider_performance (
             id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

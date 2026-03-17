@@ -3,15 +3,25 @@ import argparse
 import json
 import logging
 import signal
-import sqlite3
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+# Ensure Willow root is on sys.path for core.db imports
+_WILLOW_ROOT = str(Path(__file__).parent.parent)
+if _WILLOW_ROOT not in sys.path:
+    sys.path.insert(0, _WILLOW_ROOT)
 from typing import Optional
 
-import git
-from git import Repo, GitCommandError
+try:
+    import git
+    from git import Repo, GitCommandError
+    _GIT_AVAILABLE = True
+except ImportError:
+    _GIT_AVAILABLE = False
+    Repo = None
+    GitCommandError = OSError
 
 DEFAULT_INTERVAL = 300
 LOG_FILE = Path(__file__).parent.parent / "core" / "safe_sync.log"
@@ -60,6 +70,9 @@ class SafeSyncDaemon:
         self.repo: Optional[Repo] = None
 
     def initialize_repo(self) -> None:
+        if not _GIT_AVAILABLE:
+            logger.warning("GitPython not installed — git operations disabled")
+            return
         try:
             self.repo = Repo(self.safe_path)
             logger.info(f"Initialized SAFE repo at {self.safe_path}")
@@ -77,9 +90,8 @@ class SafeSyncDaemon:
             return []
 
         try:
-            from core.db import get_connection as _gc, is_postgres
-            conn = _gc() if is_postgres() else _gc(str(KB_PATH))
-            conn.row_factory = sqlite3.Row
+            from core.db import get_connection as _gc
+            conn = _gc()
             placeholders = ','.join('?' for _ in CONTINUITY_SOURCE_TYPES)
             cat_placeholders = ','.join('?' for _ in CONTINUITY_CATEGORIES)
             params = list(CONTINUITY_SOURCE_TYPES) + list(CONTINUITY_CATEGORIES) + [last_sync]
@@ -140,6 +152,9 @@ class SafeSyncDaemon:
         return continuity_file
 
     def git_commit_changes(self, entry_count: int) -> str:
+        if not _GIT_AVAILABLE or self.repo is None:
+            logger.warning("Git unavailable — skipping commit")
+            return "no-git"
         try:
             self.repo.git.add(A=True)
             msg = f"safe_sync: {entry_count} continuity entries [{datetime.now().strftime('%Y-%m-%d %H:%M')}]"
@@ -151,6 +166,12 @@ class SafeSyncDaemon:
             raise
 
     def sync(self) -> None:
+        """Sync new continuity entries to SAFE repo.
+
+        Governance: writes markdown to continuity/ dir but does NOT auto-commit.
+        A .safe_sync_approve trigger file must exist for git commit to proceed.
+        This ensures a human has reviewed what's being exported to the public repo.
+        """
         try:
             if self.repo is None:
                 self.initialize_repo()
@@ -162,7 +183,15 @@ class SafeSyncDaemon:
 
             markdown_content = self.format_as_markdown(entries)
             self.append_to_safe_repo(markdown_content, entries)
-            self.git_commit_changes(len(entries))
+
+            # Governance gate: only commit if approval trigger exists
+            approve_trigger = self.safe_path / ".safe_sync_approve"
+            if approve_trigger.exists():
+                self.git_commit_changes(len(entries))
+                approve_trigger.unlink()
+                logger.info(f"SAFE sync: committed {len(entries)} entries (approved)")
+            else:
+                logger.info(f"SAFE sync: staged {len(entries)} entries to continuity/ — awaiting .safe_sync_approve to commit")
 
             # Advance last_sync_at to latest entry
             latest = max(e["created_at"] for e in entries if e.get("created_at"))

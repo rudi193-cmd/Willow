@@ -11,7 +11,6 @@ Run: python tools/binder_absurd.py [--dry-run]
 """
 
 import struct, math, sys, json, io
-import sqlite3  # kept for row_factory only
 from pathlib import Path
 from datetime import datetime
 
@@ -24,9 +23,7 @@ DRY_RUN = "--dry-run" in sys.argv
 
 
 def connect():
-    conn = get_connection(schema='Sweet-Pea-Rudi19')
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_connection(schema='Sweet-Pea-Rudi19')
 
 
 def cosine(a: bytes, b: bytes) -> float:
