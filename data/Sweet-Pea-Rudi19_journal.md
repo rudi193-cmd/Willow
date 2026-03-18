@@ -38,3 +38,25 @@ SESSION HANDOFF 2026-03-04 afternoon
 2. Wire safe-apps to Willow API (the ~100 connections)
 3. Restart MCP server to activate Kart timeout fix
 4. Test Pigeon end-to-end with fresh file drop after next server restart
+
+## 2026-03-05 02:19:43 — task
+
+Session 2026-03-05: Loading full task backlog. Confirmed working: pigeon bidirectional messaging (ganesha-cli ↔ claude-desktop), inbox watcher daemon, mark-read sync fix, message_id RETURNING fix. Tasks #7-18 loaded from session handoffs.
+
+## 2026-03-13 12:10:45 — task
+
+LAW GAZELLE PHASE 1 BUILD — Ganesha session 2026-03-13
+
+Built full legal workspace backend for Law Gazelle. Sean is pro se in Chapter 13 bankruptcy (26-10177-j13), receiving CM/ECF data quality notifications.
+
+Tables created: gazelle_cases, gazelle_case_documents, gazelle_deadlines (all in sweet_pea_rudi19 schema). Case seeded with 2 met deadlines.
+
+New file: safe-app-law-gazelle/src/ecf_parser.py — CM/ECF notification parser with regex detection + fleet LLM summaries.
+
+Extended: gazelle_engine.py with 7 case management functions. server.py with 8 new API endpoints under /api/gazelle/*.
+
+UI overhaul in progress: gazelle.html being rewritten from chat-only to workspace (cases sidebar, Dashboard/Documents/Chat tabs, document viewer).
+
+Key architecture: files drop to /Nest/ root, Pigeon routes, Gazelle consumes legal-tagged items. No agent-specific intake folders.
+
+Kart briefed via willow_chat.

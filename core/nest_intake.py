@@ -460,7 +460,7 @@ def confirm_review(
             import core.knowledge as kmod
             file_hash = item.get("file_hash") or ""
             ocr_text = item.get("ocr_text") or ""
-            # Pass chrome_ratio from OCR enrichment so entity extraction knows context
+            # Pass enrichment metadata so LOAM can store template + timestamp
             _cr = 0.0
             try:
                 _cr = float(item.get("chrome_ratio") or 0.0)
@@ -473,7 +473,12 @@ def confirm_review(
                 category=final_category,
                 content_text=final_summary + "\n\n" + ocr_text if final_summary else ocr_text,
                 provider="nest_intake",
-                context_tags={"chrome_ratio": _cr, "username": username},
+                context_tags={
+                    "chrome_ratio": _cr,
+                    "username": username,
+                    "image_template": item.get("image_template"),
+                    "captured_at": item.get("captured_at"),
+                },
             )
             logger.info(f"NEST: ingested {item['filename']} → {final_category}")
         except Exception as e:

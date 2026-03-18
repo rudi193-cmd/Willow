@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "willow": {
+      "command": "python3",
+      "args": ["/mnt/c/Users/Sean/Documents/GitHub/Willow/willow_mcp_server.py"],
+      "env": {
+        "WILLOW_API_URL": "http://localhost:8420",
+        "WILLOW_USERNAME": "Sweet-Pea-Rudi19"
+      }
+    }
+  }
+}

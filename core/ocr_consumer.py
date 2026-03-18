@@ -157,11 +157,90 @@ _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"}
 _TEXT_EXTS = {".txt", ".md", ".csv"}
 _PROCESSABLE = _IMAGE_EXTS | _TEXT_EXTS | {".pdf"}
 
+# Template cache — loaded once per process from Postgres
+_template_cache = None
+_template_cache_at = None
 
-def _extract_image(path: Path) -> str:
+
+def _get_templates() -> list:
+    """Load image templates from Postgres, cached for 5 minutes."""
+    global _template_cache, _template_cache_at
+    now = datetime.now(UTC)
+    if _template_cache and _template_cache_at and (now - _template_cache_at).total_seconds() < 300:
+        return _template_cache
+    try:
+        conn = _connect()
+        rows = conn.execute(
+            "SELECT template_name, filename_pattern, timestamp_format, timestamp_regex, "
+            "chrome_top_ratio, chrome_bottom_ratio, content_zone, tesseract_psm, "
+            "source_app, source_platform FROM image_templates "
+            "ORDER BY length(filename_pattern) DESC"
+        ).fetchall()
+        conn.close()
+        cols = ["template_name", "filename_pattern", "timestamp_format", "timestamp_regex",
+                "chrome_top_ratio", "chrome_bottom_ratio", "content_zone", "tesseract_psm",
+                "source_app", "source_platform"]
+        _template_cache = [dict(zip(cols, r)) for r in rows]
+        _template_cache_at = now
+        return _template_cache
+    except Exception as e:
+        log.warning(f"Failed to load image templates: {e}")
+        return []
+
+
+def _match_template(filename: str) -> dict:
+    """Find the best matching image template for a filename. Returns template dict or None."""
+    clean = re.sub(r'^file_[0-9a-f]+-', '', filename)
+    for tmpl in _get_templates():
+        parts = [p for p in tmpl["filename_pattern"].split('%') if p]
+        if all(p.lower() in clean.lower() for p in parts):
+            return tmpl
+    # Try original filename if prefix stripping changed it
+    if clean != filename:
+        for tmpl in _get_templates():
+            parts = [p for p in tmpl["filename_pattern"].split('%') if p]
+            if all(p.lower() in filename.lower() for p in parts):
+                return tmpl
+    return None
+
+
+def _extract_captured_at(filename: str, tmpl: dict) -> datetime:
+    """Extract capture timestamp from filename using template regex. Returns datetime or None."""
+    if not tmpl or not tmpl.get("timestamp_regex") or not tmpl.get("timestamp_format"):
+        return None
+    clean = re.sub(r'^file_[0-9a-f]+-', '', filename)
+    for name in [clean, filename]:
+        m = re.search(tmpl["timestamp_regex"], name)
+        if m:
+            try:
+                return datetime.strptime(m.group(1), tmpl["timestamp_format"]).replace(tzinfo=UTC)
+            except ValueError:
+                pass
+    return None
+
+
+def _crop_chrome(img, tmpl: dict):
+    """Crop browser chrome from image using template ratios. Returns cropped PIL Image."""
+    if not tmpl:
+        return img
+    top_ratio = tmpl.get("chrome_top_ratio", 0.0) or 0.0
+    bottom_ratio = tmpl.get("chrome_bottom_ratio", 0.0) or 0.0
+    if top_ratio <= 0 and bottom_ratio <= 0:
+        return img
+    w, h = img.size
+    top_px = int(h * top_ratio)
+    bottom_px = int(h * (1.0 - bottom_ratio))
+    if bottom_px <= top_px:
+        return img
+    return img.crop((0, top_px, w, bottom_px))
+
+
+def _extract_image(path: Path, tmpl: dict = None) -> str:
     try:
         import subprocess, os
         from PIL import Image
+
+        psm = str(tmpl["tesseract_psm"]) if tmpl and tmpl.get("tesseract_psm") else "6"
 
         tess_wsl = "/mnt/c/Program Files/Tesseract-OCR/tesseract.exe"
         if os.path.exists(tess_wsl):
@@ -172,26 +251,47 @@ def _extract_image(path: Path) -> str:
                     return parts[0].upper() + ":\\" + (parts[1].replace("/", "\\") if len(parts) > 1 else "")
                 return s
 
+            # If template has chrome zones, crop first and save to temp
+            input_path = path
+            cropped_tmp = None
+            if tmpl and (tmpl.get("chrome_top_ratio", 0) or tmpl.get("chrome_bottom_ratio", 0)):
+                try:
+                    img = Image.open(path)
+                    cropped = _crop_chrome(img, tmpl)
+                    if cropped.size != img.size:
+                        cropped_tmp = Path("/mnt/c/Users/Sean/AppData/Local/Temp") / f"willow_crop_{path.stem}.png"
+                        cropped.save(str(cropped_tmp))
+                        input_path = cropped_tmp
+                        log.debug(f"Cropped chrome: {img.size} → {cropped.size} for {path.name}")
+                except Exception as e:
+                    log.debug(f"Chrome crop failed for {path.name}: {e}")
+
             win_tmp = "C:\\Users\\Sean\\AppData\\Local\\Temp"
             wsl_tmp = Path("/mnt/c/Users/Sean/AppData/Local/Temp")
             out_name = f"willow_ocr_{path.stem}"
             subprocess.run(
-                [tess_wsl, _wsl_to_win(path), win_tmp + "\\" + out_name, "--psm", "6"],
+                [tess_wsl, _wsl_to_win(input_path), win_tmp + "\\" + out_name, "--psm", psm],
                 capture_output=True
             )
             out_file = wsl_tmp / (out_name + ".txt")
+            text = ""
             if out_file.exists():
                 text = out_file.read_text(encoding="utf-8", errors="replace").strip()
                 out_file.unlink()
-                return text.replace("\x00", "")
-            return ""
+
+            # Clean up cropped temp file
+            if cropped_tmp and cropped_tmp.exists():
+                cropped_tmp.unlink()
+
+            return text.replace("\x00", "")
         else:
             import pytesseract
             pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
             img = Image.open(path)
             if img.mode in ("CMYK", "P", "LA", "RGBA"):
                 img = img.convert("RGB")
-            return pytesseract.image_to_string(img).strip().replace("\x00", "")
+            img = _crop_chrome(img, tmpl)
+            return pytesseract.image_to_string(img, config=f"--psm {psm}").strip().replace("\x00", "")
     except Exception as e:
         log.warning(f"OCR failed {path.name}: {e}")
         return ""
@@ -308,8 +408,11 @@ def _enrich_item(item: dict) -> dict:
     suffix = path.suffix.lower()
     text = ""
 
+    # Match image template for structural context
+    tmpl = _match_template(item["filename"]) if suffix in _IMAGE_EXTS else None
+
     if suffix in _IMAGE_EXTS:
-        text = _extract_image(path)
+        text = _extract_image(path, tmpl=tmpl)
     elif suffix == ".pdf":
         text = _extract_pdf(path)
     elif suffix in _TEXT_EXTS:
@@ -337,13 +440,21 @@ def _enrich_item(item: dict) -> dict:
 
     cat = _category(item["filename"], text)
 
-    return {
+    # Extract capture timestamp from filename
+    captured_at = _extract_captured_at(item["filename"], tmpl) if tmpl else None
+
+    result = {
         "ocr_text": text,
         "proposed_category": cat,
         "importance_score": score,
         "importance_reasons": reasons,
         "chrome_ratio": chrome_ratio,
     }
+    if tmpl:
+        result["image_template"] = tmpl["template_name"]
+    if captured_at:
+        result["captured_at"] = captured_at
+    return result
 
 
 def _update_queue_item(item_id: int, updates: dict):
@@ -352,11 +463,15 @@ def _update_queue_item(item_id: int, updates: dict):
     try:
         conn.execute(
             """UPDATE nest_review_queue SET
-               ocr_text = ?, proposed_category = ?, chrome_ratio = ?
+               ocr_text = ?, proposed_category = ?, chrome_ratio = ?,
+               image_template = ?, captured_at = ?, importance_score = ?
                WHERE id = ?""",
             (_pg_safe(updates["ocr_text"]),
              _pg_safe(updates["proposed_category"]),
              updates.get("chrome_ratio", 0.0),
+             updates.get("image_template"),
+             updates.get("captured_at"),
+             updates.get("importance_score", 0),
              item_id)
         )
         conn.commit()

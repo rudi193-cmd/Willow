@@ -645,11 +645,14 @@ def ingest_file_knowledge(
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         ring = get_ring(category, "file", filename)
+        _tags = context_tags or {}
+        _captured = _tags.get("captured_at")
+        _img_tmpl = _tags.get("image_template")
         cur.execute(
             """INSERT OR IGNORE INTO knowledge
-               (source_type, source_id, title, summary, content_snippet, category, ring, created_at)
-               VALUES ('file', ?, ?, ?, ?, ?, ?, ?)""",
-            (file_hash, filename, summary, snippet, category, ring, now)
+               (source_type, source_id, title, summary, content_snippet, category, ring, created_at, captured_at, image_template)
+               VALUES ('file', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (file_hash, filename, summary, snippet, category, ring, now, _captured, _img_tmpl)
         )
         knowledge_id = cur.lastrowid
 
@@ -805,16 +808,22 @@ def search(username: str, query: str, max_results: int = 10) -> List[Dict]:
     from core.db import is_postgres as _is_pg
     if _is_pg():
         # PostgreSQL: use tsvector search_vector column (maintained by trigger in pg_schema.sql)
+        # Build OR-joined tsquery so any matching term hits, ranked by how many match
+        _ts_terms = [t for t in fts_query.split() if len(t) >= 2]
+        if not _ts_terms:
+            conn.close()
+            return []
+        _or_query = ' | '.join(_ts_terms)
         try:
             rows = cur.execute("""
                 SELECT id, source_type, title, summary,
                        content_snippet, category, created_at,
-                       0 as rank
+                       ts_rank(search_vector, to_tsquery('english', %s)) as rank
                 FROM knowledge
-                WHERE search_vector @@ plainto_tsquery('english', %s)
-                ORDER BY ts_rank(search_vector, plainto_tsquery('english', %s)) DESC
+                WHERE search_vector @@ to_tsquery('english', %s)
+                ORDER BY rank DESC
                 LIMIT %s
-            """, (query, query, max_results)).fetchall()
+            """, (_or_query, _or_query, max_results)).fetchall()
         except Exception:
             conn._conn.rollback()
             rows = []

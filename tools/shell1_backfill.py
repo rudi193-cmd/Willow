@@ -235,8 +235,13 @@ def _extract_relationships_fleet(text: str, entities: list) -> list:
     return []
 
 
-def _find_atom_for_entity(conn, entity_name: str) -> int:
-    """Find the entity ID for a given name."""
+def _find_atom_for_entity(conn, entity_name) -> int:
+    """Find the entity ID for a given name. Handles bad fleet responses."""
+    if not isinstance(entity_name, str):
+        return None
+    entity_name = entity_name.strip()
+    if not entity_name or len(entity_name) > 200:
+        return None
     row = conn.execute(
         "SELECT id FROM entities WHERE name = ?", (entity_name,)
     ).fetchone()

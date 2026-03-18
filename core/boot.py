@@ -1,150 +1,94 @@
 """
-BOOT v1.0.0
-Willow Startup & Port Lifecycle Manager
-
-Owner: Sean Campbell
-System: Willow / Die-namic Bridge Ring
-Version: 1.0.0
-Status: Active
-Last Updated: 2026-02-25T04:35:00Z
-Checksum: DS=42
-
-Responsibilities:
-- Persist runtime identity to ~/.willow/config.json
-- Detect port state: free / our instance / stale lock / conflict
-- Provide canonical base URL for SAFE apps and binder.html
-- No side effects on import; all mutation is explicit
+core/boot.py — Willow node boot configuration
+================================================
+Provides CONFIG_PATH, load_config(), _config_to_dict(), _port_open().
+Used by rings.py and agent_registry.py.
 """
 
-from __future__ import annotations
-
 import json
-import os
 import socket
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-CONFIG_PATH: Path = Path.home() / ".willow" / "config.json"
 
-
-@dataclass
-class PeeringConfig:
-    enabled: bool = False
-    port: int = 8421
-    allowed_peers: list = field(default_factory=list)
+CONFIG_PATH = Path.home() / ".willow" / "config.json"
 
 
 @dataclass
 class WillowConfig:
+    instance_id: str = "willow-local-8420"
     port: int = 8420
-    locked: bool = False
-    host: str = "127.0.0.1"
-    instance_id: str = ""
-    pid: Optional[int] = None
-    boot_count: int = 0
-    last_boot: str = ""
-    peering: PeeringConfig = field(default_factory=PeeringConfig)
-    db_path: str = ""
-
-
-def _default_instance_id() -> str:
-    return f"{socket.gethostname()}-8420"
-
-
-def _config_to_dict(config: WillowConfig) -> dict:
-    return asdict(config)
-
-
-def _dict_to_config(d: dict) -> WillowConfig:
-    peering_raw = d.pop("peering", {})
-    peering = PeeringConfig(
-        enabled=peering_raw.get("enabled", False),
-        port=peering_raw.get("port", 8421),
-        allowed_peers=peering_raw.get("allowed_peers", []),
-    )
-    return WillowConfig(peering=peering, **d)
+    hostname: str = "localhost"
+    username: str = "Sweet-Pea-Rudi19"
+    rings: dict = field(default_factory=dict)
 
 
 def load_config() -> WillowConfig:
+    """Read config from ~/.willow/config.json. Returns defaults if missing."""
     if not CONFIG_PATH.exists():
-        config = WillowConfig(
-            instance_id=_default_instance_id(),
-            db_path=str(Path.home() / ".willow" / "willow.db"),
-        )
-        save_config(config)
-        return config
+        return WillowConfig()
     try:
         raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        return _dict_to_config(raw)
-    except (json.JSONDecodeError, TypeError, KeyError):
         return WillowConfig(
-            instance_id=_default_instance_id(),
-            db_path=str(Path.home() / ".willow" / "willow.db"),
+            instance_id=raw.get("instance_id", "willow-local-8420"),
+            port=raw.get("port", 8420),
+            hostname=raw.get("hostname", "localhost"),
+            username=raw.get("username", "Sweet-Pea-Rudi19"),
+            rings=raw.get("rings", {}),
         )
+    except Exception:
+        return WillowConfig()
 
 
-def save_config(config: WillowConfig) -> None:
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(
-        json.dumps(_config_to_dict(config), indent=2),
-        encoding="utf-8",
-    )
+def _config_to_dict(config: WillowConfig) -> dict:
+    """Convert config dataclass to dict for seed packets."""
+    return asdict(config)
 
 
 def _port_open(host: str, port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.5)
-        return s.connect_ex((host, port)) == 0
-
-
-def _pid_alive(pid: Optional[int]) -> bool:
-    if pid is None:
-        return False
+    """Check if a port is already in use (returns True if open/listening)."""
     try:
-        os.kill(pid, 0)
-        return True
-    except (ProcessLookupError, PermissionError, OSError):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            return s.connect_ex((host, port)) == 0
+    except Exception:
         return False
 
 
-def check_port(port: int, host: str = "127.0.0.1") -> str:
-    config = load_config()
-    port_in_use = _port_open(host, port)
-    if not port_in_use:
-        if config.pid is not None and not _pid_alive(config.pid):
-            return "stale_lock"
-        return "free"
-    if config.pid is not None and _pid_alive(config.pid):
-        return "willow_running"
-    # Port in use but our PID is dead — ghost socket from os._exit; treat as stale
-    if config.pid is not None and not _pid_alive(config.pid):
-        return "stale_lock"
-    return "conflict"
+@dataclass
+class BootConfig:
+    host: str = "0.0.0.0"
+    port: int = 8420
 
 
 def boot_check() -> tuple:
+    """
+    Pre-flight check before starting the server.
+    Returns (status, cfg, msg) where status is one of:
+      'start'           — port free, go ahead
+      'already_running' — Willow is already on this port
+      'stale_reclaimed' — port was held by dead process, reclaimed
+      'conflict'        — port in use by something else
+    """
+    import urllib.request
+    cfg = BootConfig()
     config = load_config()
-    state = check_port(config.port, config.host)
-    if state == "free":
-        config.boot_count += 1
-        config.last_boot = datetime.now(timezone.utc).isoformat()
-        config.pid = os.getpid()
-        save_config(config)
-        return ("start", config, f"Port {config.port} is free. Boot #{config.boot_count}.")
-    if state == "willow_running":
-        return ("already_running", config, f"Willow already running on {get_willow_url()} (PID {config.pid}).")
-    if state == "stale_lock":
-        config.pid = None
-        config.boot_count += 1
-        config.last_boot = datetime.now(timezone.utc).isoformat()
-        config.pid = os.getpid()
-        save_config(config)
-        return ("stale_reclaimed", config, f"Stale lock cleared. Boot #{config.boot_count}.")
-    return ("conflict", config, f"Port {config.port} is bound by an unknown process. Cannot start.")
+    cfg.port = config.port
 
+    if not _port_open(cfg.host, cfg.port):
+        return ("start", cfg, f"Port {cfg.port} free. Starting Willow.")
 
-def get_willow_url() -> str:
-    config = load_config()
-    return f"http://{config.host}:{config.port}"
+    # Port is open — check if it's us
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{cfg.port}/api/status", timeout=2) as r:
+            data = json.loads(r.read())
+            if data:
+                return ("already_running", cfg,
+                        f"Willow already running on {cfg.port} "
+                        f"({data.get('knowledge', {}).get('atoms', '?')} atoms)")
+    except Exception:
+        pass
+
+    # Port open but not responding as Willow — conflict
+    return ("conflict", cfg, f"Port {cfg.port} in use by another process.")
