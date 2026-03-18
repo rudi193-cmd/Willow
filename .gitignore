@@ -18,3 +18,6 @@ artifacts/
 # Frontend build artifacts
 ui/node_modules/
 ui/dist/
+
+# Build artifacts
+ui/src-tauri/target/
