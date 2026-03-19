@@ -640,6 +640,9 @@ def scan_and_process(username: str) -> list:
         for item in nest_dir.rglob("*"):
             if not item.is_file() or item.name.startswith("."):
                 continue
+            # Skip files inside dot-directories (.tmp/, .staging/, etc.)
+            if any(part.startswith(".") for part in item.relative_to(nest_dir).parts[:-1]):
+                continue
             fh = _file_hash(item)
             if fh in already_filed_hashes:
                 logger.debug(f"PIGEON: skipping duplicate content: {item.name}")

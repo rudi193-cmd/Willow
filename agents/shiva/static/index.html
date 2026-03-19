@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Jane</title>
+  <title>Shiva</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -12,8 +12,8 @@
       --surface:      #161b22;
       --surface-alt:  #1c2128;
       --border:       #2d333b;
-      --jane-bg:      #1a3a2e;
-      --jane-text:    #7ef5b5;
+      --shiva-bg:      #1a3a2e;
+      --shiva-text:    #7ef5b5;
       --user-bg:      #1e2a4a;
       --user-text:    #a0c4ff;
       --meta:         #8b949e;
@@ -147,7 +147,7 @@
       max-width: 72%;
     }
 
-    .bubble-row.jane { align-self: flex-start; }
+    .bubble-row.shiva { align-self: flex-start; }
     .bubble-row.user { align-self: flex-end; align-items: flex-end; }
 
     .bubble-sender {
@@ -164,9 +164,9 @@
       word-break: break-word;
     }
 
-    .bubble-row.jane .bubble {
-      background: var(--jane-bg);
-      color: var(--jane-text);
+    .bubble-row.shiva .bubble {
+      background: var(--shiva-bg);
+      color: var(--shiva-text);
       border-bottom-left-radius: 3px;
     }
 
@@ -404,7 +404,7 @@
     #welcome h2 {
       font-size: 20px;
       font-weight: 500;
-      color: var(--jane-text);
+      color: var(--shiva-text);
       opacity: 0.7;
     }
 
@@ -420,7 +420,7 @@
   <!-- Header -->
   <header id="header">
     <div id="header-left">
-      <h1>Jane</h1>
+      <h1>Shiva</h1>
       <span class="tagline">SAFE Consumer Interface</span>
     </div>
     <div id="header-right">
@@ -434,7 +434,7 @@
   <main id="chat">
     <div id="welcome">
       <h2>Hello.</h2>
-      <p>I'm Jane. What's on your mind today?</p>
+      <p>I'm Shiva. What's on your mind today?</p>
     </div>
   </main>
 
@@ -692,7 +692,7 @@
     input.style.height = "auto";
 
     // Show loading
-    state.loadingBubble = appendBubble("jane", "...", true);
+    state.loadingBubble = appendBubble("shiva", "...", true);
     state.sending = true;
     document.getElementById("send-btn").disabled = true;
 
@@ -713,12 +713,12 @@
 
       const reply = data.response || data.message || data.content || JSON.stringify(data);
       removeLoadingBubble();
-      appendBubble("jane", reply);
+      appendBubble("shiva", reply);
       state.history.push({ role: "assistant", content: reply });
 
     } catch (err) {
       removeLoadingBubble();
-      appendBubble("jane", `Something went wrong: ${err.message}`, false, true);
+      appendBubble("shiva", `Something went wrong: ${err.message}`, false, true);
     } finally {
       state.sending = false;
       document.getElementById("send-btn").disabled = false;
@@ -734,7 +734,7 @@
 
     const sender = document.createElement("div");
     sender.className = "bubble-sender";
-    sender.textContent = role === "jane" ? "Jane" : "You";
+    sender.textContent = role === "shiva" ? "Shiva" : "You";
 
     const bubble = document.createElement("div");
     bubble.className = "bubble" + (loading ? " loading" : "") + (error ? " error" : "");

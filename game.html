@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jane GM - Your Personal Game Master</title>
+    <title>Gerald GM - Your Personal Game Master</title>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Text:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -378,7 +378,7 @@
         }
 
         /* Center Panel */
-        .jane-narration {
+        .shiva-narration {
             background-color: var(--bg-color);
             border: 1px solid var(--border-color);
             border-radius: 8px;
@@ -392,16 +392,16 @@
             line-height: 1.6;
             scroll-behavior: smooth;
         }
-        .jane-narration p {
+        .shiva-narration p {
             margin-bottom: 1em;
         }
-        .jane-narration .loading-dots {
+        .shiva-narration .loading-dots {
             display: inline-block;
             overflow: hidden;
             vertical-align: bottom;
             width: 1.5em; /* Adjust width as needed */
         }
-        .jane-narration .loading-dots::after {
+        .shiva-narration .loading-dots::after {
             content: '...';
             animation: dots 1s steps(3, end) infinite;
         }
@@ -652,7 +652,7 @@
             .dice-zone {
                 min-height: 200px;
             }
-            .jane-narration {
+            .shiva-narration {
                 min-height: 200px;
             }
             .roll-history {
@@ -690,7 +690,7 @@
 <body>
     <div id="welcome-screen">
         <div class="welcome-card">
-            <h1>🎲 Jane GM</h1>
+            <h1>🎲 Gerald GM</h1>
             <h2>Your Personal Game Master</h2>
 
             <div class="form-group">
@@ -814,7 +814,7 @@
         </div>
 
         <div class="center-panel game-panel">
-            <div class="jane-narration" id="janeNarration">
+            <div class="shiva-narration" id="shivaNarration">
                 <p><span class="loading-dots"></span></p>
             </div>
 
@@ -863,7 +863,7 @@
 
             <div class="control-buttons">
                 <button id="askRulesBtn" class="btn">Ask a Rules Question</button>
-                <button id="voiceToggleButton" class="btn">🔊 Jane Speaks</button>
+                <button id="voiceToggleButton" class="btn">🔊 Gerald Speaks</button>
                 <button id="endSessionBtn" class="btn btn-red">End Session</button>
             </div>
         </div>
@@ -990,7 +990,7 @@
         const playbookMovesList = document.getElementById('playbookMovesList');
         const playbookGearList = document.getElementById('playbookGearList');
 
-        const janeNarration = document.getElementById('janeNarration');
+        const shivaNarration = document.getElementById('shivaNarration');
         const die1 = document.getElementById('die1');
         const die2 = document.getElementById('die2');
         const singleDie = document.getElementById('singleDie');
@@ -1085,10 +1085,10 @@
 
             const utterance = new SpeechSynthesisUtterance(text);
             const voices = window.speechSynthesis.getVoices();
-            let janeVoice = voices.find(voice => voice.name.toLowerCase().includes('female') || voice.name.toLowerCase().includes('woman') || voice.lang === 'en-US');
-            if (!janeVoice) janeVoice = voices.find(voice => voice.lang === 'en-US');
-            if (janeVoice) {
-                utterance.voice = janeVoice;
+            let shivaVoice = voices.find(voice => voice.name.toLowerCase().includes('female') || voice.name.toLowerCase().includes('woman') || voice.lang === 'en-US');
+            if (!shivaVoice) shivaVoice = voices.find(voice => voice.lang === 'en-US');
+            if (shivaVoice) {
+                utterance.voice = shivaVoice;
             }
             utterance.rate = 0.9;
             utterance.pitch = 1.1;
@@ -1343,14 +1343,14 @@
         }
 
         async function narrateAction(playerAction) {
-            janeNarration.innerHTML = `<p><span class="loading-dots"></span></p>`; // Show loading dots
+            shivaNarration.innerHTML = `<p><span class="loading-dots"></span></p>`; // Show loading dots
             speakText("Hmm, let me think..."); // Speak loading message
             
             const narrationText = await narrateActionAPI(currentGame.sessionId, playerAction);
             
-            janeNarration.innerHTML = ''; // Clear loading dots
+            shivaNarration.innerHTML = ''; // Clear loading dots
             const p = document.createElement('p');
-            janeNarration.appendChild(p);
+            shivaNarration.appendChild(p);
 
             let i = 0;
             const typeWriterEffect = () => {
@@ -1360,7 +1360,7 @@
                     setTimeout(typeWriterEffect, 20); // Adjust typing speed here
                 } else {
                     speakText(narrationText); // Speak full narration after typing
-                    smoothScrollToBottom(janeNarration);
+                    smoothScrollToBottom(shivaNarration);
                 }
             };
             typeWriterEffect();
@@ -1368,7 +1368,7 @@
 
         function toggleVoice() {
             currentGame.voiceEnabled = !currentGame.voiceEnabled;
-            voiceToggleButton.textContent = currentGame.voiceEnabled ? '🔊 Jane Speaks' : '🔇 Silent Mode';
+            voiceToggleButton.textContent = currentGame.voiceEnabled ? '🔊 Gerald Speaks' : '🔇 Silent Mode';
             saveGameData();
             if (currentGame.voiceEnabled) {
                 speakText("Hello adventurer! I'm ready to guide you.");
@@ -1385,7 +1385,7 @@
         }
 
         function resetGame() {
-            localStorage.removeItem('janeGMGame'); // Clear all local storage
+            localStorage.removeItem('shivaGMGame'); // Clear all local storage
             Object.assign(currentGame, {
                 sessionId: null, character: null, voiceEnabled: false, stats: {Cool:0, Hard:0, Hot:0, Sharp:0, Weird:0}, hp: {current:6, max:6}, rollHistory: [],
                 player_name: '', world: '', playbook: '', character_name: '', persist: true, rollStats: { total: 0, strong_hits: 0, weak_hits: 0, misses: 0 }
@@ -1407,12 +1407,12 @@
         // --- Local Storage ---
         function saveGameData() {
             if (currentGame.persist) {
-                localStorage.setItem('janeGMGame', JSON.stringify(currentGame));
+                localStorage.setItem('shivaGMGame', JSON.stringify(currentGame));
             }
         }
 
         function loadGameData() {
-            const savedData = localStorage.getItem('janeGMGame');
+            const savedData = localStorage.getItem('shivaGMGame');
             if (savedData) {
                 Object.assign(currentGame, JSON.parse(savedData));
                 return true;
@@ -1451,11 +1451,11 @@
             }
 
             updateRollHistory();
-            voiceToggleButton.textContent = currentGame.voiceEnabled ? '🔊 Jane Speaks' : '🔇 Silent Mode';
+            voiceToggleButton.textContent = currentGame.voiceEnabled ? '🔊 Gerald Speaks' : '🔇 Silent Mode';
             
             // Set initial narration if loaded (or a placeholder)
-            if (janeNarration.children.length === 0) {
-                janeNarration.innerHTML = '<p>Welcome back, adventurer! What would you like to do?</p>';
+            if (shivaNarration.children.length === 0) {
+                shivaNarration.innerHTML = '<p>Welcome back, adventurer! What would you like to do?</p>';
             }
         }
 
@@ -1533,7 +1533,7 @@
         });
 
         askRulesBtn.addEventListener('click', () => {
-            narrateAction("Jane, can you explain a PBtA move?"); // Specific action for rules question
+            narrateAction("Gerald, can you explain a PBtA move?"); // Specific action for rules question
         });
 
         voiceToggleButton.addEventListener('click', toggleVoice);
@@ -1552,7 +1552,7 @@
 
         deleteAllDataBtn.addEventListener('click', () => {
             if (confirm("Are you absolutely sure you want to delete all local session data? This cannot be undone.")) {
-                localStorage.removeItem('janeGMGame');
+                localStorage.removeItem('shivaGMGame');
                 alert("All local data deleted.");
                 resetGame();
             }

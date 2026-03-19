@@ -76,12 +76,12 @@ def _word_overlap(a: str, b: str) -> float:
 
 
 def _load_applied_ledger() -> list[dict]:
-    """Read all .applied files from the commits directory."""
+    """Read all .applied and .commit files from the commits directory."""
     ledger = []
     if not COMMITS_DIR.exists():
         return ledger
 
-    for path in COMMITS_DIR.glob("*.applied"):
+    for path in list(COMMITS_DIR.glob("*.applied")) + list(COMMITS_DIR.glob("*.commit")):
         try:
             content = path.read_text(encoding="utf-8")
         except Exception:

@@ -22,8 +22,36 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 DRY_RUN = "--dry-run" in sys.argv
 
 
+class DictConn:
+    """Wraps _PgConn so fetchall/fetchone return dicts instead of tuples."""
+    def __init__(self, conn):
+        self._conn = conn
+    def execute(self, sql, params=None):
+        cur = self._conn.execute(sql, params)
+        return DictCursor(cur)
+    def commit(self):
+        self._conn.commit()
+    def close(self):
+        self._conn.close()
+
+class DictCursor:
+    """Wraps a cursor to return dicts from fetchall/fetchone."""
+    def __init__(self, cur):
+        self._cur = cur
+    def fetchall(self):
+        if not self._cur.description:
+            return []
+        cols = [d[0] for d in self._cur.description]
+        return [dict(zip(cols, row)) for row in self._cur.fetchall()]
+    def fetchone(self):
+        if not self._cur.description:
+            return None
+        cols = [d[0] for d in self._cur.description]
+        row = self._cur.fetchone()
+        return dict(zip(cols, row)) if row else None
+
 def connect():
-    return get_connection(schema='Sweet-Pea-Rudi19')
+    return DictConn(get_connection(schema='Sweet-Pea-Rudi19'))
 
 
 def cosine(a: bytes, b: bytes) -> float:

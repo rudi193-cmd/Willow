@@ -7,9 +7,11 @@ test_output.txt
 
 # Runtime user data - never commit (media, DBs, user files)
 artifacts/
+shiva_memory/
+*.db
 
 # Privacy: API keys and personal data
-.llm_keys.json
+credentials.json
 .llm_keys.json
 .dev.vars
 .wrangler/
