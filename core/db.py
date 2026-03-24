@@ -70,7 +70,6 @@ def _sqlite_to_pg(sql: str) -> str:
         s = s.replace("?", "%s")
     return s
 
-
 class _PgCursor:
     """Wraps psycopg2 cursor to provide sqlite3-compatible interface."""
     def __init__(self, cur):
@@ -81,6 +80,11 @@ class _PgCursor:
 
     def __getattr__(self, name):
         return getattr(self._cur, name)
+
+    def __iter__(self):
+        """Forward iteration to the underlying psycopg2 cursor.
+        Required because Python does not call __getattr__ for dunder methods."""
+        return iter(self._cur)
 
     def execute(self, sql, params=None):
         pg_sql = _sqlite_to_pg(sql)
@@ -96,9 +100,10 @@ class _PgCursor:
             self.lastrowid = None
         elif _re.match(r"\s*INSERT\b", pg_sql, _re.IGNORECASE):
             # No RETURNING clause — try lastval() for SERIAL/IDENTITY columns.
-            # lastval() fails if no sequence was used in this session, so we
-            # use currval-safe check first.
+            # lastval() fails if no sequence was used (TEXT PK tables).
+            # Use SAVEPOINT so a failed lastval() doesn't poison the transaction.
             try:
+                self._cur.execute("SAVEPOINT _lastval_check")
                 self._cur.execute(
                     "SELECT lastval() WHERE EXISTS ("
                     "  SELECT 1 FROM pg_sequences LIMIT 1"
@@ -106,29 +111,17 @@ class _PgCursor:
                 )
                 row = self._cur.fetchone()
                 self.lastrowid = row[0] if row else None
+                self._cur.execute("RELEASE SAVEPOINT _lastval_check")
             except Exception:
+                try:
+                    self._cur.execute("ROLLBACK TO SAVEPOINT _lastval_check")
+                    self._cur.execute("RELEASE SAVEPOINT _lastval_check")
+                except Exception:
+                    pass
                 self.lastrowid = None
         else:
             self.lastrowid = None
         return self
-
-    def executemany(self, sql, seq):
-        import psycopg2.extras
-        pg_sql = _sqlite_to_pg(sql)
-        psycopg2.extras.execute_batch(self._cur, pg_sql, seq)
-
-    def fetchone(self):
-        return self._cur.fetchone()
-
-    def fetchall(self):
-        return self._cur.fetchall()
-
-    def fetchmany(self, n):
-        return self._cur.fetchmany(n)
-
-    def __iter__(self):
-        return iter(self._cur)
-
 
 class _PgConn:
     """Wraps a pooled psycopg2 connection with sqlite3-compatible interface."""

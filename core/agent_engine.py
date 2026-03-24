@@ -87,6 +87,14 @@ class AgentEngine:
             except Exception as _e:
                 pass  # Never crash on startup
 
+            # Start N2N listener daemon for Kart's inbox
+            try:
+                from core.n2n_listener import N2NListener
+                self._n2n_listener = N2NListener(node_id=self.node_id, username=self.username)
+                self._n2n_listener.start()
+            except Exception as _e:
+                pass  # Never crash on startup
+
 
 
     def issue_delegation_token(self, task_scope: str, ceiling: str = None, granted_tools: list = None):

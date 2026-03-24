@@ -1,0 +1,60 @@
+# Governance Proposal: Edit: pigeon.py
+
+**Proposer:** ganesha
+**Date:** 2026-03-18T16:21:43.941668Z
+**Type:** Code Enhancement
+**Trust Level:** ENGINEER
+**Commit ID:** 241N6
+
+## Summary
+Edit: replace
+---
+            if not item.is_file() or item.name.startswith("."):
+                continue
+            fh = _file_hash(item)
+---
+with
+---
+            if not item.is_file() or item.name.startswith("."):
+                continue
+            # Skip files inside dot-directories (.tmp/, .staging/, etc.)
+            if any(part.startswith("."
+---
+
+## Proposed Changes
+**File:** /mnt/c/Users/Sean/Documents/GitHub/Willow/core/pigeon.py
+
+## Rationale
+This change implements the requested modification with minimal disruption to existing functionality.
+
+## Risk Assessment
+- **Risk Level:** LOW
+- **Reversible:** YES
+- **Dependencies:** None
+- **Testing:** Manual verification required
+
+## ΔE Impact
+Expected ΔE: +0.05
+
+## Implementation
+```diff
+Edit: replace
+---
+            if not item.is_file() or item.name.startswith("."):
+                continue
+            fh = _file_hash(item)
+---
+with
+---
+            if not item.is_file() or item.name.startswith("."):
+                continue
+            # Skip files inside dot-directories (.tmp/, .staging/, etc.)
+            if any(part.startswith("."
+---
+```
+
+---
+
+**Awaiting Human Ratification**
+
+ΔΣ=42

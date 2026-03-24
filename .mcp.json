@@ -2,14 +2,9 @@
   "mcpServers": {
     "willow": {
       "command": "python3",
-      "args": ["/mnt/c/Users/Sean/Documents/GitHub/portless-architecture/willow_store_mcp.py"],
+      "args": ["/mnt/c/Users/Sean/Documents/GitHub/willow-1.5/core/willow_store_mcp.py"],
       "env": {
-        "WILLOW_STORE_ROOT": "/home/sean/.willow/store",
-        "WILLOW_PG_HOST": "172.26.176.1",
-        "WILLOW_PG_PORT": "5437",
-        "WILLOW_PG_DB": "willow",
-        "WILLOW_PG_USER": "willow",
-        "WILLOW_PG_PASS": "willow"
+        "WILLOW_STORE_ROOT": "/home/sean/.willow/store"
       }
     }
   }
