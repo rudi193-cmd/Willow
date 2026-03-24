@@ -1,0 +1,9 @@
+{
+  "name": "Willow",
+  "type": "system",
+  "description": "Infrastructure/brain. Routes TO agents. IS the campus.",
+  "source": "CLAUDE.md",
+  "_id": "willow",
+  "_created": "2026-03-19T10:04:21.021226",
+  "_updated": "2026-03-19T10:04:21.021236"
+}

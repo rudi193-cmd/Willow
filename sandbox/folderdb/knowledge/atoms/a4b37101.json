@@ -1,0 +1,16 @@
+{
+  "title": "Conversation IS the journal",
+  "type": "architectural_principle",
+  "source": "session:46fb956f",
+  "domain": "patterns",
+  "depth": 5,
+  "temporal": "established",
+  "entities": [
+    "Shiva",
+    "Journal",
+    "PaperLayer"
+  ],
+  "_id": "a4b37101",
+  "_created": "2026-03-19T10:04:21.007988",
+  "_updated": "2026-03-19T10:04:21.007997"
+}

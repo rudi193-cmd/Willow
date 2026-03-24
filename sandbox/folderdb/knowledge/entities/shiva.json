@@ -1,0 +1,10 @@
+{
+  "name": "Shiva",
+  "type": "agent",
+  "description": "Bridge Ring / SAFE face. Chatbot that respects you.",
+  "port": 2121,
+  "source": "willow-1.4/README.md",
+  "_id": "shiva",
+  "_created": "2026-03-19T10:04:21.014702",
+  "_updated": "2026-03-19T10:04:21.014711"
+}

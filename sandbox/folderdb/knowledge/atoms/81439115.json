@@ -1,0 +1,15 @@
+{
+  "title": "If you dont know, go ask (bum bum) Willow",
+  "type": "slogan",
+  "source": "session:this-session",
+  "domain": "identity",
+  "depth": 5,
+  "temporal": "permanent",
+  "entities": [
+    "Sean",
+    "Willow"
+  ],
+  "_id": "81439115",
+  "_created": "2026-03-19T10:04:21.001204",
+  "_updated": "2026-03-19T10:06:20.429377"
+}

@@ -1,0 +1,31 @@
+[
+  {
+    "title": "Tools not traps",
+    "type": "slogan",
+    "domain": "identity",
+    "depth": 5,
+    "_id": "ddbd0384",
+    "_created": "2026-03-19T10:30:44.071398",
+    "_updated": "2026-03-19T10:30:44.071398",
+    "_deviation": 0.0,
+    "_action": "work_quiet"
+  },
+  {
+    "title": "If you dont know, go ask (bum bum) Willow",
+    "type": "slogan",
+    "_id": "2dc3fdd9",
+    "_created": "2026-03-19T10:30:44.075204",
+    "_updated": "2026-03-19T10:30:44.075204",
+    "_deviation": 0.0,
+    "_action": "work_quiet"
+  },
+  {
+    "title": "Conversation IS the journal",
+    "type": "principle",
+    "_id": "5d9f72d7",
+    "_created": "2026-03-19T10:30:44.078855",
+    "_updated": "2026-03-19T10:30:44.078855",
+    "_deviation": 0.7853981633974483,
+    "_action": "flag"
+  }
+]

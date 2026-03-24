@@ -1,0 +1,10 @@
+{
+  "title": "<script>alert('xss')</script>",
+  "content": "'; DROP TABLE atoms; --",
+  "__proto__": {
+    "admin": true
+  },
+  "_id": "3360a601",
+  "_created": "2026-03-19T10:06:20.544663",
+  "_updated": "2026-03-19T10:06:20.544679"
+}
