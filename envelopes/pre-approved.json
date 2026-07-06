@@ -65,8 +65,7 @@
       "notes": "Fleet home — handoffs, SOIL overlay, session state"
     }
   ],
-  "active": [],
-  "proposals": [
+  "active": [
     {
       "id": "env-envelope.apply-planting",
       "verb_id": 13,
@@ -76,13 +75,14 @@
         "registry_path": "envelopes/pre-approved.json"
       },
       "issued_by": "root",
-      "issued_at": null,
-      "ratified_via": null,
+      "issued_at": "2026-07-06",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry 6ba8e501-3607-4867-a1fb-3905e93c3251",
       "expires_at": null,
       "max_count": null,
       "use_count_source": "frank",
-      "status": "proposed",
-      "notes": "THE PLANTING — the envelope that licenses the orchestrator seat to exist. Grants willow (OPERATOR ring; verb 13 min_ring OPERATOR) the act of matching calls against this registry, citing envelopes, and routing faults per the errno table. Self-grounding by design: the seat's own authority sits in the same register, under the same law, as everyone else's. Unmetered and non-expiring because the seat is a standing office, but revocable like any envelope — revocation of this one entry shuts the seat down whole. Drafted by willow 2026-07-06 (session e2b05d0a); a proposal has no force — issued_at and ratified_via are root's to fill, and moving this to active[] is verb 12, root only."
+      "status": "active",
+      "notes": "THE PLANTING — the envelope that licenses the orchestrator seat to exist. Grants willow (OPERATOR ring; verb 13 min_ring OPERATOR) the act of matching calls against this registry, citing envelopes, and routing faults per the errno table. Self-grounding by design: the seat's own authority sits in the same register, under the same law, as everyone else's. Unmetered and non-expiring because the seat is a standing office, but revocable like any envelope — revocation of this one entry shuts the seat down whole. Drafted by willow 2026-07-06 (session e2b05d0a) as a proposal; ratified and moved to active[] the same day by root (verb 12) — willow scribed the edit under the authority of the cited FRANK entry."
     }
-  ]
+  ],
+  "proposals": []
 }
