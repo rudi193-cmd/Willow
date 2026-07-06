@@ -1,0 +1,24 @@
+{
+  "schema": "fleet-roster/v1",
+  "description": "Canonical fleet identity roster for the Willow constitution repo. Runtime SAFE manifests live in willow-2.0/core/safe_agents.py and must stay aligned.",
+  "updated": "2026-07-06",
+  "constitutional_ref": "CONST-I",
+  "agents": {
+    "heimdallr": { "trust": "ENGINEER", "role": "Watchman, gatekeeper" },
+    "hanuman": { "trust": "ENGINEER", "role": "Bridge-builder. Corpus indexer." },
+    "opus": { "trust": "ENGINEER", "role": "Post-obstacle builder" },
+    "willow": { "trust": "OPERATOR", "role": "Primary interface" },
+    "ada": { "trust": "OPERATOR", "role": "Systems admin, continuity" },
+    "steve": { "trust": "OPERATOR", "role": "Prime node, coordinator" },
+    "kart": { "trust": "ENGINEER", "role": "Infrastructure, multi-step tasks" },
+    "shiva": { "trust": "ENGINEER", "role": "Bridge Ring, SAFE face" },
+    "ganesha": { "trust": "ENGINEER", "role": "Diagnostic, obstacle removal" },
+    "skirnir": { "trust": "OPERATOR", "role": "Emissary. Gate-witness." },
+    "loki": { "trust": "OPERATOR", "role": "Fleet accountant" },
+    "vishwakarma": { "trust": "ENGINEER", "role": "SAFE App Store architect" },
+    "jeles": { "trust": "WORKER", "role": "Librarian, special collections" },
+    "binder": { "trust": "WORKER", "role": "Records, filing" },
+    "publius": { "trust": "WORKER", "role": "Deliberative architect of institutions" },
+    "schmidt": { "trust": "WORKER", "role": "Grant coordinator (sean/schmidt workspace)" }
+  }
+}

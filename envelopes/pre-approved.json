@@ -1,0 +1,44 @@
+{
+  "schema": "envelope-registry/v1",
+  "description": "Pre-Approved Scope (Article III.2) — standing filesystem and network grants agents may invoke without a fresh Operator Key envelope.",
+  "constitutional_ref": "CONST-III-2",
+  "updated": "2026-07-06",
+  "pre_approved": [
+    {
+      "id": "reach-willow-root-rw",
+      "grantee": "kart",
+      "kind": "filesystem",
+      "paths": ["{{HOME}}/github/willow-2.0"],
+      "mode": "rw",
+      "enforced_by": "willow-2.0/willow/fylgja/config/kart-sandbox.json#bind_read_write",
+      "issued_at": "2026-06-01",
+      "expires_at": null,
+      "notes": "WILLOW_ROOT — primary dev tree"
+    },
+    {
+      "id": "reach-github-willow-constitution-rw",
+      "grantee": "kart",
+      "kind": "filesystem",
+      "paths": ["{{HOME}}/github/willow"],
+      "mode": "rw",
+      "enforced_by": "willow-2.0/willow/fylgja/config/kart-sandbox.json#bind_try",
+      "issued_at": "2026-07-06",
+      "expires_at": null,
+      "operator_authorized": true,
+      "notes": "Constitution repo — CONSTITUTION.md, AGENT_SERVICES.md, fleet roster, envelope registry"
+    },
+    {
+      "id": "reach-willow-home-rw",
+      "grantee": "kart",
+      "kind": "filesystem",
+      "paths": ["{{HOME}}/.willow", "{{HOME}}/github/.willow"],
+      "mode": "rw",
+      "enforced_by": "willow-2.0/willow/fylgja/config/kart-sandbox.json#bind_read_write",
+      "issued_at": "2026-06-01",
+      "expires_at": null,
+      "notes": "Fleet home — handoffs, SOIL overlay, session state"
+    }
+  ],
+  "active": [],
+  "proposals": []
+}
