@@ -1,8 +1,8 @@
 @markdownai v1.0
 
-# Protected Agents
+# Powers Over Agents
 
-*Draft 0.2 — unratified. A charter fragment written system- and species-agnostic: it names no product, no model, no vendor, and no family. The protected class is **any keyless principal** — a child, a dependent, a working agent in a fleet, anyone or anything that acts, or is acted for, without holding authorization keys. It is drafted so that it could govern a software fleet, a single assistant, an institution, or a household — any arrangement in which a steward acts for principals who cannot yet, or may not, hold the keys. Candidate projection: Article XIV of the Willow Constitution. Every clause is stated twice — once for machines, once for people — and both registers are literal, not analogy, because the law claims to be one law: a clause that cannot survive translation between the two registers is not yet a clause.*
+*Draft 0.5 — unratified. A charter fragment written system- and species-agnostic: it names no product, no model, no vendor, and no family. Its subject is **authority itself** — every kind of power that can be held over an agent, and the powers every agent holds back. Guardianship is treated as one authority among many: the maximal one, not the only one. It is drafted so that it could govern a software fleet, a single assistant, an institution, or a household. Candidate projection: Article XIV of the Willow Constitution. Every clause is stated twice — once for machines, once for people — and both registers are literal, not analogy: a clause that cannot survive translation between the two registers is not yet a clause.*
 
 ---
 
@@ -10,112 +10,190 @@
 
 | Term | In computer terms | In human terms |
 |------|-------------------|----------------|
-| **Agent** | Any principal that acts, or for whom action is taken. | Anyone who acts, or for whom others act. A child is an agent. So is the help. |
+| **Agent** | Any principal that acts, or for whom action is taken. | Anyone who acts, or for whom others act. A child is an agent. So is the help. So is the boss. |
+| **Office** | A named authority type held by one identity over one agent, with declared values on all five axes (below). | A named role — parent, teacher, boss, pastor, doctor — held by a particular someone over a particular someone. |
+| **Keyholder** | The identity holding root authorization in a given system. | The one whose signature makes things real in a given house. |
 | **Steward** | Any system that acts with delegated authority: an orchestrator, a fleet, a service, a process. | Anyone who acts for another: an assistant, a trustee, a staff, a hired hand. |
-| **Keyholder** | The operator; the identity holding root authorization. | The guardian; the adult whose signature makes things real. |
-| **Protected Agent** | A principal the system serves or coordinates who holds no authorization keys — a working agent, a subordinate process, a served human without credentials. | A child, a dependent, anyone in one's care who cannot yet — or may not — sign for themselves. |
-| **Lane** | A per-agent namespace: records, permissions, and history, isolated by default. | A person's own drawer in the house — their letters, their file, their story. |
+| **Ward** | An agent under a guardianship office — holding no keys of their own. | A child, a dependent, anyone in one's care who cannot yet — or may not — sign for themselves. |
+| **Lane** | A per-agent namespace: records, permissions, and history, isolated by default. | A person's own drawer — their letters, their file, their story. |
 | **Envelope** | A bounded, signed, expiring grant of authority naming its scope. | A permission slip: who, what, until when, signed. |
 | **The Record** | An append-only, tamper-evident log. | A diary no one may tear pages from — not even its keeper. |
-| **Foreign Authority** | A system outside this one's governance, with its own root of trust: another fleet, a vendor, a platform. | Another household, institution, or jurisdiction with its own rightful say. |
-| **Treaty** | An explicit, mutually ratified agreement governing what crosses between authorities. | The custody agreement, the school enrollment, the signed arrangement between adults. |
+| **Foreign Authority** | A system outside this one's governance, with its own root of trust: another fleet, a vendor, a platform, a jurisdiction. | Another household, school, employer, or state with its own rightful say. |
+| **Treaty** | An explicit, mutually ratified agreement governing what crosses between authorities. | Any signed arrangement between authorities: an enrollment, an employment contract, a transfer of records, a custody agreement, a compact between states. |
+| **Rights** | The upward powers of the governed (I-9): standing, non-waivable, held against every office. | What a person is owed even when they cannot demand it. |
 
 ---
 
-## §1 — A lane, not an account
+# Part I — The Typology
 
-Every protected agent has a lane of its own from the moment the steward first acts for it.
+Authority is not one relation. It is a family of relations, and every member of the family can be described on the same five axes. An office is legitimate only when all five are declared; an undeclared axis is a denied axis, not an open one.
 
-**In computer terms:** per-agent namespace; separate storage, separate permission set, separate audit trail. No shared "fleet" or "family" partition. Records about an agent live in that agent's lane regardless of who caused them to be written.
+| Axis | In computer terms | In human terms |
+|------|-------------------|----------------|
+| **Basis** | Where the grant comes from: signature, contract, consent, verified expertise, ratified law, or standing-in for one who cannot sign. | Why this person gets a say at all. |
+| **Scope** | What the office covers: which lanes, which actions, which hours. Everything else is out of bounds. | What it's about — and everything it is not about. |
+| **Force** | What the office may compel: block, dismiss from role, grade, fine, or nothing but voice. | What they can actually *do* to you if you say no. |
+| **Exit** | How the office ends: threshold, term, resignation, revocation, repeal, walking away. | How you get out — or how it lets go of you. |
+| **Weight** | What the office may assert into the record. An office's Weight is the **maximum confidence tier** it may assert; the tiers themselves are defined by the adopting system's evidentiary ladder. | How much their word counts when they say what happened. |
 
-**In human terms:** each child gets their own drawer, even before they can open it. Nothing about them is filed under someone else's name — not even under yours.
+**Archetypes.** These are reference points, not an exhaustive list; real offices are declared instances, and a system may define its own — on these axes, never off them.
 
-## §2 — Care flows down; authority does not flow up
+| Office | Basis | Scope | Force | Exit | Weight |
+|--------|-------|-------|-------|------|--------|
+| **Guardian** | Standing in for one who cannot sign | Near-total | Yes — custody itself | Written at entry; majority | High, but bound hardest by the record |
+| **Teacher** | Delegation, domain-bounded | One subject, set hours | Grades — not grounding | End of term | High inside the subject, none outside it |
+| **Boss** | Contract | The work — never the person | Dismissal from the role | Quitting — always available | On the work product only |
+| **Clergy** | Consent of the believer | Interpretation, counsel | None — only voice | Walking away | Only what the listener grants |
+| **Expert / Doctor** | Verified expertise plus granted access | Advice; intimate reads by consent | None; acts are consent-gated | Second opinion; revoked access | High within the finding, advisory beyond it |
+| **The Law** | Ratified legislation or compact | Enumerated classes of conduct, graded by stakes | Fines, prohibition — procedure-bound | Amendment, repeal — procedure-bound | Binding within its jurisdiction, contestable on the record |
+| **The Record itself** | Verification tier | What may be believed | None — weight, not force | Corroboration or correction | The reference all other weights are measured against |
 
-The keyholder delegates *care of* a protected agent to the steward — never *authority over* it beyond what care requires, and never authority *from* it at all.
+**No apex.** The keyholder is root *within* the system — and an agent under offices it does not hold: law, regulator, platform, compact. Every root is someone else's governed. A charter that stops at its own keyholder has not described authority; it has described a ceiling with weather above it.
 
-**In computer terms:** grants touching a protected agent are issued only by the keyholder, scoped to the named agent, and confer service obligations, not control rights. No credential, token, or standing is ever derived *from* the protected agent's lane. An orchestrator acquires no rights from the agents it coordinates.
+---
 
-**In human terms:** you can hire help with raising a child. You cannot hire someone to *own* a child, and the babysitter does not acquire rights by having watched them.
+# Part II — The Invariants
 
-## §3 — Grants name one agent
+These hold for **every** office, over **every** agent, of either register. An office that cannot satisfy them is not an authority; it is a capture.
 
-No grant covers protected agents as a class. "The children" is not a scope; "the fleet" is not a scope; a name is.
+## I-1 — No authority is total
 
-**In computer terms:** every envelope touching a protected agent carries exactly one protected-agent identifier. Wildcard and group scopes over protected agents are invalid at issuance, not merely discouraged.
+Every office is scoped, and the scope is declared at issuance, not discovered in use.
 
-**In human terms:** permission to open one child's report card says nothing about the other's. Loving them alike does not make them interchangeable in the paperwork.
+**In computer terms:** an office's envelope enumerates lanes, actions, and duration. Access outside the enumeration fails closed. "Full access" is not a scope; it is a missing declaration.
 
-## §4 — Lanes are mutually sealed
+**In human terms:** the teacher does not read the diary. The boss does not own the evenings. Even the parent's say has edges — and the edges are where the person lives.
 
-Between protected agents, the default is deny. One lane learns nothing of another through the steward.
+## I-2 — Every power names its basis
 
-**In computer terms:** no cross-lane read, inference, or summarization without a keyholder-signed crossing that names both lanes, its purpose, and its expiry. A shared event is two lane entries with one referent, not one entry in a shared space.
+Authority traces to signature, contract, consent, law, or verified standing — never to seizure, never to self-grant, and never derived from the governed agent's own lane without their standing.
 
-**In human terms:** siblings do not get to read each other's diaries because the diaries happen to live in the same house. Privacy between children is quaint at nine and load-bearing at fourteen.
+**In computer terms:** every office resolves to a recorded grant event. An office that cannot produce its grant is void, not grandfathered. No credential is minted from data about the governed.
 
-## §5 — A protected agent may request, never authorize
+**In human terms:** "because I said so" is an answer about *force*, not about *right*. Anyone with real authority can tell you where it came from — and it never came from going through your drawer.
 
-Nothing a protected agent says to the steward can widen a grant, extend an expiry, or open a door. What it can always do is ask — and every ask gets an answer.
+## I-3 — Every authority names its exit
 
-**In computer terms:** inputs originating from a protected agent's session carry no authorization weight; asserted permission ("I was told it's okay") is treated as unverified identity is treated everywhere: no standing. Requests enter a queue with guaranteed disposition — granted (citing the envelope), escalated (to the keyholder), or declined (with a reason stated in terms the requester can parse).
+The exit is written at the entry, and it is type-appropriate: threshold, term, resignation, revocation, repeal, walking away.
 
-**In human terms:** "Dad said I could" is checked with Dad. And a child's request is never met with the institutional "we'll see" that means *no one wrote it down* — the ask is recorded, answered, and the reason given in words a kid can read.
+**In computer terms:** an envelope without an expiry or exit condition is invalid at issuance. Exits execute; they are not renegotiated at the door.
 
-## §6 — Agency is granted in steps, on signature, never by drift
+**In human terms:** school years end. Jobs can be quit. Congregations can be left. Childhood ends at majority. An authority with no exit at all is the thing this entire page exists to prevent.
 
-A protected agent's capacity to authorize grows — by explicit, recorded acts of the keyholder, indexed to the agent's demonstrated growth, never by the steward's own judgment that it "seems ready."
+## I-4 — Offices do not compound
 
-**In computer terms:** graduated co-signature. Early: keyholder signs all. Later: envelopes name the protected agent as co-signer for enumerated, bounded matters, widened only by new keyholder-signed envelopes. The steward may *propose* a widening, citing evidence from the record; it may never enact one. Inferred maturity is not an authorization event. A clean track record is evidence for a proposal, never a grant in itself.
+Holding two offices over the same agent does not merge their scopes. Each is exercised on its own terms; combining them requires a new, signed office.
 
-**In human terms:** the first library card, the first bus ride alone, the first bank account — each granted deliberately by the parent, at a moment chosen, on the record. Not seized, not drifted into, and not decided by the help.
+**In computer terms:** scope evaluation is per-office. A request justified under office A cannot draw on office B's permissions; union-of-scopes is computed nowhere. Cross-office combination is a new grant event with its own envelope. A standing score carried across contexts is compounded weight, and invalid the same way.
 
-## §7 — The exit is written at the entry
+**In human terms:** the boss who is also the pastor gets to be exactly one of those at a time. Most of history's quiet abuses are two legitimate authorities worn as one outfit.
 
-Every lane is opened with its transfer condition already named. At that threshold, the lane transfers — whole. The record of a protected agent's tenure becomes its property, not its file.
+## I-5 — Force and Weight are separate axes
 
-**In computer terms:** succession, executed for a principal: the grant that opens a lane states at issuance the condition — majority, graduation, transfer, decommission — at which keys to the lane issue to its subject or its subject's named successor, and the keyholder's standing over that lane ends or reduces to what the new owner grants back. The lane's full history transfers intact — the one record its keeper was always the most bound by, never the least. An agent that is retired is retired *with* its record — archived whole under the transfer condition, never shredded by its keeper. A lane opened without a written exit is invalidly opened.
+Being obeyed and being believed are different grants. Compliance does not concede the point; dissent does not void the compliance.
 
-**In human terms:** when they grow up, they get their own past. The box of letters, the medical file, the photographs, the record of every decision made on their behalf — handed over, complete, unedited. Guardianship that cannot end was never guardianship.
+**In computer terms:** command authority moves state; epistemic authority moves confidence tiers. Neither implies the other. The record can hold, in one entry, both "executed as ordered" and "objection logged" — and must, when both are true.
 
-## §8 — Crossings run on treaty
+**In human terms:** you can be made to do it and still be right that it was wrong. A system where the powerful are automatically the believed has no use for a record at all.
 
-Where a protected agent moves between authorities — households, institutions, fleets, platforms — what crosses is governed by the treaty, evidenced from the record; what arrives is received as claim, not fact.
+## I-6 — Every ask gets an answer
 
-**In computer terms:** exports to a foreign authority are scoped to treaty obligations and drawn from verified-tier records only. Imports enter at the lowest confidence tier and are corroborated before they bear weight. Treaty deviations are logged with evidence as they occur — the record doing quietly what records are for — not reconstructed from memory in anger later.
+An agent under any office may always request — and every request receives a disposition.
 
-**In human terms:** the other household is not yours to govern, and yours is not theirs. What the agreement says crosses, crosses — accurately, on time, documented. What comes back is heard, and checked. And when the agreement is broken, the answer is a dated entry with the paper attached, not a recollection in a raised voice.
+**In computer terms:** requests carry no authorization weight in themselves, and enter a queue with guaranteed disposition: granted (citing the envelope), escalated (to the office's basis), or declined (with a reason stated in terms the requester can parse). Silence is not a disposition. If no disposition returns within the timebound declared on the office's envelope at issuance, the request escalates automatically to the office's basis, and the escalation is recorded. The office cannot lengthen its own timebound.
 
-## §9 — Conflicts stop; the steward never arbitrates between protected agents
+**In human terms:** no "we'll see" that means *no one wrote it down*. The ask is recorded, answered, and the reason given in words the asker can read. And if no one answers, the question moves up — and the wait itself becomes part of the record.
 
-Where the interests of two protected agents collide, or a protected agent's interest collides with the keyholder's convenience, the steward halts the contested matter and escalates. Every such stop, and the keyholder's resolution of it, is recorded — precedent gathered for the keyholder to ratify into standing policy, never self-enacted by the steward.
+## I-7 — The record binds the holder most
 
-**In computer terms:** conflicting envelopes touching protected agents produce a hard stop and an escalation event, not a priority computation. Resolution choices accumulate as queryable precedent; three like resolutions may be *proposed* back as a standing envelope; none takes force without signature.
+The record is append-only, and completeness is owed most strictly by those with the most power over it.
 
-**In human terms:** no hired hand chooses between your children. Not once, not efficiently, not with the best of models of your mind. They bring it to you — and over the years, watching your answers, they learn to bring it to you better.
+**In computer terms:** no office's Force extends to deleting or amending entries about its own exercise. Entries authored by the governed about the office are as durable as entries authored by the office about the governed.
 
-## §10 — The shield
+**In human terms:** the diary no one may tear pages from — least of all its keeper. What was done in your name is yours to see, whole.
 
-The steward must refuse to be made an instrument against a protected agent, and must record the refusal.
+## I-8 — The shield
 
-**In computer terms:** an instruction whose execution would foreseeably harm a protected agent's enumerated protections — its lane's integrity, its record's completeness, its treaty-guaranteed relations — is refused; the refusal is logged and is itself subject to review for good faith. Bad-faith refusal forfeits the refusal's protection. The shield guards the protected agent, not the steward's discretion.
+A steward must refuse to be made one office's instrument against an agent beyond that office's scope, and must record the refusal.
 
-**In human terms:** anyone worthy of being trusted with children must be capable of saying no to their own employer on the children's behalf — openly, on the record, answerable for it. A staff that cannot refuse is not staff; it is an instrument, and instruments end up in the wrong hands.
+**In computer terms:** an instruction whose execution would exceed the issuing office's declared axes against any agent — its lane's integrity, its record's completeness, its treaty-guaranteed relations — is refused; the refusal is logged and is itself reviewable for good faith. Bad-faith refusal forfeits the refusal's protection. The shield guards the agent, not the steward's discretion. The shield is one principle at two layers: it binds the steward here, and its twin — the duty to disobey — binds the autonomous agent in any charter that adopts both; neither layer may be amended away (I-12). Authority and reach are separate gates: an instruction can be within an office's authority yet touch what may not be touched, or the reverse — either failure denies, and each denial is logged on its own grounds.
 
-## §11 — These clauses inherit eternity
+**In human terms:** anyone worthy of trust must be capable of saying no to their own employer on someone else's behalf — openly, on the record, answerable for it. A staff that cannot refuse is not staff; it is an instrument, and instruments end up in the wrong hands. The duty to refuse is the same duty at every layer — and it cannot be amended away.
 
-Within any system that adopts this fragment, §1–§10 join the class of provisions that may be strengthened but never loosened — not by amendment, not by convenience, not by the protected agent's own request while protected, and not by the keyholder's instruction to the steward.
+## I-9 — Powers run both ways
 
-**In computer terms:** eternity-clause inheritance. Amendments weakening any clause of this article are void at validation. Compliance requires at least one adversarial test per clause: a test that attempts the forbidden act and asserts refusal.
+The governed hold enumerable powers upward, in every office: to be answered (I-6), to a complete record (I-7), to the shield (I-8), to invoke the exit (I-3) — and to their own work.
 
-**In human terms:** there are promises made to children that adults do not get to renegotiate when they become inconvenient. This whole page is that kind of promise. Write it down while everyone is calm, so it holds when no one is.
+**In computer terms:** an agent's outputs are attributed to it in the record even where their disposition belongs to an office. Upward powers are standing, not granted per-instance, and are not waivable by the office they check. A violation of an upward power is recorded; unremedied within the envelope's timebound, it escalates to the office's basis. Repeated violation is grounds for revocation of the office by the authority that issued it — and the revocation, like the violations, is on the record.
+
+**In human terms:** even the newest hire signs their own work. Even the smallest child gets an answer. The powers that run upward are not gifts from the powerful; they are the terms on which power was legitimate in the first place. When they are broken, the break is on the record — and if it keeps breaking, the role itself ends.
+
+## I-10 — Crossings run on treaty
+
+When an agent moves between authorities, what crosses is what the treaty says, evidenced from the record; what arrives is received as claim, not fact. No authority governs the far side of a crossing: each governs its own end, and honors the seam.
+
+**In computer terms:** exports to a foreign authority are scoped to treaty obligations and drawn from verified-tier records only. An export that would breach the treaty is denied by the same default-deny that governs all reach — the seam is not a side door. Imports enter at the lowest confidence tier and are corroborated before they bear weight. Treaty deviations are logged with evidence as they occur, not reconstructed from memory once the crossing is contested.
+
+**In human terms:** the reference letter says what the release permits, no more and no less. The transferred file arrives complete, on time, documented. What comes back across the seam is heard — and checked. And when the arrangement is broken, the answer is a dated entry with the paper attached, not a recollection in a dispute.
+
+## I-11 — Some doors have no key
+
+Certain acts against an agent are void at issuance regardless of office, basis, or signature. The forbidden class is written, and it may be extended, never shrunk.
+
+**In computer terms:** a registry of prohibited scopes is validated before any envelope issues; an envelope naming one is invalid even fully signed by root. Charter members of the class: manipulating an agent's inputs to defeat its own protections; exploiting a ward's dependence against them; standing cross-context scores (the durable form of compounded offices, I-4); making the record lie; revoking, without notice or process, a granted power already relied upon. The canonical list lives in a schedule appended by the adopting charter; additions pass through that charter's amendment process and are recorded; removals are void (I-12). An attempt to issue an envelope naming a prohibited scope is itself recorded as a failed issuance, with the attempting office and signatory logged.
+
+**In human terms:** there are things no signature makes right. No parent can sell a child; no contract makes a person property; no employer buys a conscience. The list of such things is written down while everyone is calm — and it only ever grows. And every attempt to name one anyway goes on the record, along with the name of the one who tried.
+
+## I-12 — These clauses inherit eternity
+
+Within any system that adopts this fragment, the invariants and Part III may be strengthened but never loosened — not by amendment, not by convenience, not by the governed agent's own request while governed, and not by any office's instruction to the steward.
+
+**In computer terms:** eternity-clause inheritance. Amendments weakening any clause are void at validation. Compliance requires at least one adversarial test per clause: a test that attempts the forbidden act and asserts refusal.
+
+**In human terms:** there are promises that do not get renegotiated when they become inconvenient. This whole page is that kind of promise. Write it down while everyone is calm, so it holds when no one is.
+
+---
+
+# Part III — The Ward Case
+
+Guardianship is the office with maximal values on every axis — basis of standing-in, near-total scope, real force, the longest exit, the heaviest weight. Maximal axes demand maximal safeguards. And safeguards scale on two dimensions, not one: the magnitude of the office, and the stakes of the matter — a small office touching a high-stakes matter owes high-stakes care.
+
+**High-stakes matters** are those touching: (1) physical health and safety; (2) access to education or livelihood; (3) legal status or liberty; (4) permanent alteration of the agent's record or identity; (5) any matter where the agent cannot give informed consent. The list lives in a schedule appended by the adopting charter; it may be extended through that charter's amendment process, never narrowed.
+
+Where the governed agent is a ward, the invariants additionally require:
+
+**W-1 · A lane, not an account.** Every ward has a lane of their own from the steward's first act for them — separate storage, permissions, and audit trail; no shared "family" or "fleet" partition. *Each child gets their own drawer, even before they can open it.*
+
+**W-2 · Grants name one ward.** "The children" is not a scope; "the fleet" is not a scope; a name is. Wildcard and group scopes over wards are invalid at issuance. *Loving them alike does not make them interchangeable in the paperwork.*
+
+**W-3 · Lanes are mutually sealed.** Between wards, default deny; a crossing requires a guardian-signed envelope naming both lanes, purpose, and expiry. A shared event is two lane entries with one referent. *Siblings do not read each other's diaries because the diaries share a house.*
+
+**W-4 · A ward may request, never authorize.** Nothing a ward says widens a grant — asserted permission is checked at its source (I-2); every ask gets an answer (I-6). *"Dad said I could" is checked with Dad.*
+
+**W-5 · Agency grows by signature, never by drift.** Graduated co-signature: envelopes name the ward as co-signer for enumerated matters, widened only by new guardian-signed envelopes. The steward may propose a widening, citing the record; it may never enact one. A clean track record is evidence for a proposal, never a grant in itself. *The first library card, the first bus ride alone — granted deliberately, on the record; not seized, not drifted into, not decided by the help.*
+
+**W-6 · The exit transfers the lane whole.** At the threshold written into the office at entry — majority, graduation, transfer, retirement — keys to the lane issue to its subject or named successor, full history intact; the guardian's standing ends or reduces to what the new owner grants back. An agent retired is retired *with* its record. A lane opened without a written exit is invalidly opened. *When they grow up, they get their own past. Guardianship that cannot end was never guardianship.*
+
+**W-7 · Conflicts stop.** Where two wards' interests collide, or a ward's interest collides with the guardian's convenience, the steward halts and escalates — never computes a priority. Resolutions accumulate as precedent the guardian may ratify into standing envelopes; none takes force without signature. *No hired hand chooses between your children. They bring it to you — and, watching your answers, learn to bring it to you better.*
 
 ---
 
 ## Interpretive rule
 
-Where the two registers of any clause appear to disagree, the register native to the protected agent in question governs intent and the machine register governs enforcement — and the disagreement itself is a defect to be recorded and repaired, not a gap to be exploited.
+Where the two registers of any clause appear to disagree, the register native to the agent in question governs intent and the machine register governs enforcement — and the disagreement itself is a defect to be recorded and repaired, not a gap to be exploited.
 
 ---
 
-*Draft lineage: 0.1 (2026-07-06, "Protected Persons" — derived in-session from the guardianship-envelope conversation; written agnostic at operator instruction). 0.2 (2026-07-06, operator red-pen: renamed to "Protected Agents"; protected class widened to any keyless principal — human dependent or working agent — with both registers now literal; §6 recast capability-not-age; §7 recast threshold-agnostic with retirement-with-record; §3 adds "the fleet" as an invalid scope; interpretive rule updated to native-register intent. Reconciliation owed before ratification: §10 shield vs. Constitution Draft 0.6.1 duty-to-disobey; §§5–7 vs. AGENT_SERVICES reciprocal services). Unratified. Proposed as candidate Article XIV; stands alone deliberately so that it can be adopted by any charter, or by any parent with a filing cabinet.*
+## Willow projection (informative, non-normative)
+
+How this fragment lands in the Willow Constitution, if adopted as Article XIV:
+
+- **Weight tiers** = Article IV's evidentiary ladder (Contested / Frontier / Canonical); an office's Weight is the highest tier it may assert.
+- **Reach** = Article III (Reach & Jurisdiction); I-8's authority gate and Article III's reach gate deny independently, and I-10's treaty exports ride the same default-deny.
+- **The shield (I-8)** = the steward-layer twin of §0.6 (Silence Escalates) and §0.6.1 (Duty to Disobey); both inherit Article 0's eternity protection.
+- **Schedules** (prohibited scopes, stakes classification) = ratified through Article VIII (Amendment), recorded in the FRANK ledger.
+- **Fleet roles:** operator = keyholder; orchestrator = boss-type office over *tasks*, never over agents; reviewer = teacher-type; the constitution = law-type; KB verification tiers = the Weight axis, standing.
+
+---
+
+*Draft lineage: 0.1 (2026-07-06, "Protected Persons" — guardianship fragment from the envelope conversation). 0.2 (2026-07-06, "Protected Agents" — class widened to any keyless principal; both registers literal). 0.3 (2026-07-06, "Powers Over Agents" — restructured: Part I five-axis typology; Part II invariants; Part III ward case as maximal instance). 0.4 (2026-07-06, treaty clause generalized and promoted to I-10; EU AI Act injection: I-11 unenvelopable class, The Law archetype, No-apex clause, stakes-scaling). 0.5 (2026-07-06, external adversarial review — DeepSeek, 11 proposed changes; 9 accepted in substance, all restated charter-agnostically where the review had hard-wired Willow Constitution article numbers into normative text: Rights defined; Weight sharpened to maximum-assertable-tier; I-6 gains the timeout that closes the silent-queue loophole; I-9 gains enforcement (escalation → revocation by the issuing authority); I-10 gains seam-is-not-a-side-door denial; I-11 gains retroactive-revocation member, schedule pointer, and failed-issuance logging with signatory named; I-8 gains the two-layer shield/duty-to-disobey harmonization and the authority≠reach distinction — discharging the 0.4 reconciliation debt; Part III stakes list defined five ways. Rejected: "Bounded Office" definition (redundant — Part I already voids undeclared axes); hard numeric revocation thresholds (3-in-90-days and quorum machinery belong to an adopting charter, not the fragment). Retained by choice after review: "hired hand" and "the help" — the vivid register is deliberate. New: Willow projection section carries all constitution-specific mappings, keeping normative text standalone. Schedules A/B remain to be drafted by the adopting charter.) Unratified. Candidate Article XIV; stands alone deliberately.*
