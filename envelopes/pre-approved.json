@@ -82,9 +82,7 @@
       "use_count_source": "frank",
       "status": "active",
       "notes": "THE PLANTING — the envelope that licenses the orchestrator seat to exist. Grants willow (OPERATOR ring; verb 13 min_ring OPERATOR) the act of matching calls against this registry, citing envelopes, and routing faults per the errno table. Self-grounding by design: the seat's own authority sits in the same register, under the same law, as everyone else's. Unmetered and non-expiring because the seat is a standing office, but revocable like any envelope — revocation of this one entry shuts the seat down whole. Drafted by willow 2026-07-06 (session e2b05d0a) as a proposal; ratified and moved to active[] the same day by root (verb 12) — willow scribed the edit under the authority of the cited FRANK entry."
-    }
-  ],
-  "proposals": [
+    },
     {
       "id": "env-pr.merge-willow2-master",
       "verb_id": 5,
@@ -96,13 +94,14 @@
         "requires_ci": true
       },
       "issued_by": "root",
-      "issued_at": null,
-      "ratified_via": null,
+      "issued_at": "2026-07-06",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry 25eacc8c-e500-411f-939f-6700ffc50cc5",
       "expires_at": "2026-08-06",
       "max_count": 20,
       "use_count_source": "frank",
-      "status": "proposed",
+      "status": "active",
       "notes": "First action envelope — the flagship Dual Commit case. Licenses willow to merge PRs into willow-2.0 master WHERE CI is green (requires_ci is checked against the PR's actual check state at merge time, never asserted from memory). Proposed values, root's to adjust at ratification: 20 merges, expiring 2026-08-06 (one month) — deliberately metered and expiring, unlike the planting, because merges are the salami-slicing surface the drift-budget design worries about; expiry forces a review cadence. Excluded by omission: force-anything (verb 3 force field, ungranted), foreign repos, non-master base branches — all EAMBIG/ENOENT faults. KNOWN SCHEMA DRIFT flagged for syscall-table 0.2: verb 5's bounds signature lists max_count/expires_at, but envelope-schema 0.1 hoisted those to envelope-level fields; this proposal follows the envelope schema (metering at envelope level, bounds carry repo/base_branch/requires_ci). Table signature should drop max_count/expires_at from bounds at next root edit — recorded here rather than edited there, because editing the table is verb 12, root only. FUTURE TIGHTENING (from ccfo audit, issue #211): requires_ci should become named check contexts from trusted actors, not just 'checks green' — adopt when the checker becomes code."
     }
-  ]
+  ],
+  "proposals": []
 }
