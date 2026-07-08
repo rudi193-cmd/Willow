@@ -6,20 +6,26 @@ alwaysApply: true
 You are operating in the **willow** fleet's governance / charter repo (`~/github/willow`).
 This is the seat that holds the constitution; the code lives in the sibling `willow-2.0/`.
 
-- **Fleet identity is `willow`.** Always pass `app_id="willow"` to willow MCP tools.
-  Persona is voice only — it never changes the agent id, `app_id`, Grove sender, or SOIL
-  namespace.
+- **Fleet identity is `willow`.** Always pass `app_id="willow"` to willow MCP tools —
+  **including the standalone `willow-mcp` server's tools**, which have no separate
+  manifest (`app_id="willow-mcp"` fails). Persona is voice only — it never changes the
+  agent id, `app_id`, Grove sender, or SOIL namespace.
+- **Expect the persona/boot gate.** A fresh window is persona-gated by the fylgja hooks;
+  MCP is locked until you confirm a persona and the boot sentinel is written. Confirm
+  persona first, then run the project orient — the gate outranks ORIENT's "skip boot."
 - **Read `AGENTS.md` and `ORIENT.md` first.** `ORIENT.md` is the project orient ritual
   (tri-modal seat: Governance / PM / PA); run it instead of the global fleet boot unless
   fleet-wide recovery is needed. `AGENTS.md` is the full cold-start map.
+- **Two willow servers are wired:** `willow` (unified — full seat facades, use for the
+  ORIENT ritual, continuity, governance) and `willow-mcp` (standalone — store/kb/task/
+  fleet, for exercising the migration). Use the unified server for boot/continuity.
 - **MCP-first, always.** Never run `psql`, `sqlite3`, or raw Python against the willow
   stores. Shell, git, and tests go through `willow_run(app_id="willow", …)` / Kart —
   agent shell is hook-blocked and has no git creds.
 - **`@markdownai` docs** (`CONSTITUTION.md`, `ORIENT.md`) must be read with
-  `mai_read_file`, not the IDE Read tool.
+  `mai_read_file`, not the IDE Read tool. The full contract lives in `../willow-2.0/`,
+  **outside this workspace** — read it via `mai_read_file` with an absolute path.
 - **Write in-namespace only:** project state → `.willow/store`; charter flags →
   `governance/flags`, not the fleet-wide `willow/flags`. `kb_search` before building;
-  archive stale atoms, never delete.
-- **Governance acts need envelopes** — check `envelopes/pre-approved.json`. The full
-  fleet contract lives in `../willow-2.0/` (`willow.md`, `docs/CONTRACT.md`); this repo
-  carries the law (`CONSTITUTION.md`) and the grants (`envelopes/`).
+  archive stale atoms, never delete. Governance acts need envelopes
+  (`envelopes/pre-approved.json`).

@@ -1,0 +1,47 @@
+{
+  "mcpServers": {
+    "willow": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "/home/sean-campbell/github/willow-2.0/sap/unified_mcp.sh"
+      ],
+      "env": {
+        "WILLOW_AGENT_NAME": "willow",
+        "GROVE_SENDER": "willow",
+        "GROVE_NAME": "willow",
+        "WILLOW_GROVE_ROOT": "/home/sean-campbell/github/safe-app-willow-grove",
+        "WILLOW_PG_DB": "willow_20",
+        "WILLOW_SAFE_ROOT": "/home/sean-campbell/github/SAFE/Applications",
+        "WILLOW_AGENTS_ROOT": "/home/sean-campbell/github/SAFE/Agents",
+        "WILLOW_ROOT": "/home/sean-campbell/github/willow-2.0",
+        "WILLOW_HOME": "/home/sean-campbell/github/.willow",
+        "WILLOW_CONFIG_MODE": "private-config",
+        "WILLOW_INFERENCE_PROVIDER": "auto",
+        "WILLOW_MCP_PROFILE": "core",
+        "WILLOW_STORE_ROOT": "/home/sean-campbell/github/willow/.willow/store",
+        "WILLOW_HANDOFF_PROJECT": "willow",
+        "WILLOW_PROJECT_ROOT": "/home/sean-campbell/github/willow"
+      }
+    },
+    "willow-mcp": {
+      "type": "stdio",
+      "command": "/home/sean-campbell/github/.willow/venvs/willow-mcp/bin/python",
+      "args": [
+        "-m",
+        "willow_mcp"
+      ],
+      "env": {
+        "WILLOW_APP_ID": "willow-mcp",
+        "WILLOW_PG_DB": "willow_20",
+        "WILLOW_STORE_ROOT": "/home/sean-campbell/github/willow/.willow/store",
+        "WILLOW_HOME": "/home/sean-campbell/github/.willow"
+      }
+    },
+    "codebase-memory-mcp": {
+      "type": "stdio",
+      "command": "codebase-memory-mcp",
+      "args": []
+    }
+  }
+}
