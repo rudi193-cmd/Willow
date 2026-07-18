@@ -1,6 +1,6 @@
 # Willow Commitment Membrane — calendar as the operator's kept record
 
-**Status:** design + **verified Step-1 skeleton in Appendix A** · **Author:** Willow (seat) · **Date:** 2026-07-17
+**Status:** design + **verified Step-1 skeleton + Step-2 Google adapter in Appendix A** · **Author:** Willow (seat) · **Date:** 2026-07-17 (Step-2 Google adapter added session 2026-07-17b)
 **Cross-refs:** KB `48886881` (Jarvis audit — calendar is critical-path #2, scored 0%) · KB `6CAC0877` (calendar/desktop research — pure script, zero model) · KB `0E8C90C0` (Tally — the outward face of the governance seat)
 **Related design:** `willow-voice-ingress-membrane.md` (this is its outward mirror)
 
@@ -70,8 +70,11 @@ No models anywhere in this layer — the Jarvis "script not model" thesis holds 
 
 1. **Ledger + dew core** — commitment model, states-not-deletions, dew-rule surfacer, injected
    stub source. Unit-tested for the three disciplines + dew silence. **(Done — Appendix A.)**
-2. **Real source** — implement `CalDavSource.fetch()` against the operator's provider (the one
-   deferred decision: Google via gcal-sync vs a caldav host). The core does not change.
+2. **Real source** — implement a `fetch()` adapter against the operator's provider. The core
+   does not change. **Provider decided: Google via gcal-sync (operator, 2026-07-17b).**
+   `GCalSyncSource` built + verified (Appendix A.2/A.4, 11/11 tests); the gcal-sync transport
+   itself stays an injected seam until product-repo wiring (OAuth creds + envelope). **(Done —
+   mapping verified offline; transport deferred to Step 3 wiring.)**
 3. **Persist** — commitments + history into fleet state (SOIL/store), in-namespace.
 4. **Deliver** — wire `dew_surface()` into the existing proactive engine (routine/Norn/metabolic)
    so it faces outward under the dew rule. This is where Jarvis layers 1 (voice out) and 2
@@ -79,8 +82,10 @@ No models anywhere in this layer — the Jarvis "script not model" thesis holds 
 
 ## Open questions
 
-- **Provider** (Step 2's only real input): Google (gcal-sync) vs caldav host (iCloud / Nextcloud
-  / Fastmail). Deferred — it is the injected driver.
+- ~~**Provider** (Step 2's only real input): Google (gcal-sync) vs caldav host.~~ **Decided
+  2026-07-17b (operator): Google via gcal-sync.** `GCalSyncSource` maps the v3 event JSON; the
+  transport behind `list_events` is the injected driver, stood up at Step-3 wiring (OAuth +
+  envelope). `CalDavSource` stays in the module as the alternate driver.
 - **New invitations from others.** First-fetch treats every event as the acknowledged baseline.
   An event *created by someone else* (an invite) may warrant a one-word surface; needs
   organizer/attendee discrimination. Left as a Step-2 refinement.
@@ -383,8 +388,8 @@ Design: willow/design/willow-commitment-membrane.md · mirror of wake_gate.py ·
 """
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Callable, Optional
 
 from commitment_ledger import CalendarEvent
 
@@ -442,15 +447,77 @@ class CalDavSource:
 
 
 class GCalSyncSource:
-    """Placeholder for a Google-Calendar adapter (gcal-sync / local-store sync). Implement
-    against the same read-only fetch() contract and swap it in; the ledger does not change.
-    Not wired yet; raises so a premature swap fails loudly rather than silently no-ops."""
+    """Read-only CalendarSource over Google Calendar (Jarvis layer 2, Step 2).
 
-    def __init__(self, *args, **kwargs):
+    Maps Google Calendar API v3 `events` resources -> CalendarEvent against the SAME
+    read-only fetch() contract as CalDavSource; the ledger does not change. The transport
+    (the call returning v3 event dicts for a window) is an injected seam: pass `list_events`
+    for tests / a custom client. The default transport is deliberately UNWIRED here — it
+    raises, because the real gcal-sync path needs OAuth creds + an envelope and is stood up
+    at product-repo integration (Step 3), not in this skeleton.
+
+    Read-only by contract. A cancel/reschedule is a proposal routed through
+    CommitmentLedger.propose_action -> the SAFE gate, never a write from here. There is
+    deliberately no create/update/delete method to call.
+    """
+
+    def __init__(
+        self,
+        *,
+        calendar_id: str = "primary",
+        window_days: int = 14,
+        list_events: Optional[Callable[[datetime, datetime], list]] = None,
+        credentials_path: Optional[str] = None,
+    ):
+        self._calendar_id = calendar_id
+        self._window_days = window_days
+        self._credentials_path = credentials_path
+        self._list_events = list_events if list_events is not None else self._unwired_transport
+
+    @staticmethod
+    def _unwired_transport(start: datetime, end: datetime) -> list:
         raise NotImplementedError(
-            "Google Calendar adapter not wired — implement fetch() -> list[CalendarEvent]"
+            "gcal-sync transport is wired at product-repo integration (OAuth creds + "
+            "envelope). Inject list_events=<callable(start,end)->list[dict]> for the "
+            "skeleton and its tests."
         )
+
+    @staticmethod
+    def _parse_dt(node: Optional[dict]) -> Optional[datetime]:
+        # v3 start/end is {"dateTime": rfc3339} (timed) or {"date": "YYYY-MM-DD"} (all-day).
+        if not node:
+            return None
+        raw = node.get("dateTime")
+        if raw:
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"  # fromisoformat < py3.11 rejects a bare Z
+            return datetime.fromisoformat(raw)
+        raw = node.get("date")
+        if raw:
+            return datetime.fromisoformat(raw)  # naive midnight for all-day
+        return None
+
+    @classmethod
+    def _map(cls, ev: dict) -> CalendarEvent:
+        return CalendarEvent(
+            uid=str(ev.get("id", "")),
+            title=ev.get("summary", ""),
+            start=cls._parse_dt(ev.get("start")),
+            end=cls._parse_dt(ev.get("end")),
+            attendees=tuple(a.get("email", "") for a in ev.get("attendees", []) if a.get("email")),
+            body=ev.get("description", ""),
+            cancelled=(str(ev.get("status", "")).lower() == "cancelled"),
+        )
+
+    def fetch(self) -> list[CalendarEvent]:
+        start = datetime.utcnow()
+        end = start + timedelta(days=self._window_days)
+        return [self._map(ev) for ev in self._list_events(start, end)]
 ```
+
+Note: `Callable` and `timedelta` join the imports at the head of this module. The v3→
+`CalendarEvent` mapping is the whole of Step 2 and is verified offline (Appendix A.4);
+only the OAuth transport behind `list_events` remains, and it belongs to Step-3 wiring.
 
 ### A.3 — `test_commitment_ledger.py` (10 membrane-invariant tests, all passing)
 
@@ -618,6 +685,95 @@ class ReceiptHygieneWholeCycle(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 ```
+
+### A.4 — `test_calendar_source_gcal.py` (11 adapter-invariant tests, all passing)
+
+```python
+"""
+test_calendar_source_gcal.py — mapping invariants for GCalSyncSource (Jarvis layer 2, Step 2).
+
+Verifies the Google Calendar v3 event JSON -> CalendarEvent mapping offline: no network, no
+OAuth, no gcal-sync dep. Fixtures are the documented v3 `events` resource shape. The transport
+is exercised only through an injected `list_events`, so the whole suite runs on the documented
+JSON contract, not a live account.
+Run: python3 -m unittest test_calendar_source_gcal -v  →  11/11 pass (verified 2026-07-17b).
+"""
+from __future__ import annotations
+
+import unittest
+
+from calendar_source import GCalSyncSource
+
+# Google Calendar v3 `events` fixtures (documented resource shape).
+TIMED = {
+    "id": "abc123", "summary": "Schmidt grant sync", "status": "confirmed",
+    "start": {"dateTime": "2026-07-18T15:00:00-06:00"},
+    "end":   {"dateTime": "2026-07-18T15:30:00-06:00"},
+    "attendees": [{"email": "a@x.io"}, {"email": "b@y.org"}],
+    "description": "SENSITIVE body the ledger must drop",
+}
+ALLDAY = {"id": "d1", "summary": "Focus day", "status": "confirmed",
+          "start": {"date": "2026-07-20"}, "end": {"date": "2026-07-21"}}
+CANCELLED = {"id": "c1", "summary": "Dropped", "status": "cancelled",
+             "start": {"dateTime": "2026-07-19T09:00:00Z"}}
+ZULU = {"id": "z1", "summary": "UTC mtg", "status": "confirmed",
+        "start": {"dateTime": "2026-07-19T09:00:00Z"}}
+UNTITLED = {"id": "u1", "status": "confirmed", "start": {"dateTime": "2026-07-19T10:00:00-06:00"}}
+
+
+class TestGCalSyncSource(unittest.TestCase):
+    def test_timed_core_fact(self):
+        e = GCalSyncSource._map(TIMED)
+        self.assertEqual(e.uid, "abc123")
+        self.assertEqual(e.title, "Schmidt grant sync")
+        self.assertEqual(e.start.hour, 15)
+        self.assertFalse(e.cancelled)
+
+    def test_attendees_from_email(self):
+        self.assertEqual(GCalSyncSource._map(TIMED).attendees, ("a@x.io", "b@y.org"))
+
+    def test_body_read_but_is_ledgers_to_drop(self):
+        # the adapter carries body faithfully; receipt-not-recording is the LEDGER's job (mirror caldav)
+        self.assertIn("SENSITIVE", GCalSyncSource._map(TIMED).body)
+
+    def test_allday_date_only_parses(self):
+        e = GCalSyncSource._map(ALLDAY)
+        self.assertEqual((e.start.year, e.start.month, e.start.day), (2026, 7, 20))
+        self.assertEqual(e.start.hour, 0)
+
+    def test_cancelled_status(self):
+        self.assertTrue(GCalSyncSource._map(CANCELLED).cancelled)
+
+    def test_zulu_suffix_parses(self):
+        self.assertEqual(GCalSyncSource._map(ZULU).start.utcoffset().total_seconds(), 0)
+
+    def test_untitled_event(self):
+        self.assertEqual(GCalSyncSource._map(UNTITLED).title, "")
+
+    def test_no_attendees(self):
+        self.assertEqual(GCalSyncSource._map(ALLDAY).attendees, ())
+
+    def test_fetch_via_injected_transport_no_network(self):
+        src = GCalSyncSource(list_events=lambda s, e: [TIMED, ALLDAY, CANCELLED])
+        out = src.fetch()
+        self.assertEqual([c.uid for c in out], ["abc123", "d1", "c1"])
+        self.assertTrue(out[2].cancelled)
+
+    def test_read_only_no_mutation_methods(self):
+        for verb in ("create", "update", "delete", "insert", "patch", "write"):
+            self.assertFalse(hasattr(GCalSyncSource, verb), f"read-only violated: {verb}")
+
+    def test_default_transport_fails_loud_not_silent(self):
+        # an unconfigured default transport must raise on fetch(), never silently no-op
+        with self.assertRaises(NotImplementedError):
+            GCalSyncSource().fetch()
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
+```
+
+---
 
 *Appendix A is reference code promoted from a scratch prototype for durability, not an
 authorization to build in a product repo. ΔΣ=42*

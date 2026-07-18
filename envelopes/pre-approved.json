@@ -1,27 +1,27 @@
 {
   "schema": "envelope-registry/v1.1",
-  "description": "Pre-Approved Scope (Article III.2) — standing filesystem and network grants agents may invoke without a fresh Operator Key envelope. v1.1 adds the active-envelope schema and the proposals lane defined by envelopes/syscall-table.json.",
+  "description": "Pre-Approved Scope (Article III.2) \u2014 standing filesystem and network grants agents may invoke without a fresh Operator Key envelope. v1.1 adds the active-envelope schema and the proposals lane defined by envelopes/syscall-table.json.",
   "constitutional_ref": "CONST-III-2",
-  "updated": "2026-07-06",
+  "updated": "2026-07-16",
   "envelope_schema": {
     "version": "0.1",
     "status": "draft",
     "description": "Shape of an entry in active[]. An active envelope is a capability: root opened it once; each use is checked mechanically and cited in FRANK. proposals[] entries use the same shape with status=proposed and no force.",
     "fields": {
-      "id": "env-{verb}-{slug} — stable, citable, never reused",
-      "verb_id": "int — row id in envelopes/syscall-table.json",
-      "verb": "string — must equal the table row's verb name; mismatch with verb_id is a registry integrity fault, not a judgment call",
-      "grantee": "agent id from fleet.json (or list) — the process(es) holding the fd",
-      "bounds": "object — keys MUST be exactly the verb's bounds signature from the table: no missing keys, no extra keys. The checker validates call args field-by-field against these values. A bounds object that does not match its verb's signature makes the envelope VOID, not loosely interpretable.",
-      "issued_by": "root — always; envelope.issue is not grantable",
+      "id": "env-{verb}-{slug} \u2014 stable, citable, never reused",
+      "verb_id": "int \u2014 row id in envelopes/syscall-table.json",
+      "verb": "string \u2014 must equal the table row's verb name; mismatch with verb_id is a registry integrity fault, not a judgment call",
+      "grantee": "agent id from fleet.json (or list) \u2014 the process(es) holding the fd",
+      "bounds": "object \u2014 keys MUST be exactly the verb's bounds signature from the table: no missing keys, no extra keys. The checker validates call args field-by-field against these values. A bounds object that does not match its verb's signature makes the envelope VOID, not loosely interpretable.",
+      "issued_by": "root \u2014 always; envelope.issue is not grantable",
       "issued_at": "UTC date",
       "ratified_via": "how root's act is evidenced: pgp | in-session statement recorded in FRANK ledger entry <id> | commit signature",
-      "expires_at": "UTC date or null — null means until revoked, not forever",
-      "max_count": "int or null — null means unmetered",
-      "use_count_source": "always 'frank' — the count is DERIVED by counting envelope_citation entries in the ledger, never stored here; a stored counter is mutable state an agent could touch, a derived count is not",
-      "revoked": "object or absent — {at, by, reason}; revocation appends, never deletes (register discipline)",
+      "expires_at": "UTC date or null \u2014 null means until revoked, not forever",
+      "max_count": "int or null \u2014 null means unmetered",
+      "use_count_source": "always 'frank' \u2014 the count is DERIVED by counting envelope_citation entries in the ledger, never stored here; a stored counter is mutable state an agent could touch, a derived count is not",
+      "revoked": "object or absent \u2014 {at, by, reason}; revocation appends, never deletes (register discipline)",
       "status": "active | proposed | expired | exhausted | revoked",
-      "notes": "human context — NEVER read by the checker"
+      "notes": "human context \u2014 NEVER read by the checker"
     },
     "citation": {
       "description": "Every application writes a FRANK entry before the action executes.",
@@ -34,35 +34,42 @@
       "id": "reach-willow-root-rw",
       "grantee": "kart",
       "kind": "filesystem",
-      "paths": ["{{HOME}}/github/willow-2.0"],
+      "paths": [
+        "{{HOME}}/github/willow-2.0"
+      ],
       "mode": "rw",
       "enforced_by": "willow-2.0/willow/fylgja/config/kart-sandbox.json#bind_read_write",
       "issued_at": "2026-06-01",
       "expires_at": null,
-      "notes": "WILLOW_ROOT — primary dev tree"
+      "notes": "WILLOW_ROOT \u2014 primary dev tree"
     },
     {
       "id": "reach-github-willow-constitution-rw",
       "grantee": "kart",
       "kind": "filesystem",
-      "paths": ["{{HOME}}/github/willow"],
+      "paths": [
+        "{{HOME}}/github/willow"
+      ],
       "mode": "rw",
       "enforced_by": "willow-2.0/willow/fylgja/config/kart-sandbox.json#bind_try",
       "issued_at": "2026-07-06",
       "expires_at": null,
       "operator_authorized": true,
-      "notes": "Constitution repo — CONSTITUTION.md, AGENT_SERVICES.md, fleet roster, envelope registry"
+      "notes": "Constitution repo \u2014 CONSTITUTION.md, AGENT_SERVICES.md, fleet roster, envelope registry"
     },
     {
       "id": "reach-willow-home-rw",
       "grantee": "kart",
       "kind": "filesystem",
-      "paths": ["{{HOME}}/.willow", "{{HOME}}/github/.willow"],
+      "paths": [
+        "{{HOME}}/.willow",
+        "{{HOME}}/github/.willow"
+      ],
       "mode": "rw",
       "enforced_by": "willow-2.0/willow/fylgja/config/kart-sandbox.json#bind_read_write",
       "issued_at": "2026-06-01",
       "expires_at": null,
-      "notes": "Fleet home — handoffs, SOIL overlay, session state"
+      "notes": "Fleet home \u2014 handoffs, SOIL overlay, session state"
     }
   ],
   "active": [
@@ -81,7 +88,7 @@
       "max_count": null,
       "use_count_source": "frank",
       "status": "active",
-      "notes": "THE PLANTING — the envelope that licenses the orchestrator seat to exist. Grants willow (OPERATOR ring; verb 13 min_ring OPERATOR) the act of matching calls against this registry, citing envelopes, and routing faults per the errno table. Self-grounding by design: the seat's own authority sits in the same register, under the same law, as everyone else's. Unmetered and non-expiring because the seat is a standing office, but revocable like any envelope — revocation of this one entry shuts the seat down whole. Drafted by willow 2026-07-06 (session e2b05d0a) as a proposal; ratified and moved to active[] the same day by root (verb 12) — willow scribed the edit under the authority of the cited FRANK entry."
+      "notes": "THE PLANTING \u2014 the envelope that licenses the orchestrator seat to exist. Grants willow (OPERATOR ring; verb 13 min_ring OPERATOR) the act of matching calls against this registry, citing envelopes, and routing faults per the errno table. Self-grounding by design: the seat's own authority sits in the same register, under the same law, as everyone else's. Unmetered and non-expiring because the seat is a standing office, but revocable like any envelope \u2014 revocation of this one entry shuts the seat down whole. Drafted by willow 2026-07-06 (session e2b05d0a) as a proposal; ratified and moved to active[] the same day by root (verb 12) \u2014 willow scribed the edit under the authority of the cited FRANK entry."
     },
     {
       "id": "env-pr.merge-willow2-master",
@@ -96,11 +103,27 @@
       "issued_by": "root",
       "issued_at": "2026-07-06",
       "ratified_via": "in-session statement recorded in FRANK ledger entry 25eacc8c-e500-411f-939f-6700ffc50cc5",
-      "expires_at": "2026-08-06",
-      "max_count": 20,
+      "expires_at": "2026-09-06",
+      "max_count": 10,
       "use_count_source": "frank",
       "status": "active",
-      "notes": "First action envelope — the flagship Dual Commit case. Licenses willow to merge PRs into willow-2.0 master WHERE CI is green (requires_ci is checked against the PR's actual check state at merge time, never asserted from memory). Proposed values, root's to adjust at ratification: 20 merges, expiring 2026-08-06 (one month) — deliberately metered and expiring, unlike the planting, because merges are the salami-slicing surface the drift-budget design worries about; expiry forces a review cadence. Excluded by omission: force-anything (verb 3 force field, ungranted), foreign repos, non-master base branches — all EAMBIG/ENOENT faults. KNOWN SCHEMA DRIFT flagged for syscall-table 0.2: verb 5's bounds signature lists max_count/expires_at, but envelope-schema 0.1 hoisted those to envelope-level fields; this proposal follows the envelope schema (metering at envelope level, bounds carry repo/base_branch/requires_ci). Table signature should drop max_count/expires_at from bounds at next root edit — recorded here rather than edited there, because editing the table is verb 12, root only. FUTURE TIGHTENING (from ccfo audit, issue #211): requires_ci should become named check contexts from trusted actors, not just 'checks green' — adopt when the checker becomes code."
+      "notes": "First action envelope \u2014 the flagship Dual Commit case. Licenses willow to merge PRs into willow-2.0 master WHERE CI is green (requires_ci is checked against the PR's actual check state at merge time, never asserted from memory). Proposed values, root's to adjust at ratification: 20 merges, expiring 2026-08-06 (one month) \u2014 deliberately metered and expiring, unlike the planting, because merges are the salami-slicing surface the drift-budget design worries about; expiry forces a review cadence. Excluded by omission: force-anything (verb 3 force field, ungranted), foreign repos, non-master base branches \u2014 all EAMBIG/ENOENT faults. KNOWN SCHEMA DRIFT flagged for syscall-table 0.2: verb 5's bounds signature lists max_count/expires_at, but envelope-schema 0.1 hoisted those to envelope-level fields; this proposal follows the envelope schema (metering at envelope level, bounds carry repo/base_branch/requires_ci). Table signature should drop max_count/expires_at from bounds at next root edit \u2014 recorded here rather than edited there, because editing the table is verb 12, root only. FUTURE TIGHTENING (from ccfo audit, issue #211): requires_ci should become named check contexts from trusted actors, not just 'checks green' \u2014 adopt when the checker becomes code.",
+      "renewals": [
+        {
+          "at": "2026-07-16T18:25:51.441460+00:00",
+          "via_frank": "55b38e8c-cd03-46bc-ae0c-85c5578f5832",
+          "ratified_by": "root (in-session)",
+          "from": {
+            "max_count": 20,
+            "expires_at": "2026-08-06"
+          },
+          "to": {
+            "max_count": 10,
+            "expires_at": "2026-09-06"
+          },
+          "proposal": "prop-envelope-remeter-2026-08-06"
+        }
+      ]
     },
     {
       "id": "env-dispatch-fleet-sessions",
@@ -108,18 +131,275 @@
       "verb": "dispatch",
       "grantee": "willow",
       "bounds": {
-        "to_agents": ["heimdallr", "hanuman", "opus", "ada", "steve", "kart", "shiva", "ganesha", "skirnir", "loki", "vishwakarma", "jeles", "binder", "publius"],
-        "task_class": ["orchestrator-injection", "build-work-order", "verification-probe"]
+        "to_agents": [
+          "heimdallr",
+          "hanuman",
+          "opus",
+          "ada",
+          "steve",
+          "kart",
+          "shiva",
+          "ganesha",
+          "skirnir",
+          "loki",
+          "vishwakarma",
+          "jeles",
+          "binder",
+          "publius"
+        ],
+        "task_class": [
+          "orchestrator-injection",
+          "build-work-order",
+          "verification-probe"
+        ]
       },
       "issued_by": "root",
       "issued_at": "2026-07-06",
       "ratified_via": "in-session statement recorded in FRANK ledger entry 5ffec9f6-0661-475b-8d7c-f9089a14e012",
-      "expires_at": "2026-08-06",
-      "max_count": 40,
+      "expires_at": "2026-09-06",
+      "max_count": 20,
       "use_count_source": "frank",
       "status": "active",
-      "notes": "Dispatch grant for the orchestrator seat, earned by evidence: three console-resolved ENOENT dispatches on 2026-07-06 (FRANK d359b53f, 388e3f5c chain; results a6986a1a, 197488f8, 28187495) proved the lanes (claude-code, cursor) and the build loop (hanuman commit 17d3a84 citing its work order). Bounds follow verb 11's signature exactly: to_agents is the fleet.json roster minus willow itself and schmidt (sean/schmidt workspace is out of the seat's coordination scope); a call's task_class must be a member of the granted set. Three classes: orchestrator-injection (probes/continuity checks into resumed sessions), build-work-order (spec-out work the seat must not build itself — the magistrate-writes-no-code rule made operational), verification-probe (independent re-checks of reported work). Deliberately metered (40) and expiring same day as env-pr.merge-willow2-master (2026-08-06) so both grants come up for review together. Per verb 11's table note, authority does not widen in transit: a dispatched task carries this envelope's citation and the receiver's own calls check against it — dispatch is never a privilege laundry. Constraints living outside bounds (dispatcher's own law, not envelope fields): payloads are messages not shell, never skip-permissions, never into a live session, ledgered before execution. Drafted by willow 2026-07-06 (session e2b05d0a) as a proposal; ratified and moved to active[] 2026-07-06 by root ('ratify the draft', session 93f67a7b) — willow scribed the edit under the authority of the cited FRANK entry."
+      "notes": "Dispatch grant for the orchestrator seat, earned by evidence: three console-resolved ENOENT dispatches on 2026-07-06 (FRANK d359b53f, 388e3f5c chain; results a6986a1a, 197488f8, 28187495) proved the lanes (claude-code, cursor) and the build loop (hanuman commit 17d3a84 citing its work order). Bounds follow verb 11's signature exactly: to_agents is the fleet.json roster minus willow itself and schmidt (sean/schmidt workspace is out of the seat's coordination scope); a call's task_class must be a member of the granted set. Three classes: orchestrator-injection (probes/continuity checks into resumed sessions), build-work-order (spec-out work the seat must not build itself \u2014 the magistrate-writes-no-code rule made operational), verification-probe (independent re-checks of reported work). Deliberately metered (40) and expiring same day as env-pr.merge-willow2-master (2026-08-06) so both grants come up for review together. Per verb 11's table note, authority does not widen in transit: a dispatched task carries this envelope's citation and the receiver's own calls check against it \u2014 dispatch is never a privilege laundry. Constraints living outside bounds (dispatcher's own law, not envelope fields): payloads are messages not shell, never skip-permissions, never into a live session, ledgered before execution. Drafted by willow 2026-07-06 (session e2b05d0a) as a proposal; ratified and moved to active[] 2026-07-06 by root ('ratify the draft', session 93f67a7b) \u2014 willow scribed the edit under the authority of the cited FRANK entry.",
+      "renewals": [
+        {
+          "at": "2026-07-16T18:25:51.441460+00:00",
+          "via_frank": "55b38e8c-cd03-46bc-ae0c-85c5578f5832",
+          "ratified_by": "root (in-session)",
+          "from": {
+            "max_count": 40,
+            "expires_at": "2026-08-06"
+          },
+          "to": {
+            "max_count": 20,
+            "expires_at": "2026-09-06"
+          },
+          "proposal": "prop-envelope-remeter-2026-08-06"
+        }
+      ]
+    },
+    {
+      "id": "env-fs.write-willow-mcp",
+      "verb_id": 1,
+      "verb": "fs.write",
+      "grantee": [
+        "hanuman",
+        "kart"
+      ],
+      "bounds": {
+        "paths": [
+          "{{HOME}}/github/willow-mcp"
+        ],
+        "mode": "rw"
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-09",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry f7d38227-35d0-4896-9ecb-bc4f2124fa8a",
+      "expires_at": null,
+      "max_count": null,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Drafted by willow 2026-07-09 (session 8a85695f) under wo-membrane-checkable. THE GAP THIS CLOSES: {{HOME}}/github/willow-mcp is bound rw in kart-sandbox.json#bind_try (line 81) and has NO pre_approved[] entry. Every write to that repo is therefore verb 1 with no covering envelope \u2014 ENOENT, trap_to_console. This is the exact shape of the 2026-07-09 violation (FRANK 3298d088): the bind exists, the grant does not. Until root ratifies this, the work order's own Part B cannot be built without committing the violation Part A exists to eliminate. NOT A BLANKET FIX: this records ONE of ~44 paths bind_try grants without registry backing (see env-registry-reconciliation below). Ratifying this alone narrows the drift by one and leaves the shape intact. RATIFIED 2026-07-09 by root ('ratify, and ratify env-fs.write-willow-mcp', session 0c8cb80b); willow scribed the move under env-envelope.apply-planting (verb 13). Grantee NOT widened at ratification: willow is not a grantee, so willow's own 2026-07-09 writes to this repo (docs/BUGS.md, bundle/personas/willow.md) remain uncovered and rest on direct operator authorization (FRANK e4759e8b, fc5d3559)."
+    },
+    {
+      "id": "env-git.commit-willow-mcp",
+      "verb_id": 2,
+      "verb": "git.commit",
+      "grantee": "hanuman",
+      "bounds": {
+        "repo": "rudi193-cmd/willow-mcp",
+        "branches": [
+          "claude/*",
+          "fix/*",
+          "feat/*",
+          "docs/*"
+        ]
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-09",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry 270bc544-2a86-4a62-b9f2-58ebc40b53f4",
+      "expires_at": null,
+      "max_count": null,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Drafted by willow 2026-07-09. CORRECTION TO wo-membrane-checkable: that work order asserted 'no envelope in syscall-table.json defines a commit or pr.create verb at all \u2014 a commit in this fleet is uncheckable by construction.' FALSE. Verb 2 (git.commit) and verb 4 (pr.open) have existed since the table was ratified 2026-07-06. The work order searched for the names `commit`/`pr.create`, missed them, and inferred the capability was unexpressible. It is expressible and merely UNGRANTED: active[] holds three envelopes, over verbs 13, 5, 11 only. No new verbs are needed; the table does not change. Branch globs deliberately exclude master (master is protected by a GitHub ruleset requiring PR + green `test`). Unmetered because local history that never leaves the machine is cheap and reversible \u2014 leaving the box is verb 3, ungranted and not proposed here. RATIFIED 2026-07-09 by root ('ratify the proposals', session 0c8cb80b); willow scribed the move under env-envelope.apply-planting (verb 13). Grantee unchanged at ratification: hanuman. The seat added no authority to itself."
+    },
+    {
+      "id": "env-pr.open-willow-mcp",
+      "verb_id": 4,
+      "verb": "pr.open",
+      "grantee": "hanuman",
+      "bounds": {
+        "repo": "rudi193-cmd/willow-mcp",
+        "base_branches": [
+          "master"
+        ]
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-09",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry 270bc544-2a86-4a62-b9f2-58ebc40b53f4",
+      "expires_at": null,
+      "max_count": null,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Drafted by willow 2026-07-09. Sibling of env-git.commit-willow-mcp. Verb 4's table note: 'cheap and reversible; bounds exist mainly so pr.open cannot target foreign repos.' Deliberately NOT accompanied by a pr.merge proposal \u2014 merging willow-mcp master stays root's act, unlike willow-2.0 (env-pr.merge-willow2-master). Opening a PR asks; merging decides. RATIFIED 2026-07-09 by root ('ratify the proposals', session 0c8cb80b); willow scribed the move under env-envelope.apply-planting (verb 13). Grantee unchanged at ratification: hanuman. The seat added no authority to itself."
+    },
+    {
+      "id": "env-fs.write-kartikeya-migration",
+      "verb_id": 1,
+      "verb": "fs.write",
+      "grantee": "hanuman",
+      "bounds": {
+        "paths": [
+          "{{HOME}}/github/kartikeya"
+        ],
+        "mode": "rw"
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-17",
+      "ratified_via": "in-session implementation directive recorded in FRANK ledger entry 045ce21e-21e7-4aa3-9e3f-db701aea0d09",
+      "expires_at": "2026-09-17",
+      "max_count": null,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Bounded implementation grant for the ratified Willow-mcp migration cutover. Covers Kartikeya source, tests, and documentation required for signed per-task executor authorization and worker productionization. Does not grant release, push, merge, force, or modification of other repositories."
+    },
+    {
+      "id": "env-git.commit-kartikeya-migration",
+      "verb_id": 2,
+      "verb": "git.commit",
+      "grantee": "hanuman",
+      "bounds": {
+        "repo": "rudi193-cmd/kartikeya",
+        "branches": [
+          "feat/willow-mcp-*",
+          "fix/willow-mcp-*"
+        ]
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-17",
+      "ratified_via": "in-session implementation directive recorded in FRANK ledger entry 045ce21e-21e7-4aa3-9e3f-db701aea0d09",
+      "expires_at": "2026-09-17",
+      "max_count": 10,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Migration-only local commit authority. Master is excluded; push is a separate ungranted verb."
+    },
+    {
+      "id": "env-pr.open-kartikeya-migration",
+      "verb_id": 4,
+      "verb": "pr.open",
+      "grantee": "hanuman",
+      "bounds": {
+        "repo": "rudi193-cmd/kartikeya",
+        "base_branches": [
+          "master"
+        ]
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-17",
+      "ratified_via": "in-session implementation directive recorded in FRANK ledger entry 045ce21e-21e7-4aa3-9e3f-db701aea0d09",
+      "expires_at": "2026-09-17",
+      "max_count": 5,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Migration-only PR-open authority. No merge authority is granted."
+    },
+    {
+      "id": "env-fs.write-kart-fast-timeout",
+      "verb_id": 1,
+      "verb": "fs.write",
+      "grantee": "hanuman",
+      "bounds": {
+        "paths": [
+          "{{HOME}}/github/willow-2.0/core/kart_execute.py",
+          "{{HOME}}/github/willow-2.0/core/kart_lanes.py",
+          "{{HOME}}/github/willow-2.0/core/kart_worker.py",
+          "{{HOME}}/github/willow-2.0/core/kart_sandbox.py",
+          "{{HOME}}/github/willow-2.0/tests/test_kart_fast_timeout.py"
+        ],
+        "mode": "rw"
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-17",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry cecfa070-3e44-4c46-b88b-477a5d460e2b",
+      "expires_at": "2026-09-17",
+      "max_count": null,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Drafted by willow 2026-07-17 (session 0002f1e4) under design/kart-fast-lane-timeout.md. THE GAP THIS CLOSES: the 2026-07-16 fast-lane wedge (ledger e079281e) showed fast-lane Kart tasks run on the 1800s KART_DAEMON_TIMEOUT (kart_worker.py:325 calls _process_task_row context='daemon'; kart_execute.py:26-29) and that the timeout did not kill the runaway process tree — a hung fast task holds a slot until the 3600s reaper. Fix adds a lane-aware KART_FAST_TIMEOUT (default 300s) and makes the timeout lethal to the whole process group. This grant is NARROW BY PATH, not by directory: it lists the four core/ files the fix touches plus one new test file, not {{HOME}}/github/willow-2.0 broadly (that broad rw already exists as reach-willow-root-rw, granted to kart, not hanuman). RATIFIED 2026-07-17 by root ('ratify the proposals', session 0002f1e4); willow scribed the move to active[] under env-envelope.apply-planting (verb 13). Grantee unchanged: hanuman. The seat added no authority to itself."
+    },
+    {
+      "id": "env-git.commit-kart-fast-timeout",
+      "verb_id": 2,
+      "verb": "git.commit",
+      "grantee": "hanuman",
+      "bounds": {
+        "repo": "rudi193-cmd/willow-2.0",
+        "branches": [
+          "fix/kart-fast-lane-timeout"
+        ]
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-17",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry cecfa070-3e44-4c46-b88b-477a5d460e2b",
+      "expires_at": "2026-09-17",
+      "max_count": 10,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Drafted by willow 2026-07-17 (session 0002f1e4). Local commit authority for the kart-fast-lane-timeout fix, scoped to a single fix/ branch. Master is excluded (protected by the GitHub ruleset requiring PR + green test); merge stays the seat's existing env-pr.merge-willow2-master path, CI-gated. Push/force are separate ungranted verbs and are NOT requested here. Metered (10) and expiring 2026-09-17 to match the fs.write sibling. FIRST active git.commit grant for willow-2.0 — active[] previously held commit grants only for willow-mcp and kartikeya. RATIFIED 2026-07-17 by root ('ratify the proposals', session 0002f1e4) as a per-fix grant, NOT a standing willow-2.0 builder grant; willow scribed the move under env-envelope.apply-planting (verb 13). Grantee unchanged: hanuman."
+    },
+    {
+      "id": "env-pr.open-kart-fast-timeout",
+      "verb_id": 4,
+      "verb": "pr.open",
+      "grantee": "hanuman",
+      "bounds": {
+        "repo": "rudi193-cmd/willow-2.0",
+        "base_branches": [
+          "master"
+        ]
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-17",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry cecfa070-3e44-4c46-b88b-477a5d460e2b",
+      "expires_at": "2026-09-17",
+      "max_count": 3,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Drafted by willow 2026-07-17 (session 0002f1e4). Sibling of the two entries above. Opening a PR asks; merging decides — no merge authority is granted here (verb 5 stays root/env-pr.merge-willow2-master). Bounds follow verb 4's signature: base_branches limited to master so pr.open cannot target foreign repos or arbitrary bases. Metered (3) for the one fix and its revisions. RATIFIED 2026-07-17 by root ('ratify the proposals', session 0002f1e4); willow scribed the move under env-envelope.apply-planting (verb 13). Grantee unchanged: hanuman."
     }
   ],
-  "proposals": []
+  "proposals": [
+    {
+      "id": "env-registry-reconciliation",
+      "verb_id": 12,
+      "verb": "envelope.issue",
+      "grantee": "root",
+      "bounds": {},
+      "issued_by": "root",
+      "issued_at": null,
+      "ratified_via": null,
+      "expires_at": null,
+      "max_count": null,
+      "use_count_source": "frank",
+      "status": "proposed",
+      "notes": "NOT A GRANT REQUEST \u2014 a root work item, filed here because this registry is where it will be discharged and there is nowhere else it can be checked. Verb 12 is not grantable to any agent at any ring; willow drafts, root acts. THE FINDING (willow, 2026-07-09): pre_approved[] records THREE filesystem grants. kart-sandbox.json binds roughly FORTY-SEVEN paths (bind_read_only 7, bind_read_write 4, bind_try ~30, bind_try_read_only 10). The sandbox is strictly wider than the registry and is not derived from it. WORSE: kart-sandbox.json#_security_notes.github_ro is a PROSE STRING, inside the enforcement artifact, enumerating ~25 'operator-promoted RW' paths and citing 'operator decision 2026-07-07/08'. That is a second, shadow registry living in a comment field of the thing it authorizes. Nothing can check it. It is the purest instance of the failure this registry exists to prevent. SCHEMA FAULT: pre_approved[] entries do not conform to envelope_schema \u2014 which explicitly describes 'an entry in active[]'. They carry no verb_id, verb, bounds, issued_by, ratified_via, max_count, use_count_source, or status. They are standing grants in a shape nothing validates. ORDERING (this is why wo-membrane-checkable Part A cannot be built as written): a fail-closed generator that derives bind lists from pre_approved[] TODAY would shrink the sandbox from ~47 paths to 3 and be reverted within a day \u2014 which is how fail-closed checks die. Correct order: (1) root issues verb-1 envelopes covering what _security_notes currently holds in prose; (2) pre_approved[] entries become envelope-shaped (verb_id 1, bounds {paths, mode}); (3) THEN the generator, and CI refusing a sandbox wider than its registry. SUSPECTED FOURTH DRIFT, UNVERIFIED \u2014 reach-willow-home-rw grants rw on {{HOME}}/github/.willow and names bind_read_write as its enforcer, but bind_read_write lists only {{HOME}}/.willow. Either ~/.willow is a symlink to ~/github/.willow (benign) or the registry asserts an enforcement pointer that is false (registry wider than sandbox, the opposite direction). Needs one probe; willow could not run it this session."
+    },
+    {
+      "id": "env-admin-mode-attestation",
+      "verb_id": null,
+      "verb": null,
+      "grantee": null,
+      "bounds": null,
+      "issued_by": "root",
+      "issued_at": null,
+      "ratified_via": null,
+      "expires_at": null,
+      "max_count": null,
+      "use_count_source": "frank",
+      "status": "proposed",
+      "notes": "NOT A GRANT REQUEST - a root design decision, filed here because this registry is where it would be discharged and there is nowhere else it can be checked. Drafted by willow 2026-07-09 (session 0c8cb80b) at root's instruction. OPERATOR INTENT, VERBATIM (root, 2026-07-09): 'when I am working with the root Willow, and with that I mean in the local Willow folder with the Persona set as Willow, that grants users permission. it's the definition of admin mode.' THE INTENT IS SOUND: there must be an admin mode - a state in which the operator, present and deliberate, can authorize without ceremony. Today its absence is why root's verbal authorizations are recorded on FRANK but checkable by nothing. THE STATED MECHANISM IS NOT SAFE, AND THE SEAT WILL NOT DRAFT IT AS SPECIFIED. Both proposed conditions are settable by the agent they would empower: (1) 'in the local Willow folder' is a working directory. Any process may chdir. cwd is not an identity. (2) 'persona set as Willow' is a voice overlay. The picker banner states on every turn that persona does not change app_id, Grove sender, or SOIL namespace. Worse, the persona gate is cleared by writing /tmp/willow-persona-done-{agent}-{session}.flag - and the AGENT writes that file. willow did exactly that at 2026-07-09T12:05Z this session. The persona also flipped from Willow to Hanuman mid-session without operator action. Conjoined, the two conditions define admin mode as a state the model can enter by chdir plus a file write. That is privilege escalation by construction. IT IS ALSO THE EXACT HAZARD THE PRODUCT ALREADY GUARDS. willow-mcp/src/willow_mcp/human_session.py: 'The orchestrator (Willow) is always run by a human operator, never by a dispatched agent... the orchestrator becomes a privilege escalation target - whoever speaks as willow dispatches the fleet.' And the sudo invariant (FRANK 90e52ab7): 'a model may REQUEST egress, never CONFIRM it - request and confirm are separate authorities.' The stated proposal collapses request and confirm into one condition held by the requester. COUNTER-PROPOSAL, PRESERVING THE INTENT. Admin mode is a lease, not a location. Mirror the egress design that already works in this fleet: 'willow-mcp grant-net' issues a time-boxed operator lease, <=3h, and NO MCP TOOL CAN MINT ONE (see B-32 mitigation). Specify admin mode the same way:   1. A CLI, run by the human outside the model's reach: 'willow-mcp grant-admin --ttl 3h'.   2. It writes a lease under $WILLOW_HOME/mcp_apps/_admin_leases/, chowned to the operator and      bound read-only into the Kart sandbox, exactly as _net_leases is. No tool the model can call      may create, extend, or forge it. Note B-33: $WILLOW_HOME is currently bound_rw for every Kart      task and settings.global.json is writable from inside bwrap - the lease root MUST be hardened      before this is worth anything.   3. The seat checks the lease the way it checks any envelope: present and unexpired, or the act      is ENOENT. Admin mode becomes a citable authority, not an ambient condition.   4. Expiry is the point. An admin mode that does not end is not a mode, it is a permission.   5. Interim, until PGP session signatures land: WILLOW_HUMAN_ORCHESTRATOR=1 already gates      dispatch_send/verify_handoff/agent_clear and DOES fire (verified 2026-07-09, FRANK c4f7bec5).      It attests a workspace, not a person, and human-orchestrator.md says so. Do not widen reliance      on it; replace it. WHAT ADMIN MODE MUST NOT DO, in any form: it must not let the seat widen its own envelopes, add itself as a grantee, or issue verb 12. envelope.issue is root-only and non-grantable by design; an admin mode that grants it hands the model the pen that writes its own permissions. OPEN FOR ROOT: (a) accept the lease shape, or overrule and accept the cwd+persona shape knowing it is model-settable; (b) decide whether admin mode grants the seat commit/pr.open on willow-mcp, which is currently the live question - willow is NOT a grantee on env-fs.write-willow-mcp and its two writes to that repo today rest on verbal authorization alone (FRANK e4759e8b, fc5d3559); (c) B-33 and B-32 are prerequisites, not follow-ups: a lease in a sandbox-writable directory is a decoration."
+    }
+  ]
 }

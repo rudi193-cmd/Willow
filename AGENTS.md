@@ -40,21 +40,26 @@ let MCP unlock, then** run the project orient. The gate outranks ORIENT's advice
 
 ## Which MCP server for what
 
-Two willow servers are wired (plus `codebase-memory-mcp`):
+**Operator Jarvis seat (`~/github/willow`):** `willow-mcp` is the **first-priority** MCP
+server — the shipped product surface. Use it for all seat work unless a tool exists only
+on the legacy unified server during migration.
 
 | Server | Tools (`mcp__…__`) | Use for |
 |--------|--------------------|---------|
-| **`willow`** (unified, profile `core`) | `willow_*`, `soil_*`, `handoff_latest`, `ledger_*`, `grove_*`, `kb_*`, `mai_*` | **All seat work** — the ORIENT ritual, continuity, governance, dispatch |
-| **`willow-mcp`** (standalone) | store / kb / task / fleet (21 tools) | Exercising the standalone under migration |
+| **`willow-mcp`** (standalone, **first**) | `store_*`, `knowledge_*`, `task_*`, `dispatch_*`, `fleet_*`, `diagnostic_summary`, … | **All Jarvis seat work** — orient, continuity, governance, Kart triggers |
+| **`codebase-memory-mcp`** | graph code search | Code discovery across indexed repos |
+| **`willow`** (unified, legacy) | `willow_*`, `soil_*`, `grove_*`, `mai_*`, … | **Migration only** — not wired in this workspace by default |
 
-- **Both take `app_id="willow"`.** The standalone server's env names `willow-mcp`, but
-  there is **no `willow-mcp` manifest** — a call with `app_id="willow-mcp"` fails
-  permission resolution. Always pass `app_id="willow"`.
-- Use the **unified** server for boot/continuity. The standalone's
-  `kb_startup_continuity` returns empty (known `tags`-column gap, willow-mcp issue #20).
-- **Code search resolves to `willow-2.0`, not this folder.** `cbm_status` /
-  codebase-memory index the sibling code repo (this governance folder is markdown+JSON).
-  Expected — "search this repo" answers from `willow-2.0`.
+- **Always pass `app_id="willow"`** to willow-mcp tools. There is **no `willow-mcp`
+  manifest** — `app_id="willow-mcp"` fails permission resolution.
+- **Orchestrator host attestation:** this workspace MCP env sets
+  `WILLOW_HUMAN_ORCHESTRATOR=1` (required for `dispatch_send`, `verify_handoff`,
+  `agent_clear`). Specialist workspaces must omit it.
+- **Agent-agnostic wiring:** `.cursor/mcp.json`, `.mcp.json`, `.claude/settings.local.json`,
+  and `.codex/config.toml` are materialized by `./willow.sh project sync willow` from
+  `$WILLOW_HOME/mcp/projects.json` (run from `willow-2.0` dev engine).
+- **Code search** may resolve to indexed repos via `codebase-memory-mcp`; charter prose
+  in this folder is markdown + JSON, not the primary code index target.
 
 ## Local governance files (this repo)
 
@@ -92,9 +97,10 @@ Two willow servers are wired (plus `codebase-memory-mcp`):
 - `WILLOW_AGENT_NAME=willow` · `app_id=willow` · `WILLOW_PG_DB=willow_20`
 - `WILLOW_STORE_ROOT=~/github/willow/.willow/store`
 - `WILLOW_PROJECT_ROOT=~/github/willow` · `WILLOW_HANDOFF_PROJECT=willow`
-- MCP servers: `willow` (via `willow-2.0/sap/unified_mcp.sh`, profile `core`),
-  `willow-mcp` (standalone, `.willow/venvs/willow-mcp/bin/python -m willow_mcp`), and
-  `codebase-memory-mcp`.
+- MCP servers: **`willow-mcp`** (product venv:
+  `~/github/.willow/venvs/willow-mcp/bin/python -m willow_mcp`,
+  `WILLOW_HUMAN_ORCHESTRATOR=1`), and **`codebase-memory-mcp`**.
 
-Project `.cursor/mcp.json` must win over `~/.cursor/mcp.json`. If `soil_stats` shows
-hundreds of collections, the workspace MCP is not active — reload the window.
+Project `.cursor/mcp.json` must win over `~/.cursor/mcp.json`. Refresh wiring:
+`cd ~/github/willow-2.0 && ./willow.sh project sync willow`. If tool routing looks
+wrong, reload the IDE window.

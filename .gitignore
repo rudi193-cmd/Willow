@@ -1,0 +1,11 @@
+# Project-local Willow runtime (schema tracked under soil/ and .willow/project.json)
+.willow/store/
+.willow/store/**/*.db
+.willow/active-agent
+
+# Local IDE / operator overlays
+.cursor/settings.local.json
+.codex/
+
+# Envelope registry backups (never commit)
+envelopes/pre-approved.json.bak*

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "/home/sean-campbell/github/willow-2.0/willow/fylgja/bin/fleet-fylgja-hook cursor session_start",
+        "timeout": 15
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "/home/sean-campbell/github/willow-2.0/willow/fylgja/bin/fleet-fylgja-hook cursor prompt_submit",
+        "timeout": 10
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "/home/sean-campbell/github/willow-2.0/willow/fylgja/bin/fleet-fylgja-hook cursor pre_tool",
+        "timeout": 5
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "/home/sean-campbell/github/willow-2.0/willow/fylgja/bin/fleet-fylgja-hook cursor pre_tool",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": "/home/sean-campbell/github/willow-2.0/willow/fylgja/bin/fleet-fylgja-hook cursor stop",
+        "timeout": 30
+      }
+    ]
+  }
+}

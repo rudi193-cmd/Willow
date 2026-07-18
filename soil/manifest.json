@@ -1,0 +1,44 @@
+{
+  "schema": "soil-manifest/v1",
+  "project": "willow",
+  "store_root": ".willow/store",
+  "constitutional_ref": "fleet.json",
+  "updated": "2026-07-07",
+  "description": "Project-local SOIL for ~/github/willow. Separate from fleet-global ~/.willow/store and from agent willow/* runtime collections. Collections are created on first write.",
+  "offices": {
+    "governance": {
+      "question": "May we? Who witnessed it?",
+      "collections": {
+        "governance/proposals": "Envelope drafts and ratification queue (companion to envelopes/pre-approved.json proposals[])",
+        "governance/decisions": "Seat rulings and precedent (S4 — searchable decision log)",
+        "governance/flags": "Open governance shapes for this project — not fleet runtime flags"
+      }
+    },
+    "pm": {
+      "question": "What's in flight, by when, with what done-definition?",
+      "collections": {
+        "pm/portfolio": "Cross-repo threads (Schmidt, Die-Namic, py-chunk, charter ratification)",
+        "pm/work_orders": "Issued dispatch contracts with upfront verifiable claims (S3)",
+        "pm/milestones": "Dated deliverables, grant deadlines, envelope expiries"
+      }
+    },
+    "pa": {
+      "question": "What does the operator need, and when?",
+      "collections": {
+        "pa/commitments": "Calendar lane — due_at, kind, source, prep_bite (feeds willow_attention)",
+        "pa/briefs": "Call briefs, export checklists, paste-back intake stubs",
+        "pa/intake": "Parallel-channel recaps (Gemini, claude.ai) with provenance links"
+      }
+    }
+  },
+  "shared": {
+    "sessions": "Session metadata scoped to this project",
+    "stack": "Current focus stack for seat sessions in this repo"
+  },
+  "routing": {
+    "orient": "ORIENT.md",
+    "mcp_env": "WILLOW_STORE_ROOT={{HOME}}/github/willow/.willow/store",
+    "handoff_project": "willow",
+    "fleet_global_read": "Optional — kb_search, FRANK, handoffs remain fleet-global; this store holds project-operational state only"
+  }
+}

@@ -3,6 +3,8 @@
   "description": "Canonical fleet identity roster for the Willow constitution repo. Runtime SAFE manifests live in willow-2.0/core/safe_agents.py and must stay aligned.",
   "updated": "2026-07-06",
   "constitutional_ref": "CONST-I",
+  "soil_manifest": "soil/manifest.json",
+  "soil_store": ".willow/store",
   "agents": {
     "heimdallr": { "trust": "ENGINEER", "role": "Watchman, gatekeeper" },
     "hanuman": { "trust": "ENGINEER", "role": "Bridge-builder. Corpus indexer." },
