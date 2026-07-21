@@ -98,3 +98,22 @@ cd ~/github/willow/design/architecture/sandbox
 GITHUB_ROOT=~/github ./sandbox-smoke.sh
 cat LAST-RUN.md
 ```
+
+## Data-vault layout (`--vault` / `sandbox-vault-smoke.sh`)
+
+Drive notes (2026-07-21):
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Full smoke (fresh + reuse) | ok | Exit 0; Kart completes |
+| Secrets + SOIL in box | ok | `WILLOW_HOME == WILLOW_STORE_ROOT` at box root |
+| Postgres PGDATA in box | ok | `postgres/data/` via Docker volume; check via `docker exec` |
+| KB ingest + search | ok | After `schema_confirm_mapping(knowledge)` + manifest perms |
+| Empty `store/` subdir | friction | `willow-mcp-init` creates `store/` even when store root is the box — harmless |
+| `kart.db` at box root | friction | Pre-provisioned by blueprint; Postgres queue is authoritative when PG up |
+| Egress keys | unchanged | Still operator-global `~/.config/willow-mcp/egress/` |
+
+```bash
+GITHUB_ROOT=~/github ./sandbox-vault-smoke.sh --fresh
+cat LAST-RUN-VAULT.md
+```

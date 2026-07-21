@@ -8,6 +8,8 @@
 #   ./sandbox-smoke.sh
 #   ./sandbox-smoke.sh --skip-kart --skip-jeles
 #   ./sandbox-smoke.sh --fresh
+#   ./sandbox-smoke.sh --vault          # data-vault layout (PG + SOIL + secrets in box)
+#   ./sandbox-smoke.sh --vault --vault-external-pg  # vault box, PG outside box
 #   GITHUB_ROOT=~/github ./sandbox-smoke.sh
 #
 set -euo pipefail
@@ -15,16 +17,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GITHUB_ROOT="${GITHUB_ROOT:-$(cd "$SCRIPT_DIR/../../../.." && pwd)}"
 WILLOW_MCP_REPO="${WILLOW_MCP_REPO:-$GITHUB_ROOT/willow-mcp}"
-SANDBOX_ROOT="${SANDBOX_ROOT:-$SCRIPT_DIR/.sandbox}"
-REPORT="${REPORT:-$SCRIPT_DIR/LAST-RUN.md}"
-PG_CONTAINER="${PG_CONTAINER:-willow-sandbox-pg}"
-PG_PORT="${PG_PORT:-55432}"
+WILLOW_DATA_VAULT_REPO="${WILLOW_DATA_VAULT_REPO:-$GITHUB_ROOT/willow-data-vault}"
 
 SKIP_JELES=0
 SKIP_UTETY=0
 SKIP_KART=0
 SKIP_PG=0
 FRESH=0
+VAULT_LAYOUT=0
+PG_IN_BOX=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,10 +34,12 @@ while [[ $# -gt 0 ]]; do
     --skip-kart) SKIP_KART=1 ;;
     --skip-pg) SKIP_PG=1 ;;
     --fresh) FRESH=1 ;;
+    --vault) VAULT_LAYOUT=1 ;;
+    --vault-external-pg) VAULT_LAYOUT=1; PG_IN_BOX=0 ;;
     --github-root) GITHUB_ROOT="$2"; shift ;;
     --willow-mcp) WILLOW_MCP_REPO="$2"; shift ;;
     -h|--help)
-      sed -n '2,12p' "$0"
+      sed -n '2,14p' "$0"
       exit 0
       ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -47,20 +50,55 @@ done
 WILLOW_MCP_REPO="$(cd "$WILLOW_MCP_REPO" && pwd)"
 GITHUB_ROOT="$(cd "$GITHUB_ROOT" && pwd)"
 export WILLOW_MCP_REPO
-export WILLOW_HOME="$SANDBOX_ROOT/willow-home"
-export WILLOW_STORE_ROOT="$WILLOW_HOME/store"
+
+if [[ "$VAULT_LAYOUT" == "1" ]]; then
+  SANDBOX_ROOT="${SANDBOX_ROOT:-$SCRIPT_DIR/.sandbox-vault}"
+  VAULT_BOX="$SANDBOX_ROOT/data-vault"
+  export WILLOW_HOME="$VAULT_BOX"
+  export WILLOW_STORE_ROOT="$VAULT_BOX"
+  PG_CONTAINER="${PG_CONTAINER:-willow-sandbox-vault-pg}"
+  PG_PORT="${PG_PORT:-55433}"
+  REPORT="${REPORT:-$SCRIPT_DIR/LAST-RUN-VAULT.md}"
+  export WILLOW_APP_ID="${SANDBOX_APP_ID:-sandbox-vault-admin}"
+else
+  SANDBOX_ROOT="${SANDBOX_ROOT:-$SCRIPT_DIR/.sandbox}"
+  export WILLOW_HOME="$SANDBOX_ROOT/willow-home"
+  export WILLOW_STORE_ROOT="$WILLOW_HOME/store"
+  PG_CONTAINER="${PG_CONTAINER:-willow-sandbox-pg}"
+  PG_PORT="${PG_PORT:-55432}"
+  REPORT="${REPORT:-$SCRIPT_DIR/LAST-RUN.md}"
+  export WILLOW_APP_ID="${SANDBOX_APP_ID:-sandbox-admin}"
+fi
+
+if [[ "$VAULT_LAYOUT" == "1" ]]; then
+  if [[ "$PG_IN_BOX" == "1" ]]; then
+    LAYOUT_NAME="${LAYOUT_NAME:-vault-full}"
+  else
+    LAYOUT_NAME="${LAYOUT_NAME:-vault-external}"
+  fi
+else
+  LAYOUT_NAME="${LAYOUT_NAME:-hub}"
+fi
+export LAYOUT_NAME
+
 export WILLOW_PG_DB="willow_sandbox"
 export WILLOW_PG_USER="${WILLOW_PG_USER:-${USER:-sandbox}}"
-# Default smoke seat (schema_admin + task_queue + store_read). Override with SANDBOX_APP_ID.
-export WILLOW_APP_ID="${SANDBOX_APP_ID:-sandbox-admin}"
 # New-user isolation: do not inherit operator fleet roots into Kart mounts.
 unset WILLOW_ROOT
 KART_SANDBOX_TEMPLATE="${KART_SANDBOX_TEMPLATE:-$SCRIPT_DIR/kart-sandbox.json}"
 
 if [[ "$FRESH" == "1" ]]; then
-  [[ -d "$SANDBOX_ROOT/willow-home" ]] && rm -rf "$SANDBOX_ROOT/willow-home"
   if command -v docker >/dev/null 2>&1; then
     docker rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
+  fi
+  if [[ "$VAULT_LAYOUT" == "1" ]]; then
+    if [[ -d "$SANDBOX_ROOT/data-vault/postgres" ]]; then
+      docker run --rm -v "$SANDBOX_ROOT/data-vault/postgres:/pg" alpine \
+        sh -c 'rm -rf /pg/data' >/dev/null 2>&1 || true
+    fi
+    [[ -d "$SANDBOX_ROOT/data-vault" ]] && rm -rf "$SANDBOX_ROOT/data-vault"
+  else
+    [[ -d "$SANDBOX_ROOT/willow-home" ]] && rm -rf "$SANDBOX_ROOT/willow-home"
   fi
 fi
 
@@ -70,6 +108,15 @@ mkdir -p "$SANDBOX_ROOT"
 log() { printf '%s\n' "$*" | tee -a "$SANDBOX_ROOT/smoke.log"; }
 fail() { log "FAIL: $*"; exit 1; }
 pass() { log "PASS: $*"; }
+
+provision_vault_box() {
+  local prov="$WILLOW_DATA_VAULT_REPO/bootstrap/provision.sh"
+  [[ -f "$prov" ]] || fail "willow-data-vault not found at $WILLOW_DATA_VAULT_REPO"
+  log "vault: provisioning box at $VAULT_BOX (willow-data-vault blueprint)"
+  bash "$prov" "$VAULT_BOX" 2>&1 | tee -a "$SANDBOX_ROOT/smoke.log"
+  [[ -f "$VAULT_BOX/vault.key" ]] || log "WARN: vault.key not created — willow-mcp will mint on first use"
+  pass "data-vault box provisioned"
+}
 
 bwrap_preflight() {
   command -v bwrap >/dev/null 2>&1 || return 1
@@ -95,19 +142,29 @@ install_kart_sandbox_policy() {
 sandbox_env() {
   unset WILLOW_ROOT
   export WILLOW_HOME WILLOW_STORE_ROOT WILLOW_PG_DB WILLOW_PG_USER WILLOW_APP_ID
-  export KART_SANDBOX_CONFIG WILLOW_MCP_REPO="$WILLOW_MCP_REPO"
+  export KART_SANDBOX_CONFIG WILLOW_MCP_REPO="$WILLOW_MCP_REPO" PG_CONTAINER
   # rlimit preexec + bwrap namespaces can fail with EAGAIN on some hosts (no cgroup parent).
   export WILLOW_KART_NO_RLIMIT="${WILLOW_KART_NO_RLIMIT:-1}"
   [[ -n "${PGHOST:-}" ]] && export PGHOST PGPORT PGPASSWORD
 }
 
 log "=== willow new-user sandbox smoke ==="
+log "layout: $LAYOUT_NAME"
 log "time: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 log "sandbox: $SANDBOX_ROOT"
 log "willow-mcp: $WILLOW_MCP_REPO"
 log "github root: $GITHUB_ROOT"
 
 [[ -d "$WILLOW_MCP_REPO" ]] || fail "willow-mcp not found at $WILLOW_MCP_REPO"
+if [[ "$VAULT_LAYOUT" == "1" ]]; then
+  [[ -d "$WILLOW_DATA_VAULT_REPO" ]] || fail "willow-data-vault not found at $WILLOW_DATA_VAULT_REPO"
+fi
+
+if [[ "$VAULT_LAYOUT" == "1" ]]; then
+  log ""
+  log "-- data-vault provision --"
+  provision_vault_box
+fi
 
 VENV="$WILLOW_MCP_REPO/.venv"
 PY="$VENV/bin/python3"
@@ -149,14 +206,27 @@ if [[ "$SKIP_PG" == "0" ]] && command -v docker >/dev/null 2>&1; then
       && log "postgres: started existing $PG_CONTAINER" \
       || log "postgres: could not start $PG_CONTAINER"
   else
+    PG_VOL=()
+    if [[ "$VAULT_LAYOUT" == "1" && "$PG_IN_BOX" == "1" ]]; then
+      mkdir -p "$VAULT_BOX/postgres/data"
+      PG_VOL=(-v "$VAULT_BOX/postgres/data:/var/lib/postgresql/data")
+    fi
     if docker run -d --name "$PG_CONTAINER" \
         -e POSTGRES_USER="$WILLOW_PG_USER" \
         -e POSTGRES_PASSWORD=sandbox \
         -e POSTGRES_DB="$WILLOW_PG_DB" \
+        "${PG_VOL[@]}" \
         -p "127.0.0.1:${PG_PORT}:5432" \
         postgres:16-alpine >/dev/null 2>&1; then
       PG_MODE="docker"
-      log "postgres: created $PG_CONTAINER on 127.0.0.1:$PG_PORT"
+      if [[ "$VAULT_LAYOUT" == "1" && "$PG_IN_BOX" == "1" ]]; then
+        log "postgres: created $PG_CONTAINER (data in $VAULT_BOX/postgres/data) on 127.0.0.1:$PG_PORT"
+      elif [[ "$VAULT_LAYOUT" == "1" ]]; then
+        log "postgres: created $PG_CONTAINER (ephemeral, outside vault box) on 127.0.0.1:$PG_PORT"
+        PG_MODE="docker-external"
+      else
+        log "postgres: created $PG_CONTAINER on 127.0.0.1:$PG_PORT"
+      fi
     else
       log "postgres: docker start failed — falling back to local/best-effort"
     fi
@@ -214,10 +284,14 @@ pass "egress keys + consent baseline"
 
 # ── 2b. Sandbox admin manifest (schema confirm for Kart) ─────────────────────
 log ""
-log "-- sandbox-admin manifest --"
-mkdir -p "$WILLOW_HOME/mcp_apps/sandbox-admin"
-cp "$SCRIPT_DIR/sandbox-admin.manifest.json" "$WILLOW_HOME/mcp_apps/sandbox-admin/manifest.json"
-pass "sandbox-admin manifest"
+log "-- $WILLOW_APP_ID manifest --"
+mkdir -p "$WILLOW_HOME/mcp_apps/$WILLOW_APP_ID"
+MANIFEST_SRC="$SCRIPT_DIR/sandbox-admin.manifest.json"
+if [[ "$WILLOW_APP_ID" == "sandbox-vault-admin" ]]; then
+  MANIFEST_SRC="$SCRIPT_DIR/sandbox-vault-admin.manifest.json"
+fi
+cp "$MANIFEST_SRC" "$WILLOW_HOME/mcp_apps/$WILLOW_APP_ID/manifest.json"
+pass "$WILLOW_APP_ID manifest"
 
 # ── 2c. Kart mount policy (rendered new-user paths) ───────────────────────────
 log ""
@@ -264,6 +338,84 @@ assert "error" not in r, r
 PY
 pass "store_stats"
 
+# ── 4b. Data-plane probe (secrets + SOIL + optional PG-in-box + KB) ───────────
+DATA_PLANE_PROBE="${SMOKE_DATA_PLANE_PROBE:-$([[ "$VAULT_LAYOUT" == "1" ]] && echo 1 || echo 0)}"
+if [[ "$DATA_PLANE_PROBE" == "1" ]]; then
+  log ""
+  log "-- data plane probe --"
+  export PG_CONTAINER PG_IN_BOX LAYOUT_NAME
+  sandbox_env
+  "$PY" - <<PY 2>&1 | tee -a "$SANDBOX_ROOT/smoke.log" || fail "data plane probe"
+import json, os, subprocess
+from pathlib import Path
+from willow_mcp import server
+from willow_mcp.vault import default_vault
+
+home = Path(os.environ["WILLOW_HOME"])
+store_root = Path(os.environ["WILLOW_STORE_ROOT"])
+app_id = os.environ["WILLOW_APP_ID"]
+pg_container = os.environ.get("PG_CONTAINER", "")
+pg_in_box = os.environ.get("PG_IN_BOX", "1") == "1"
+layout = os.environ.get("LAYOUT_NAME", "unknown")
+
+vault = default_vault()
+vault.init()
+vault.write("sandbox.probe", f"smoke-ok-{layout}")
+assert vault.read("sandbox.probe") == f"smoke-ok-{layout}"
+assert (home / "vault.key").is_file(), "vault.key missing"
+assert (home / "vault.db").is_file(), "vault.db missing"
+print(json.dumps({
+    "layout": layout,
+    "vault_key": str(home / "vault.key"),
+    "vault_db": str(home / "vault.db"),
+    "store_root": str(store_root),
+}, indent=2))
+
+put = server.store_put(
+    app_id=app_id,
+    collection="sandbox_probe",
+    record_id=f"probe-{layout}",
+    record={"layout": layout, "probe": True},
+)
+print(json.dumps(put, indent=2))
+assert "error" not in put, put
+soil_db = store_root / "sandbox_probe" / "store.db"
+assert soil_db.is_file(), f"SOIL store missing: {soil_db}"
+print(json.dumps({"soil_db": str(soil_db)}, indent=2))
+
+pg_mount = home / "postgres" / "data"
+if layout.startswith("vault"):
+    if pg_in_box:
+        assert pg_mount.is_dir(), f"postgres mount dir missing: {pg_mount}"
+    else:
+        assert not (pg_mount / "PG_VERSION").exists(), "PGDATA should not live in vault box for vault-external"
+if pg_container:
+    r = subprocess.run(
+        ["docker", "exec", pg_container, "cat", "/var/lib/postgresql/data/PG_VERSION"],
+        capture_output=True, text=True, timeout=10,
+    )
+    assert r.returncode == 0 and r.stdout.strip(), f"PG_VERSION unreadable: {r.stderr}"
+    print(json.dumps({
+        "postgres_pgdata_in_box": pg_in_box and layout.startswith("vault"),
+        "postgres_pg_version": r.stdout.strip(),
+        "postgres_container": pg_container,
+    }, indent=2))
+
+kb_schema = server.schema_confirm_mapping(app_id=app_id, table="knowledge")
+print(json.dumps({"knowledge_schema": kb_schema.get("confirmed", kb_schema)}, indent=2))
+assert "error" not in kb_schema, kb_schema
+probe = f"layout-kb-probe-{layout}"
+ing = server.knowledge_ingest(app_id=app_id, content=probe, source="layout-drive", domain="sandbox")
+print(json.dumps({"knowledge_ingest": ing}, indent=2))
+assert "error" not in ing, ing
+search = server.knowledge_search(app_id=app_id, query=probe, limit=5)
+assert "error" not in search, search
+assert any(probe in str(r.get("content", "")) for r in search.get("results", [])), search
+print(json.dumps({"knowledge_search_count": len(search.get("results", []))}, indent=2))
+PY
+  pass "data plane: secrets + SOIL + KB"
+fi
+
 # ── 5. Kart (Postgres required) ───────────────────────────────────────────────
 KART_NOTE="skipped"
 if [[ "$SKIP_KART" == "1" ]]; then
@@ -272,9 +424,9 @@ else
   log ""
   log "-- kart --"
   SCHEMA_OUT=$("$PY" 2>&1 <<'PY'
-import json
+import json, os
 from willow_mcp import server
-r = server.schema_confirm_mapping(app_id="sandbox-admin", table="tasks")
+r = server.schema_confirm_mapping(app_id=os.environ["WILLOW_APP_ID"], table="tasks")
 print(json.dumps(r, indent=2))
 PY
 )
@@ -405,7 +557,10 @@ log "=== smoke complete ==="
   echo "# Sandbox smoke — LAST RUN"
   echo ""
   echo "- **UTC:** $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "- **Layout:** $LAYOUT_NAME"
   echo "- **Sandbox:** \`$SANDBOX_ROOT\`"
+  echo "- **WILLOW_HOME:** \`$WILLOW_HOME\`"
+  echo "- **WILLOW_STORE_ROOT:** \`$WILLOW_STORE_ROOT\`"
   echo "- **Postgres mode:** $PG_MODE (\`$WILLOW_PG_DB\`)"
   echo "- **Doctor verdict:** $DOCTOR_VERDICT"
   echo "- **Kart:** $KART_NOTE"

@@ -1,6 +1,6 @@
 # New-user sandbox — acceptance checklist
 
-Spec: [willow-new-user-draft.drawio](../willow-new-user-draft.drawio) (WORKING DRAFT 2026-07-20).
+Spec: [willow-new-user-draft.drawio](../willow-new-user-draft.drawio) + [willow-new-user-draft.png](../willow-new-user-draft.png) — **vault-full** (validated 2026-07-21).
 
 **Run on:** Cursor cloud agent or future persistent VM only. Do not run `sandbox-smoke.sh` on the operator T500 when memory is tight — review results in `LAST-RUN.md` instead.
 
@@ -13,9 +13,9 @@ Drive notes: [SANDBOX-FINDINGS.md](SANDBOX-FINDINGS.md)
 | A1 | You | Keys & approval | Smoke sets isolated `WILLOW_HOME`; egress keypair exists after `setup-egress` |
 | A2 | Your tools | (manual) | Cursor / CLI can point MCP at sandbox env printed by smoke |
 | A3 | Willow bench | Hub reachable | `diagnostic_summary` verdict is `ok` or `degraded` (not `broken`) |
-| A4 | willow-mcp hub | Home layout | `willow-mcp-init` creates `$WILLOW_HOME` with `mcp_apps/`, `store/`, config |
-| A5 | Hub → vault | Your data | `store_stats` succeeds (smoke seat has `store_read` only); Postgres schema applied when PG available |
-| A6 | Vault → computer | Hosted locally | `WILLOW_HOME` path is under sandbox `.sandbox/` (gitignored) |
+| A4 | willow-mcp hub | Home layout | `willow-mcp-init` on vault box; `mcp_apps/`, config inside `{user}-data-vault` |
+| A5 | Hub → vault | Your data | `store_stats` + SOIL + secrets + KB in vault box (`WILLOW_HOME == WILLOW_STORE_ROOT`) |
+| A6 | Vault → computer | Hosted locally | Vault directory under sandbox `.sandbox-vault/data-vault/` (gitignored); PGDATA at `postgres/data/` |
 
 ## Gate (SSH · PGP · egress)
 
@@ -41,6 +41,7 @@ Drive notes: [SANDBOX-FINDINGS.md](SANDBOX-FINDINGS.md)
 |----|---------------|-------|---------------|
 | S1 | SAFE catalog | Compile | `willow-mcp-compile --force` after init |
 | S2 | Pick at onboarding | (manual) | Operator/agent selects Jeles / UTETY toggles — smoke uses flags |
+| S3 | Open directly | (manual) | User can launch any installed SAFE app (Jeles, UTETY, …) without going through the Willow bench |
 | J1 | Jeles optional | Repo | `~/github/Jeles` exists with `docs/architecture.md` (or `--skip-jeles`) |
 | U1 | UTETY optional | Repo | `~/github/UTETY` exists with `utety/core/` (or `--skip-utety`) |
 
