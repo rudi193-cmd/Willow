@@ -45,6 +45,10 @@ willow-2.0 fylgja remains the **fleet harness** when `WILLOW_STORE_ROOT` points 
 | `schema-confirm.md` | `schema_confirm_mapping` human workflow |
 | `willow-serve.md` | Long-running hub |
 | `handoff-write.md` | Dispatch closeout |
+| `consent.md`, `worktree.md` | Egress consent; PR-only git |
+| `external-guard.md` | Web egress via `willow_web_*` |
+| `debugging.md`, `review.md`, `tdd.md`, `brainstorming.md` | Discipline workflows (S5) |
+| `persona-overlays.md` | Specialist voice + boundaries after `session_enter` (S6) |
 
 ### Personas — `bundle/personas/`
 
@@ -116,9 +120,9 @@ Ordered work units (each = bundle PR in `willow-mcp`, charter may link here):
 | **S2** | Add `consent.md`, `worktree.md` to bundle | **done** (willow-mcp migration PR) |
 | **S3** | Extend `handoff-write.md` with shutdown checklist | **done** (willow-mcp migration PR) |
 | **S4** | `pre_tool_use.py` — Bash→MCP redirect table (from fylgja routing, trimmed) | **done** (willow-mcp migration PR) |
-| **S5** | Port `debugging` / `review` / `tdd` / `brainstorming` |
-| **S6** | Slim persona overlay snippets (or pointers in `session-start`) |
-| **S7** | After web tools port: native web hook + `external-guard.md` |
+| **S5** | Port `debugging` / `review` / `tdd` / `brainstorming` | **done** |
+| **S6** | Slim persona overlay snippets (or pointers in `session-start`) | **done** |
+| **S7** | After web tools port: native web hook + `external-guard.md` | **done** (willow-mcp #122) |
 
 **Cross-repo:** tool ports (`willow_web_*`, `fork_*`) live in willow-mcp repo per [gap inventory](https://github.com/rudi193-cmd/willow-mcp/blob/master/docs/migrations/willow-2.0-gap-inventory.md); skills/hooks that depend on them wait.
 
@@ -166,4 +170,4 @@ Implementation: `willow-mcp/src/willow_mcp/bundle/skills/session-start.md` (will
 
 ---
 
-*Next step: S5 discipline skills, then `willow_web_*` port (unblocks S7).*
+*Hooks/skills import slices S0–S7 complete. Earn-first tool ports per gap inventory.*
