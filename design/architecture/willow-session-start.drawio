@@ -1,0 +1,175 @@
+<mxfile host="Electron" agent="willow">
+  <diagram id="willow-session-start" name="Willow — session start">
+    <mxGraphModel dx="1088" dy="649" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="legend" parent="1" style="text;html=1;fontSize=12;align=left;" value="&lt;b&gt;Willow session start&lt;/b&gt; — bundle skill session-start.md (2026-07-21)&lt;br&gt;Inference client replaceable · hooks optional · &lt;b&gt;Willow&lt;/b&gt; seat = human operator only (app_id=willow)" vertex="1">
+          <mxGeometry height="40" width="900" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="start" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" value="&lt;b&gt;Session open&lt;/b&gt;&lt;br&gt;MCP client connected" vertex="1">
+          <mxGeometry height="56" width="200" x="450" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="which" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" value="app_id?" vertex="1">
+          <mxGeometry height="72" width="120" x="490" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="willow_box" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;strokeWidth=2;fontSize=12;startSize=28;" value="&lt;b&gt;Willow seat&lt;/b&gt; — app_id=willow · WILLOW_HUMAN_ORCHESTRATOR=1" vertex="1">
+          <mxGeometry height="520" width="480" x="40" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="w1" parent="willow_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" value="&lt;b&gt;1. session_enter&lt;/b&gt;&lt;br&gt;human_orchestrator&lt;br&gt;never dispatch_id" vertex="1">
+          <mxGeometry height="56" width="200" x="20" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="w2" parent="willow_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" value="&lt;b&gt;2. diagnostic_summary&lt;/b&gt;" vertex="1">
+          <mxGeometry height="44" width="200" x="20" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="w2b" parent="willow_box" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="verdict?" vertex="1">
+          <mxGeometry height="56" width="100" x="250" y="104" as="geometry" />
+        </mxCell>
+        <mxCell id="w_stop" parent="willow_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontSize=11;" value="&lt;b&gt;STOP&lt;/b&gt;&lt;br&gt;report broken" vertex="1">
+          <mxGeometry height="44" width="110" x="340" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="w3" parent="willow_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" value="&lt;b&gt;3. dispatch_list&lt;/b&gt;&lt;br&gt;desk / packets" vertex="1">
+          <mxGeometry height="48" width="200" x="20" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="w4" parent="willow_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" value="&lt;b&gt;4. commitment_surface&lt;/b&gt;&lt;br&gt;worth attention now" vertex="1">
+          <mxGeometry height="48" width="200" x="20" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="charter" parent="willow_box" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=11;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;" value="&lt;b&gt;[charter home only] ORIENT 1–3&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;1&lt;/b&gt;&amp;nbsp;read CONSTITUTION and associated startup docs&lt;br&gt;&lt;b&gt;2&lt;/b&gt;&amp;nbsp;store_get stack/current · store_list pm/* · pa/commitments&lt;div&gt;3 kb_startup_continuity · handoff_read&lt;/div&gt;&lt;div&gt;4 read envelopes · AGENT_SERVICES · soil/manifest&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;Skip when vault-only / greenfield&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="120" width="420" x="20" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="w_work" parent="willow_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" value="&lt;b&gt;5. Work&lt;/b&gt;&lt;br&gt;user-driven mode&lt;br&gt;governance · pm · pa · dispatch · build" vertex="1">
+          <mxGeometry height="56" width="200" x="20" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="w_close" parent="willow_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" value="&lt;b&gt;6. session_handoff_write&lt;/b&gt;&lt;br&gt;not handoff_write_v4" vertex="1">
+          <mxGeometry height="48" width="200" x="240" y="444" as="geometry" />
+        </mxCell>
+        <mxCell id="ew1" edge="1" parent="willow_box" source="w1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="w2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ew2" edge="1" parent="willow_box" source="w2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="w2b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ew2b" edge="1" parent="willow_box" source="w2b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" target="w_stop" value="broken">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ew2c" edge="1" parent="willow_box" source="w2b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" target="w3" value="ok / degraded">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="300" y="204" />
+              <mxPoint x="120" y="204" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ew3" edge="1" parent="willow_box" source="w3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="w4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ew4" edge="1" parent="willow_box" source="w4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;dashed=1;" target="charter" value="if charter home">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ew4b" edge="1" parent="willow_box" source="w4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" target="w_work" value="vault only">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="300" y="264" />
+              <mxPoint x="300" y="468" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ew5" edge="1" parent="willow_box" source="charter" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="w_work">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ew6" edge="1" parent="willow_box" source="w_work" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="w_close">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="spec_box" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontSize=12;startSize=28;" value="&lt;b&gt;Specialist seat&lt;/b&gt; — hanuman · loki · jeles · …" vertex="1">
+          <mxGeometry height="320" width="400" x="580" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="s1" parent="spec_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" value="&lt;b&gt;1. session_enter&lt;/b&gt;&lt;br&gt;no WILLOW_HUMAN_ORCHESTRATOR" vertex="1">
+          <mxGeometry height="48" width="220" x="20" y="44" as="geometry" />
+        </mxCell>
+        <mxCell id="s_mode" parent="spec_box" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="dispatch_id?" vertex="1">
+          <mxGeometry height="64" width="110" x="260" y="36" as="geometry" />
+        </mxCell>
+        <mxCell id="s_human" parent="spec_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#9673a6;fontSize=11;" value="&lt;b&gt;human&lt;/b&gt;&lt;br&gt;work · context_save" vertex="1">
+          <mxGeometry height="48" width="160" x="20" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="s_dispatch" parent="spec_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#9673a6;fontSize=11;" value="&lt;b&gt;dispatch&lt;/b&gt;&lt;br&gt;read assignment.md" vertex="1">
+          <mxGeometry height="48" width="160" x="200" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="s_work" parent="spec_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" value="&lt;b&gt;2. Work&lt;/b&gt;&lt;br&gt;manifest permissions" vertex="1">
+          <mxGeometry height="44" width="200" x="20" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="s_close_h" parent="spec_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" value="&lt;b&gt;3a. session_handoff_write&lt;/b&gt;" vertex="1">
+          <mxGeometry height="44" width="180" x="20" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="s_close_d" parent="spec_box" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" value="&lt;b&gt;3b. handoff_write_v4&lt;/b&gt;" vertex="1">
+          <mxGeometry height="44" width="180" x="200" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="es1" edge="1" parent="spec_box" source="s1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="s_mode">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es2a" edge="1" parent="spec_box" source="s_mode" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" target="s_human" value="no">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es2b" edge="1" parent="spec_box" source="s_mode" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" target="s_dispatch" value="yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es3a" edge="1" parent="spec_box" source="s_human" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="s_work">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es3b" edge="1" parent="spec_box" source="s_dispatch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="s_work">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es4a" edge="1" parent="spec_box" source="s_work" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" target="s_close_h" value="human">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es4b" edge="1" parent="spec_box" source="s_work" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" target="s_close_d" value="dispatch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="end" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" value="&lt;b&gt;Session closed&lt;/b&gt;" vertex="1">
+          <mxGeometry height="48" width="160" x="470" y="820" as="geometry" />
+        </mxCell>
+        <mxCell id="note" parent="1" style="text;html=1;fontSize=11;align=left;fillColor=#f5f5f5;strokeColor=#666666;" value="&lt;b&gt;Refs&lt;/b&gt;&lt;br&gt;Skill: willow-mcp bundle/skills/session-start.md&lt;br&gt;Security: human-orchestrator.md · Dispatch: SESSION_FLOW.md&lt;br&gt;Charter depth: ORIENT.md steps 4–6" vertex="1">
+          <mxGeometry height="64" width="360" x="40" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="e0" edge="1" parent="1" source="start" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="which">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="which" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="w1" value="willow">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="280" y="186" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="which" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="s1" value="specialist">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="780" y="186" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_end_w" edge="1" parent="1" source="w_close" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="end">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="320" y="844" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_end_s1" edge="1" parent="1" source="s_close_h" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="end">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="680" y="844" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_end_s2" edge="1" parent="1" source="s_close_d" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="end">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="844" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

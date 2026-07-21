@@ -361,6 +361,7 @@ Kart bwrap **without** a network directive shares no network namespace — tasks
 | Session lifecycle design | `willow-mcp/docs/design/session-lifecycle.md` |
 | Operator session flow | `willow-mcp/docs/SESSION_FLOW.md` |
 | Exposure membrane (AS-8) | `willow-mcp/docs/design/agent-seed.md` §5 |
+| Hooks/skills import plan (Option A) | [willow-mcp-hooks-skills-import.md](willow-mcp-hooks-skills-import.md) |
 | Kart localhost vs net | `kartikeya` sandbox `allow_localhost` |
 | Sandbox smoke (vault-full) | [sandbox/sandbox-vault-smoke.sh](sandbox/sandbox-vault-smoke.sh) |
 | Layout comparison | [sandbox/SANDBOX-LAYOUTS.md](sandbox/SANDBOX-LAYOUTS.md) |
