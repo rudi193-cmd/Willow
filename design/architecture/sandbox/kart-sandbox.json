@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "description": "New-user sandbox mount policy (template). sandbox-smoke.sh renders paths at install time.",
+  "env_prefixes": ["WILLOW_", "PG", "POSTGRES", "GIT_", "XDG_"],
+  "credential_env_prefixes": [],
+  "bind_read_only": [
+    "/usr",
+    "/etc",
+    "/sys",
+    "__WILLOW_MCP_VENV__"
+  ],
+  "bind_read_write": [
+    "__WILLOW_HOME__",
+    "__GITHUB_WILLOW__",
+    "__GITHUB_WILLOW_MCP__"
+  ],
+  "bind_try": [
+    "__HOME_LOCAL__",
+    "/run/user",
+    "__XDG_RUNTIME_DIR__"
+  ],
+  "worktree_scan_roots": []
+}
