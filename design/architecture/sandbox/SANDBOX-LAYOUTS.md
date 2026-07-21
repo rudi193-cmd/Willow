@@ -1,6 +1,8 @@
-# Sandbox layout I/O — three models
+# Sandbox layout I/O
 
-Measured by `sandbox-layout-drive.sh` against acceptance criteria in [acceptance.md](acceptance.md).
+**Canonical model: [vault-full](#l2--vault-full-user-data-vault)** — validated by `sandbox-layout-drive.sh` (2026-07-21). User-facing diagram: [willow-new-user-draft.drawio](../willow-new-user-draft.drawio).
+
+Measured against acceptance criteria in [acceptance.md](acceptance.md).
 
 ## What we measure (every layout)
 
