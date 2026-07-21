@@ -133,7 +133,7 @@ Ordered work units (each = bundle PR in `willow-mcp`, charter may link here):
 | Lane at open | **No** — Willow acts in whatever mode the user requests (governance / pm / pa / dispatch) |
 | `commitment_surface` | **In** minimum Willow open (step 4) |
 | Naming | **Willow** — no Jarvis label in bundle skills |
-| ORIENT vs session-start | **Hybrid A** — charter ORIENT steps **1–3** inlined in `session-start.md` with willow-mcp verb map; `ORIENT.md` remains charter depth (steps 4–6, escalate rules) |
+| ORIENT vs session-start | **Hybrid A** — charter ORIENT steps **1–4** inlined in `session-start.md` (constitution first, then SOIL, continuity, grants); `ORIENT.md` remains charter depth (steps 5–6, escalate rules) |
 
 ### Willow open sequence (shipped in bundle)
 
