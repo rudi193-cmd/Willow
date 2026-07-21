@@ -1,5 +1,12 @@
 {
   "app_id": "sandbox-vault-admin",
-  "permissions": ["schema_admin", "task_queue", "store_read", "store_write"],
+  "permissions": [
+    "schema_admin",
+    "task_queue",
+    "store_read",
+    "store_write",
+    "knowledge_ingest",
+    "knowledge_search"
+  ],
   "store_scope": ["sandbox_*"]
 }

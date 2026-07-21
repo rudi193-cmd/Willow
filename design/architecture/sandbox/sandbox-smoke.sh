@@ -373,8 +373,26 @@ if pg_container:
     }, indent=2))
 else:
     raise SystemExit("PG_CONTAINER unset — vault layout expects docker postgres in-box")
+
+kb_schema = server.schema_confirm_mapping(app_id=app_id, table="knowledge")
+print(json.dumps({"knowledge_schema": kb_schema.get("confirmed", kb_schema)}, indent=2))
+assert "error" not in kb_schema, kb_schema
+probe = "vault-layout-kb-probe-unique-token"
+ing = server.knowledge_ingest(
+    app_id=app_id,
+    content=probe,
+    source="vault-smoke",
+    domain="sandbox",
+)
+print(json.dumps({"knowledge_ingest": ing}, indent=2))
+assert "error" not in ing, ing
+search = server.knowledge_search(app_id=app_id, query=probe, limit=5)
+print(json.dumps({"knowledge_search_count": len(search.get("results", []))}, indent=2))
+assert "error" not in search, search
+assert any(probe in str(r.get("content", "")) for r in search.get("results", [])), search
 PY
   pass "secrets vault + SOIL inside data-vault box"
+  pass "postgres KB ingest + search inside vault box"
 fi
 
 # ── 5. Kart (Postgres required) ───────────────────────────────────────────────
