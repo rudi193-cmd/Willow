@@ -10,6 +10,7 @@ Clone or mount alongside each other:
 |------|------|
 | willow (charter + this harness) | `~/github/willow` |
 | willow-mcp | `~/github/willow-mcp` |
+| willow-data-vault (vault layout) | `~/github/willow-data-vault` |
 | Jeles (optional check) | `~/github/Jeles` |
 | UTETY (optional check) | `~/github/UTETY` |
 
@@ -25,6 +26,18 @@ GITHUB_ROOT=~/github ./sandbox-smoke.sh
 If Postgres via Docker fails, retry with: ./sandbox-smoke.sh --skip-kart
 Paste the full contents of LAST-RUN.md when done.
 ```
+
+## Data-vault layout (Postgres + SOIL + secrets in the box)
+
+Uses `willow-data-vault/bootstrap/provision.sh` per the blueprint README — `WILLOW_HOME == WILLOW_STORE_ROOT` at `.sandbox-vault/data-vault/`, Postgres PGDATA at `postgres/data/` inside the box.
+
+```bash
+cd ~/github/willow/design/architecture/sandbox
+GITHUB_ROOT=~/github ./sandbox-vault-smoke.sh --fresh
+# or: ./sandbox-smoke.sh --vault --fresh
+```
+
+Report: `LAST-RUN-VAULT.md`
 
 ## Environment (agent sets automatically)
 

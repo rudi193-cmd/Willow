@@ -1,0 +1,5 @@
+{
+  "app_id": "sandbox-vault-admin",
+  "permissions": ["schema_admin", "task_queue", "store_read", "store_write"],
+  "store_scope": ["sandbox_*"]
+}
