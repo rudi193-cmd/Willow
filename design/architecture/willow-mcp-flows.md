@@ -4,6 +4,46 @@ MCP-only I/O: no Willow bench, SAFE store, or optional app repos. For the full n
 
 **Validated layout:** vault-full (`WILLOW_HOME == WILLOW_STORE_ROOT`) — see [sandbox/SANDBOX-LAYOUTS.md](sandbox/SANDBOX-LAYOUTS.md).
 
+**Inference vs tools:** willow-mcp is the **tool plane** (memory, dispatch, Kart, gate). The **inference client** that calls it (Cursor, Claude Code, Discord bridge, or a large local model on the same machine) is replaceable and sits outside the hub.
+
+---
+
+## 0. Inference client (replaceable)
+
+The MCP client and the model that reasons are one seat from the operator's view, but architecturally they are **not** willow-mcp. Any host that speaks MCP can drive the same hub.
+
+```mermaid
+flowchart TB
+  YOU[You]
+  subgraph client["Inference client — pick one"]
+    CLOUD[Cursor · Claude Code · cloud API]
+    LOCAL[Local host · Ollama · LM Studio · open-weight model]
+  end
+  subgraph hub["willow-mcp tool plane"]
+    MCP[stdio or serve on 127.0.0.1]
+  end
+  subgraph box["$WILLOW_HOME / vault"]
+    DATA[(SOIL · KB · dispatch)]
+  end
+  subgraph local_infer["Local models on your computer"]
+    OLL[Ollama :11434 infer + embed]
+  end
+
+  YOU --> client
+  client -->|MCP tool calls + app_id| MCP
+  MCP --> DATA
+  LOCAL -.->|same machine| OLL
+  CLOUD -.->|optional cloud LLM| client
+```
+
+| Client shape | Typical stack | Notes |
+|--------------|---------------|-------|
+| **Cloud IDE** | Cursor / Claude Code → vendor API | Default onboarding picture; needs `consent.cloud_llm` if the vendor is off-machine. |
+| **Local-first** | Open WebUI / Continue / custom agent → `localhost:11434` | Same MCP config pointing at `willow-mcp`; reasoning never leaves the box. |
+| **Hybrid** | Local model for chat, willow-mcp for tools | Common on a workstation with Ollama + vault; hub stays local regardless. |
+
+`willow-mcp serve` binds **127.0.0.1** by default — the tool plane is localhost-hard even when the inference client uses a cloud model.
+
 ---
 
 ## 1. MCP tool request (every call)
@@ -12,11 +52,11 @@ How a single MCP tool invocation moves through the hub.
 
 ```mermaid
 flowchart LR
-  subgraph client["MCP client"]
-    IDE[Cursor · Claude Code · …]
+  subgraph client["MCP client + inference replaceable"]
+    IDE[Cursor · Claude · local LLM host · …]
   end
   subgraph hub["willow-mcp"]
-    SRV[stdio / serve]
+    SRV[stdio / serve 127.0.0.1]
     GATE[gate.py — manifest ACL]
     HND[tool handler]
   end
@@ -45,10 +85,12 @@ flowchart LR
 
 | Step | What happens |
 |------|----------------|
-| 1 | Client sends tool name + `app_id` (matches manifest seat). |
+| 1 | Inference client sends tool name + `app_id` (matches manifest seat). |
 | 2 | Gate loads `mcp_apps/<app_id>/manifest.json` permissions. |
 | 3 | Handler reads/writes SOIL, secrets, or Postgres as allowed. |
 | 4 | Response passes through redaction funnel before return. |
+
+The client performs chat/reasoning; willow-mcp performs **authorized I/O** only.
 
 ---
 
@@ -186,7 +228,7 @@ Standalone fallback: SQLite knowledge paths under `$WILLOW_HOME/knowledge/` when
 
 ## 6. Kart task queue (`task_*`)
 
-Shell work runs out-of-process in bwrap; hub owns the queue.
+Shell work runs out-of-process in bwrap; hub owns the queue. Network is **off** unless explicitly granted (`allow_localhost` for loopback/Ollama, or `allow_net` for internet — see §7 and §9).
 
 ```mermaid
 flowchart TB
@@ -195,12 +237,14 @@ flowchart TB
   WRK[willow-mcp worker --lane fast --once]
   KART[Kartikeya bwrap sandbox]
   VAULT["WILLOW_HOME bind rw"]
+  OLL[Ollama :11434 optional]
   RES[task_status / result]
 
   SUB -->|manifest task_queue| Q
   WRK -->|claim| Q
   WRK --> KART
   KART --> VAULT
+  KART -.->|allow_localhost only| OLL
   KART -->|stdout| RES
   Q --> RES
 ```
@@ -236,6 +280,8 @@ flowchart TD
 
 Egress keypair lives outside the vault: `~/.config/willow-mcp/egress/` (operator-global by design).
 
+For **localhost-only** tasks (Ollama, local APIs), use `# allow_localhost` — see §9.
+
 ---
 
 ## 8. Hub ↔ vault boundary (vault-full)
@@ -268,11 +314,53 @@ Provision: `willow-mcp-init` + optional `willow-data-vault/bootstrap/provision.s
 
 ---
 
+## 9. Hard routing to local models
+
+Default posture: **local-first, cloud by explicit consent**. Three lanes keep inference and egress on-machine unless the operator escalates.
+
+```mermaid
+flowchart TB
+  subgraph posture["Standing defaults fail-closed"]
+    INIT["willow-mcp-init: consent.cloud_llm = false"]
+    EXP["exposure.json: cloud_llm → voice_only"]
+    BIND["serve binds 127.0.0.1"]
+  end
+  subgraph hub_tools["Hub-initiated local inference"]
+    NEST["nest_scan use_embed / use_llm"]
+    OLL["Ollama localhost:11434"]
+    OFF["regex / offline fallback"]
+    NEST -->|hard route| OLL
+    OLL -->|daemon down| OFF
+  end
+  subgraph kart_net["Kart network modes mutually exclusive"]
+    LH["task_submit allow_localhost=true"]
+    NET["task_submit allow_net=true"]
+    LOOP["loopback only e.g. :11434"]
+    WAN["internet after 3-key gate §7"]
+    LH --> LOOP
+    NET --> WAN
+  end
+```
+
+| Lane | Mechanism | Reaches |
+|------|-----------|---------|
+| **Inference client** | Operator runs local LLM host instead of Cursor/Claude | Chat/reasoning stays on box; same MCP tools |
+| **Hub tools** | `nest/llm.py`, `nest/embed.py` → `OLLAMA_HOST` default `http://localhost:11434` | Embeddings/classification; no cloud path in code |
+| **Kart localhost** | `# allow_localhost` + `grant-net --localhost` | Host loopback (typical: Ollama, local HTTP APIs) |
+| **Kart internet** | `# allow_net` + consent + lease + signature | Outside world — never the default |
+| **Exposure membrane** | `exposure_slice(..., destination=cloud_llm)` | Even when a cloud client is used, seed fields are sliced to `voice_only` unless widened |
+
+Kart bwrap **without** a network directive shares no network namespace — tasks cannot reach Ollama until `allow_localhost` is explicitly granted (same gate family as `allow_net`, localhost-only scope).
+
+---
+
 ## Related docs
 
 | Doc | Location |
 |-----|----------|
 | Session lifecycle design | `willow-mcp/docs/design/session-lifecycle.md` |
 | Operator session flow | `willow-mcp/docs/SESSION_FLOW.md` |
+| Exposure membrane (AS-8) | `willow-mcp/docs/design/agent-seed.md` §5 |
+| Kart localhost vs net | `kartikeya` sandbox `allow_localhost` |
 | Sandbox smoke (vault-full) | [sandbox/sandbox-vault-smoke.sh](sandbox/sandbox-vault-smoke.sh) |
 | Layout comparison | [sandbox/SANDBOX-LAYOUTS.md](sandbox/SANDBOX-LAYOUTS.md) |
