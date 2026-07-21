@@ -112,7 +112,7 @@ Ordered work units (each = bundle PR in `willow-mcp`, charter may link here):
 | Slice | Deliverable |
 |-------|-------------|
 | **S0** | This doc ratified; `session-start.md` design closed (§6) |
-| **S1** | Rewrite `session-start.md` + sync `skills/session-start.md` at repo root |
+| **S1** | Rewrite `session-start.md` + sync `skills/session-start.md` at repo root | **done** (willow-mcp bundle, pending PR) |
 | **S2** | Add `consent.md`, `worktree.md` to bundle |
 | **S3** | Extend `handoff-write.md` with shutdown checklist |
 | **S4** | `pre_tool_use.py` — Bash→MCP redirect table (from fylgja routing, trimmed) |
@@ -124,54 +124,32 @@ Ordered work units (each = bundle PR in `willow-mcp`, charter may link here):
 
 ---
 
-## 6. `session-start` — open design (discussion)
+## 6. `session-start` — design (ratified 2026-07-21)
 
-**Current bundle text** (`willow-mcp/.../skills/session-start.md`) covers:
+**Willow = operator seat** (merged Jarvis intent; product name is **Willow** only in skills).
 
-- First call: `session_enter(app_id, session_id, dispatch_id="")`
-- Orchestrator (`willow`) vs specialist entry modes
-- Closeout tool per mode (`session_handoff_write` vs `handoff_write_v4`)
+| Decision | Choice |
+|----------|--------|
+| Lane at open | **No** — Willow acts in whatever mode the user requests (governance / pm / pa / dispatch) |
+| `commitment_surface` | **In** minimum Willow open (step 4) |
+| Naming | **Willow** — no Jarvis label in bundle skills |
+| ORIENT vs session-start | **Hybrid A** — charter ORIENT steps **1–3** inlined in `session-start.md` with willow-mcp verb map; `ORIENT.md` remains charter depth (steps 4–6, escalate rules) |
 
-**What fylgja `boot.md` + `mcp-first.md` added (fleet)** — for comparison only:
+### Willow open sequence (shipped in bundle)
 
-| Fleet behavior | willow-mcp replacement? |
-|----------------|-------------------------|
-| SessionStart hook injects hardware, status, corrections | **No hook** — `diagnostic_summary` in skill? |
-| `boot_digest` + MCP inventory | `session_enter` return + `whoami`? |
-| `handoff_latest` continuity | `handoff_read` / `kb_startup_continuity`? |
-| 3-phase boot (persona → fleet → work) | **Rejected** — single `session_enter` |
-| Postgres down = hard stop | Skill says check `diagnostic_summary` verdict |
-| Persona picker on turn 1 | **TBD** — manifest `app_id` is fixed per MCP config |
-| Parallel boot calls table | **TBD** — what must run besides `session_enter`? |
+1. `session_enter("willow", …)`
+2. `diagnostic_summary`
+3. `dispatch_list`
+4. `commitment_surface`
+5. **[charter]** ORIENT 1–3 (store stack/portfolio/milestones/commitments, continuity, read constitution/grants/services/manifest)
+6. Work as user directs
+7. `session_handoff_write`
 
-### Questions to settle (talk track)
+Implementation: `willow-mcp/src/willow_mcp/bundle/skills/session-start.md` (not yet on master until willow-mcp PR).
 
-1. **Minimum parallel calls** — Is `session_enter` alone sufficient, or does every session also require `diagnostic_summary` + `whoami` before first user-facing reply?
+### Superseded open questions
 
-2. **What `session_enter` must return** — Should the skill mandate reading `assignment.md` from the tool response for dispatch mode only, or always list `entry_mode`, active `dispatch_id`, and suggested next tools?
-
-3. **Orchestrator desk** — For `app_id=willow`, should the skill script `dispatch_list(status=pending)` immediately after enter, or only on operator request?
-
-4. **Exposure / seed** — Does session open include `exposure_config_get` or `agent_seed_mirror` for specialists, or is that dispatch-only / earn-first?
-
-5. **Local-first default** — Should session-start explicitly say: inference client may be cloud IDE **or** local Ollama host; either way call `session_enter` first (ties to [willow-mcp-flows.md §0](willow-mcp-flows.md))?
-
-6. **Failure posture** — If `diagnostic_summary` is `degraded` vs `broken`, does the skill allow work, block, or branch (e.g. SOIL-only mode)? Sandbox accepts `ok` or `degraded`.
-
-7. **Client without hooks** — Skill must stand alone for Cursor users who only wire MCP stdio and never install Claude `pre_tool_use` hook. Confirm wording: “hooks optional; skill mandatory.”
-
-8. **Persona** — Load `personas/<role>.md` from bundle after enter, or rely on MCP config + `session_enter` only?
-
-### Draft skeleton (not ratified)
-
-```
-1. session_enter(app_id, session_id, dispatch_id="")
-2. If dispatch: read assignment from response; do not improvise scope
-3. diagnostic_summary — if broken, stop and report; if degraded, note gaps
-4. [TBD] whoami / dispatch_list / kb_startup_continuity
-5. Work (MCP tools only for fleet stores — see mcp-first doctrine, rewritten)
-6. Close: session_handoff_write | handoff_write_v4 per entry_mode
-```
+~~Minimum parallel calls~~ → table above. ~~Lane pick~~ → user-driven. ~~Jarvis naming~~ → Willow only.
 
 ---
 
