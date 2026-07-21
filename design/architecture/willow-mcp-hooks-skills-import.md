@@ -1,6 +1,6 @@
 # willow-mcp — hooks & skills import from willow-2.0
 
-**Status:** DRAFT — 2026-07-21  
+**Status:** RATIFIED — 2026-07-21 (Option A); slices S1–S4 shipped in willow-mcp  
 **Posture:** **Option A — thin product** (agreed operator direction)  
 **Companion:** [willow-mcp-flows.md](willow-mcp-flows.md) · [willow-mcp gap inventory](https://github.com/rudi193-cmd/willow-mcp/blob/master/docs/migrations/willow-2.0-gap-inventory.md) · `willow-mcp/docs/design/hooks-and-skills.md`
 
@@ -112,10 +112,10 @@ Ordered work units (each = bundle PR in `willow-mcp`, charter may link here):
 | Slice | Deliverable |
 |-------|-------------|
 | **S0** | This doc ratified; `session-start.md` design closed (§6) |
-| **S1** | Rewrite `session-start.md` + sync `skills/session-start.md` at repo root | **done** (willow-mcp bundle, pending PR) |
-| **S2** | Add `consent.md`, `worktree.md` to bundle |
-| **S3** | Extend `handoff-write.md` with shutdown checklist |
-| **S4** | `pre_tool_use.py` — Bash→MCP redirect table (from fylgja routing, trimmed) |
+| **S1** | Rewrite `session-start.md` + sync `skills/session-start.md` at repo root | **done** (willow-mcp #120) |
+| **S2** | Add `consent.md`, `worktree.md` to bundle | **done** (willow-mcp migration PR) |
+| **S3** | Extend `handoff-write.md` with shutdown checklist | **done** (willow-mcp migration PR) |
+| **S4** | `pre_tool_use.py` — Bash→MCP redirect table (from fylgja routing, trimmed) | **done** (willow-mcp migration PR) |
 | **S5** | Port `debugging` / `review` / `tdd` / `brainstorming` |
 | **S6** | Slim persona overlay snippets (or pointers in `session-start`) |
 | **S7** | After web tools port: native web hook + `external-guard.md` |
@@ -145,7 +145,7 @@ Ordered work units (each = bundle PR in `willow-mcp`, charter may link here):
 6. Work as user directs
 7. `session_handoff_write`
 
-Implementation: `willow-mcp/src/willow_mcp/bundle/skills/session-start.md` (not yet on master until willow-mcp PR). Diagram: [willow-session-start.drawio](willow-session-start.drawio).
+Implementation: `willow-mcp/src/willow_mcp/bundle/skills/session-start.md` (willow-mcp #120). Diagram: [willow-session-start.drawio](willow-session-start.drawio).
 
 ### Superseded open questions
 
@@ -166,4 +166,4 @@ Implementation: `willow-mcp/src/willow_mcp/bundle/skills/session-start.md` (not 
 
 ---
 
-*Next step: close §6 questions, then implement S1 in willow-mcp bundle.*
+*Next step: S5 discipline skills, then `willow_web_*` port (unblocks S7).*
