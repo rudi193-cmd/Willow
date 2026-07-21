@@ -17,35 +17,26 @@ Driven via `sandbox-smoke.sh` on this host. Exit 0; Kart worker did not complete
 
 ## What breaks (or degrades)
 
-### 1. Kart worker — bwrap namespace failure (hard on this host)
+### 1. Kart worker — bwrap + rlimit preexec (fixed in smoke)
 
 ```
 bwrap: Creating new namespace failed: Resource temporarily unavailable
 ```
 
-- `task_submit` succeeds; `willow-mcp worker --once` claims the task then fails at sandbox setup.
-- Plain `bwrap` works in a normal shell — failure is context-specific (nested agent sandbox, mount pressure, or user-namespace quota under Cursor).
-- Task stays `pending` with `result.error: sandbox_setup_failed`; retries scheduled.
-- **Phase 0:** documented skip in `LAST-RUN.md` (acceptance K3).
-- **Route better:** smoke could treat `task_submit` alone as K1 pass and gate K2 on `status=completed`; cloud agents without nested bwrap limits should get green K2.
+- Root cause on this host: kartikeya's POSIX `RLIMIT_AS` / `RLIMIT_NPROC` preexec runs in the bwrap child **before** namespace setup; without `KART_CGROUP_PARENT`, rlimit mode breaks bwrap.
+- **Workaround:** `WILLOW_KART_NO_RLIMIT=1` (smoke sets this in `sandbox_env()`).
+- Plain `bwrap` and `build_bwrap_argv` subprocess tests pass; only `run_shell` with resource caps fails.
+- **Product follow-up:** apply limits via cgroup leaf when parent is delegated, or set rlimits inside the sandbox after bwrap exec — not in the preexec that precedes namespace creation.
 
-### 2. Kart mount policy routes to operator fleet (routing bug for new-user)
+### 2. Kart mount policy — willow-mcp-first (fixed in kartikeya 0.0.4+)
 
-Even with isolated `WILLOW_HOME`, Kart resolves `willow_repo_root()` → `~/github/willow-2.0` because kartikeya probes for `core/kart_sandbox.py` / `core/pg_bridge.py` and falls back to the fleet checkout.
+kartikeya now prefers `WILLOW_MCP_REPO` / installed `willow_mcp` before `willow-2.0`. With editable kartikeya + smoke `kart-sandbox.json`:
 
-Observed mounts in failed task:
+- `bound_rw`: `willow`, `willow-mcp`, sandbox `WILLOW_HOME` (no `willow-2.0` rw)
+- `bound_ro`: may still include `willow-2.0/.venv-dev` via global venv fallback / `KART_EXTRA_VENVS`
+- `path_dirs` may still list `~/.willow/venv/bin` when operator fleet venv exists
 
-- `bound_ro`: entire `~/github`, `willow-2.0/.venv`, operator `~/.willow/mcp_apps`
-- `bound_rw`: `willow-2.0`, `~/.willow`, operator caches
-
-**Not** the new-user draft model (`willow-mcp` hub + `{user}-data-vault` only).
-
-**Route better (smoke harness — applied):**
-
-- Ship `kart-sandbox.json` template; smoke renders real paths into `$WILLOW_HOME/kart-sandbox.json` and sets `KART_SANDBOX_CONFIG` to the rendered file
-- `unset WILLOW_ROOT` in smoke script
-- Kart `bound_rw` now targets `willow`, `willow-mcp`, and sandbox `WILLOW_HOME` (not `willow-2.0`)
-- kartikeya still auto-binds `willow-2.0` venv paths via `willow_repo_root()` fallback — product fix still needed
+**Remaining route:** optional `KART_EXTRA_VENVS` unset in smoke; kartikeya could skip fleet venv candidates when `WILLOW_HOME` is explicit.
 
 ### 3. Consent file path — smoke wrote the wrong file (fixed)
 

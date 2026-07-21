@@ -96,6 +96,8 @@ sandbox_env() {
   unset WILLOW_ROOT
   export WILLOW_HOME WILLOW_STORE_ROOT WILLOW_PG_DB WILLOW_PG_USER WILLOW_APP_ID
   export KART_SANDBOX_CONFIG WILLOW_MCP_REPO="$WILLOW_MCP_REPO"
+  # rlimit preexec + bwrap namespaces can fail with EAGAIN on some hosts (no cgroup parent).
+  export WILLOW_KART_NO_RLIMIT="${WILLOW_KART_NO_RLIMIT:-1}"
   [[ -n "${PGHOST:-}" ]] && export PGHOST PGPORT PGPASSWORD
 }
 
