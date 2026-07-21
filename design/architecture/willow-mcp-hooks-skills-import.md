@@ -145,7 +145,7 @@ Ordered work units (each = bundle PR in `willow-mcp`, charter may link here):
 6. Work as user directs
 7. `session_handoff_write`
 
-Implementation: `willow-mcp/src/willow_mcp/bundle/skills/session-start.md` (not yet on master until willow-mcp PR).
+Implementation: `willow-mcp/src/willow_mcp/bundle/skills/session-start.md` (not yet on master until willow-mcp PR). Diagram: [willow-session-start.drawio](willow-session-start.drawio).
 
 ### Superseded open questions
 
