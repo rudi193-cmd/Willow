@@ -1,6 +1,6 @@
 # Sandbox layout I/O
 
-**Canonical model: [vault-full](#l2--vault-full-user-data-vault)** — validated by `sandbox-layout-drive.sh` (2026-07-21). User-facing diagram: [willow-new-user-draft.drawio](../willow-new-user-draft.drawio).
+**Canonical model: [vault-full](#l2--vault-full-user-data-vault)** — validated by `sandbox-layout-drive.sh` (2026-07-21). User-facing diagram: [willow-new-user-draft.drawio](../willow-new-user-draft.drawio). MCP-only flows: [willow-mcp-flows.md](../willow-mcp-flows.md).
 
 Measured against acceptance criteria in [acceptance.md](acceptance.md).
 
