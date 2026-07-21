@@ -141,7 +141,7 @@ Ordered work units (each = bundle PR in `willow-mcp`, charter may link here):
 2. `diagnostic_summary`
 3. `dispatch_list`
 4. `commitment_surface`
-5. **[charter]** ORIENT 1–3 (store stack/portfolio/milestones/commitments, continuity, read constitution/grants/services/manifest)
+5. **[charter]** ORIENT 1–4 (constitution, SOIL, continuity, grants/manifest)
 6. Work as user directs
 7. `session_handoff_write`
 
