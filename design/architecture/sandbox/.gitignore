@@ -1,4 +1,7 @@
 .sandbox/
 .sandbox-vault/
+.sandbox-layout-*/
 LAST-RUN.md
 LAST-RUN-VAULT.md
+LAST-RUN-*.md
+LAYOUT-DRIVE.md
