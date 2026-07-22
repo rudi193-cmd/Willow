@@ -14,11 +14,11 @@ starts from here. The Gerald story cycle lives privately in the vault
 | The new-user picture | `../design/architecture/willow-new-user.drawio` — the diagram the install must match |
 | The acceptance harness | `../design/architecture/sandbox/` — install isn't done until it passes |
 | The handoff letter | `seed/handoff/seed.py` — the first honest handoff, read at first boot |
+| The canon six | `seed/canon/` — moved here from willow-seed (operator ruling 2026-07-22) |
 | This document | The chain and the story gates |
 
-Still living elsewhere (open questions for the operator, not decisions made here):
-the canon six (`willow-seed/canon/`) and the willow-seed repo's fate once the seed
-sources from the charter.
+Still open (operator question, not decided here): the willow-seed repo's fate now
+that the seed and canon both source from the charter — thin installer or archive.
 
 ## The chain (proven live 2026-07-22, every step)
 
