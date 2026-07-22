@@ -38,7 +38,7 @@ Each step is one consent gate; nothing proceeds without a `yes`.
 |---|------|-------|--------|
 | 0 | Prereqs: python3.11+, postgres, gpg, bwrap | check only | ✔ |
 | 1 | Provision the vault box | `willow-data-vault/bootstrap/provision.sh <box>` | ✔ |
-| 2 | Install the platform | `pip install willow-mcp` | ⚠ blocked: kartikeya 0.0.7 not on PyPI |
+| 2 | Install the platform |  `pip install willow-mcp` | ✔ (kartikeya 0.0.7 + willow-mcp 2.0.0 published 2026-07-22) |
 | 3 | Init + manifests onto the box | `willow-mcp-init && willow-mcp-compile` | ✔ |
 | 4 | Postgres inside the box | data_directory → `<box>/postgres`, traversal-only ACL | ✔ |
 | 5 | Key ceremony | operator GPG key + `willow-mcp setup-egress` | ✔ |
@@ -78,6 +78,9 @@ voiced before the pip step works cold.
 - `willow-mcp/docs/OPERATOR-ONBOARD.md` → "already have a fleet" appendix; seed calls the same CLI
 - `willow-mcp/scripts/sandbox-bootstrap.sh` → dev-only, labeled as such
 
-## The single blocker
+## The blocker, cleared
 
-`kartikeya 0.0.7` → PyPI. Operator credentials, minutes. Every other step runs cold.
+2026-07-22: operator published `kartikeya 0.0.7` and `willow-mcp 2.0.0` to PyPI
+(Trusted Publisher registered after one `invalid-publisher` bounce). Cold proof ran
+same day: fresh venv, PyPI-only packages, empty github root, new box — six
+movements, six chain steps DONE, acceptance verdict `ok`. The seed runs cold.
