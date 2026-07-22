@@ -10,3 +10,4 @@
 # Envelope registry backups (never commit)
 envelopes/pre-approved.json.bak*
 design/architecture/.$*.bkp
+__pycache__/
