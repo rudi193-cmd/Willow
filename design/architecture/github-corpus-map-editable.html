@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>~/github corpus map — editable</title>
+<style>
+  html,body{margin:0;background:#14161a;color:#eee;font-family:sans-serif}
+  #bar{position:sticky;top:0;z-index:10;background:#1d2026;border-bottom:1px solid #333;padding:8px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  #bar b{font-size:15px;margin-right:8px}
+  button{background:#2a2f45;color:#dde;border:1px solid #5a6aa0;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px}
+  button:hover{background:#39405e}
+  #hint{color:#889;font-size:12px}
+  #wrap{overflow:auto}
+  svg{display:block}
+  .node{cursor:grab}
+  .node.dragging{cursor:grabbing}
+  .node rect{stroke-width:1.5}
+  .title{font-weight:bold;font-size:13px}
+  .line{font-size:11.5px}
+  .foot{font-size:10.5px;fill:#7fd8d8}
+  .edgelabel{font-size:10px;fill:#889}
+</style>
+</head>
+<body>
+<div id="bar">
+  <b>~/github corpus map · 2026-07-20</b>
+  <button id="dl">Download SVG of this layout</button>
+  <button id="dlj">Save layout (JSON)</button>
+  <button id="reset">Reset to original layout</button>
+  <span id="hint">Drag any box. Positions auto-save in this browser.</span>
+</div>
+<div id="wrap"><svg id="cv" width="1900" height="1100" viewBox="0 0 1900 1100">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9aa4b0"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1900" height="1100" fill="#14161a"/>
+  <g id="edges"></g>
+  <g id="nodes"></g>
+</svg></div>
+<script>
+const STYLE = {
+  group:  {fill:"#2a2f45", stroke:"#5a6aa0", title:"#aecbff", text:"#eee"},
+  seat:   {fill:"#444",    stroke:"#999",    title:"#eee",    text:"#bbb"},
+  server: {fill:"#1a4a2a", stroke:"#3a7a50", title:"#c8f0d0", text:"#9fc9a8"},
+  back:   {fill:"#3a2a10", stroke:"#b97700", title:"#ffd68a", text:"#e8d0a8"},
+  vault:  {fill:"#5a1a1a", stroke:"#a33",    title:"#ffb3b3", text:"#eee"},
+  warn:   {fill:"#3a2a10", stroke:"#b97700", title:"#ffd68a", text:"#eee"},
+  dim:    {fill:"#23262c", stroke:"#555",    title:"#ccc",    text:"#bbb"},
+  op:     {fill:"#333",    stroke:"#888",    title:"#eee",    text:"#bbb"}
+};
+
+const NODES = [
+ {id:"op", k:"op", x:800, y:20, w:240, title:"Sean — operator", lines:[]},
+
+ {id:"bench", k:"seat", x:340, y:110, w:290, title:"willow — orchestrator bench", lines:["seat on nearly every project below"]},
+ {id:"vk", k:"seat", x:760, y:110, w:200, title:"vishwakarma", lines:["SAFE store builder"]},
+ {id:"hd", k:"seat", x:1010, y:110, w:200, title:"heimdallr", lines:["Grove bus keeper"]},
+ {id:"sch", k:"seat", x:1260, y:110, w:200, title:"schmidt", lines:["grant workspace agent"]},
+
+ {id:"g1", k:"group", x:30, y:230, w:330, title:"CONSTITUTION & PLATFORM", lines:[
+   "willow (charter seat) — clean ✓",
+   "willow-2.0 (fleet dev) — 4 ⚠ uncommitted fix",
+   "willow-mcp (platform) — clean, ⚠ NO seat",
+   ".willow → willow-config — 411 ⚠ runtime churn",
+   "willow-canonical (archive of Willow.git)"],
+   foot:["MCP: willow→[willow-mcp + cbm] · willow-2.0→[legacy + cbm]","remotes: rudi193-cmd"]},
+
+ {id:"g3", k:"group", x:390, y:230, w:330, title:"ALMANAC ORG — 13 repos", lines:[
+   "almanac-data — 9 ⚠ no upstream, FETCH_ERR",
+   "almanac-template · .github (1)",
+   "civic · climate · economy · environment ·",
+   "health (1 each: untracked .cursor/) ·",
+   "agriculture · education · energy · justice ·",
+   "science · transportation — clean ✓"],
+   foot:["MCP: all → [willow legacy] · remotes: almanac-data org"]},
+
+ {id:"g4", k:"group", x:750, y:230, w:300, title:"SAFE APP STORE", lines:[
+   "safe-app-store-public — clean ✓",
+   "  (safe-app-store → symlink to it)",
+   "safe-app-store.old — 8 ⚠ retired copy",
+   "safe-app-willow-grove (Grove bus repo)",
+   "safe-design — clean ✓"],
+   foot:["MCP: store→[legacy + law-gazelle + courtlistener]","grove→[legacy] · remotes: rudi193-cmd"]},
+
+ {id:"g5", k:"group", x:1080, y:230, w:280, title:"WRITING & TEACHING", lines:[
+   "DispatchesFromReality — 17 ⚠ drafts",
+   "UTETY — 1 (untracked handoffs/)",
+   "community — 3 (untracked overlay)",
+   "Jeles — 2 · jeles-remote ✓",
+   "awesome-sovereign-software ✓",
+   "quiet-corner ✓ · smallcode ✓"],
+   foot:["MCP: DFR→[legacy + law-gazelle] · community→[legacy]"]},
+
+ {id:"g8", k:"vault", x:1390, y:230, w:250, title:"🔒 VAULTS", lines:[
+   "sean-data-vault — 5 dirty",
+   "  OFF-LIMITS key · gitsync skips it",
+   "willow-data-vault — clean ✓",
+   "  public builder (safe to clone)",
+   "willow-gate — clean ✓ (custody ledger)"],
+   foot:["MCP: vault seat→[legacy + law-gazelle], read lane"]},
+
+ {id:"schn", k:"dim", x:1670, y:230, w:210, title:"schmidt workspace", lines:[
+   "~/Desktop/Nest/schmidt",
+   "outside ~/github · SOIL lane"],
+   foot:["MCP: [willow legacy]"]},
+
+ {id:"g2", k:"group", x:30, y:470, w:370, title:"FLEET SATELLITES — no MCP seat", lines:[
+   "willow-seed ✓ · willow-bot (1: worktrees/)",
+   "willow-grove — ⚠ empty/detached HEAD",
+   "codebase-memory-mcp ✓ (the cbm server's repo)",
+   "kartikeya ✓ · corpus-lens ✓ · claude-deep-review ✓"],
+   foot:["managed by gitsync + ad-hoc sessions only · remotes: rudi193-cmd"]},
+
+ {id:"g6", k:"group", x:440, y:470, w:480, title:"UPSTREAM CONTRIB DESK — external maintainers", lines:[
+   "hermes-agent (⚠ tracks *-stale remote) · redential-cli (1: field notes)",
+   "ctxvault (1) · DontFeedTheAI ✓ · basic-memory ✓ · adjoint ✓",
+   "Imageination ✓ · courtlistener-mcp (3: overlay) · awesome-claude-skills ✓",
+   "litellm ✓ · python-sdk ✓ · mcp-memory-service ✓ · engram ✓ · sigmap ✓ · claudeclaw ✓"],
+   foot:["watched by upstream_watcher · only courtlistener-mcp has a seat →[legacy + courtlistener]"]},
+
+ {id:"g7", k:"dim", x:960, y:470, w:260, title:"VENDOR / REFERENCE", lines:[
+   "bubblewrap (Kart's sandbox tech)",
+   "rich · pyfiglet · ngrok-python",
+   "read-only clones, all clean ✓ · no seat"]},
+
+ {id:"daemons", k:"warn", x:1260, y:470, w:560, title:"DAEMONS over the whole tree", lines:[
+   "gitsync 25min, ff-only, vault excluded — ⚠ degraded: almanac-data FETCH_ERR",
+   "upstream_watcher ✓ (watches contrib desk) · grove serve + listen ✓",
+   "kart workers fast + batch ✓ idle · discord responder ✓",
+   "host_divergence_watch — ⚠ stale 4 days",
+   "~10 more watchman channels absent = known built-but-dark set"]},
+
+ {id:"wmcp", k:"server", x:90, y:720, w:240, title:"willow-mcp", lines:[
+   "sovereign platform · lease-gated egress",
+   "mounted ONLY by the charter seat"]},
+ {id:"wleg", k:"server", x:380, y:720, w:260, title:"willow (unified legacy)", lines:[
+   "22 of 23 seats still mount this —",
+   "decommission awaits ratification"]},
+ {id:"cbm", k:"server", x:690, y:720, w:240, title:"codebase-memory-mcp", lines:[
+   "code graph · own local index"]},
+ {id:"lg", k:"server", x:980, y:720, w:190, title:"law-gazelle", lines:["legal reads · Nest docs"]},
+ {id:"cl", k:"server", x:1220, y:720, w:190, title:"courtlistener", lines:["CourtListener API"]},
+
+ {id:"pg", k:"back", x:200, y:880, w:270, title:"Postgres", lines:[
+   "KB 21,810 · FRANK 927 ✓ unbroken",
+   "tasks 1,675 · jeles 3,488 sessions"]},
+ {id:"soil", k:"back", x:510, y:880, w:210, title:"SOIL / local store", lines:["402 collections · 6,739 records"]},
+ {id:"oll", k:"back", x:760, y:880, w:180, title:"Ollama", lines:["7 models on T500"]},
+ {id:"kart", k:"back", x:980, y:880, w:210, title:"Kart sandbox", lines:[
+   "bwrap · fast + batch lanes",
+   "0 pending, none stranded ✓"]},
+ {id:"grove", k:"back", x:1230, y:880, w:180, title:"Grove bus", lines:[
+   "Postgres-backed",
+   "channels · Discord bridge"]},
+
+ {id:"remotes", k:"dim", x:1460, y:720, w:390, title:"GITHUB REMOTES", lines:[
+   "rudi193-cmd — 30 repos (fleet + writing)",
+   "almanac-data org — 13 repos",
+   "external upstreams: NousResearch · Redential ·",
+   "DefendTheDisabled · ComposioHQ · basicmachines ·",
+   "Filippo-Venturini · irodion · AllHailSeizure ·",
+   "zeroc00I · + vendor orgs",
+   "push path: operator-held creds — agent vault",
+   "PAT lacks willow-mcp push (known gap)"]}
+];
+
+const EDGES = [
+ ["op","bench"],["op","vk"],["op","hd"],["op","sch"],
+ ["bench","g1"],["bench","g3"],["bench","g5"],["bench","g8"],
+ ["vk","g4"],["hd","g4","safe-app-willow-grove"],["sch","schn"],
+ ["daemons","g6",null,true],["daemons","g3",null,true],
+ ["wmcp","pg"],["wmcp","kart"],
+ ["wleg","pg"],["wleg","soil"],["wleg","oll"],["wleg","kart"],["wleg","grove"],
+ ["grove","remotes",null,true,"Discord"],
+];
+
+const LH = 17, PAD_T = 24, PAD_B = 10, FOOT_LH = 15;
+function nodeH(n){
+  return PAD_T + 8 + n.lines.length*LH + (n.foot? 6 + n.foot.length*FOOT_LH : 0) + PAD_B;
+}
+
+const svg = document.getElementById("cv");
+const gE = document.getElementById("edges");
+const gN = document.getElementById("nodes");
+const KEY = "corpus-map-layout-2026-07-20";
+
+const saved = (()=>{ try{return JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){return{}} })();
+const ORIG = {};
+NODES.forEach(n=>{ ORIG[n.id]=[n.x,n.y]; if(saved[n.id]){n.x=saved[n.id][0]; n.y=saved[n.id][1];} n.h = nodeH(n); });
+
+function edgeEnds(a,b){
+  const ac=[a.x+a.w/2, a.y+a.h/2], bc=[b.x+b.w/2, b.y+b.h/2];
+  function clip(r, from, to){
+    const dx=to[0]-from[0], dy=to[1]-from[1];
+    let t=1;
+    if(dx!==0){ for(const ex of [r.x, r.x+r.w]){ const tt=(ex-from[0])/dx; if(tt>0){ const y=from[1]+tt*dy; if(y>=r.y&&y<=r.y+r.h) t=Math.min(t,tt);} } }
+    if(dy!==0){ for(const ey of [r.y, r.y+r.h]){ const tt=(ey-from[1])/dy; if(tt>0){ const x=from[0]+tt*dx; if(x>=r.x&&x<=r.x+r.w) t=Math.min(t,tt);} } }
+    return [from[0]+t*dx, from[1]+t*dy];
+  }
+  return [clip(a,ac,bc), clip(b,bc,ac)];
+}
+
+function drawEdges(){
+  gE.innerHTML="";
+  const by = Object.fromEntries(NODES.map(n=>[n.id,n]));
+  for(const [f,t,label,dashed] of EDGES.map(e=>[e[0],e[1],e[2],e[3]])){
+    const a=by[f], b=by[t]; if(!a||!b) continue;
+    const [p1,p2]=edgeEnds(a,b);
+    const ln=document.createElementNS("http://www.w3.org/2000/svg","line");
+    ln.setAttribute("x1",p1[0]); ln.setAttribute("y1",p1[1]);
+    ln.setAttribute("x2",p2[0]); ln.setAttribute("y2",p2[1]);
+    ln.setAttribute("stroke", dashed? "#b97700":"#9aa4b0");
+    ln.setAttribute("stroke-width","1.5");
+    if(dashed) ln.setAttribute("stroke-dasharray","6,5");
+    ln.setAttribute("marker-end","url(#arr)");
+    gE.appendChild(ln);
+    if(label){
+      const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
+      tx.setAttribute("x",(p1[0]+p2[0])/2+6); tx.setAttribute("y",(p1[1]+p2[1])/2-4);
+      tx.setAttribute("class","edgelabel"); tx.textContent=label;
+      gE.appendChild(tx);
+    }
+  }
+}
+
+function drawNodes(){
+  gN.innerHTML="";
+  for(const n of NODES){
+    const st = STYLE[n.k];
+    const g=document.createElementNS("http://www.w3.org/2000/svg","g");
+    g.setAttribute("class","node"); g.dataset.id=n.id;
+    g.setAttribute("transform",`translate(${n.x},${n.y})`);
+    const r=document.createElementNS("http://www.w3.org/2000/svg","rect");
+    r.setAttribute("width",n.w); r.setAttribute("height",n.h); r.setAttribute("rx",8);
+    r.setAttribute("fill",st.fill); r.setAttribute("stroke",st.stroke);
+    g.appendChild(r);
+    const tt=document.createElementNS("http://www.w3.org/2000/svg","text");
+    tt.setAttribute("x",n.w/2); tt.setAttribute("y",PAD_T);
+    tt.setAttribute("text-anchor","middle"); tt.setAttribute("class","title");
+    tt.setAttribute("fill",st.title); tt.textContent=n.title;
+    g.appendChild(tt);
+    let y=PAD_T+8;
+    for(const line of n.lines){
+      y+=LH;
+      const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
+      tx.setAttribute("x",12); tx.setAttribute("y",y);
+      tx.setAttribute("class","line"); tx.setAttribute("fill",st.text);
+      tx.textContent=line;
+      g.appendChild(tx);
+    }
+    if(n.foot){
+      y+=6;
+      for(const line of n.foot){
+        y+=FOOT_LH;
+        const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
+        tx.setAttribute("x",12); tx.setAttribute("y",y);
+        tx.setAttribute("class","foot");
+        tx.textContent=line;
+        g.appendChild(tx);
+      }
+    }
+    gN.appendChild(g);
+  }
+}
+
+let drag=null;
+gN.addEventListener("pointerdown",e=>{
+  const g=e.target.closest(".node"); if(!g) return;
+  const n=NODES.find(x=>x.id===g.dataset.id);
+  const pt=cursor(e);
+  drag={n, g, dx:pt[0]-n.x, dy:pt[1]-n.y};
+  g.classList.add("dragging");
+  g.setPointerCapture(e.pointerId);
+});
+gN.addEventListener("pointermove",e=>{
+  if(!drag) return;
+  const pt=cursor(e);
+  drag.n.x=Math.round(pt[0]-drag.dx); drag.n.y=Math.round(pt[1]-drag.dy);
+  drag.g.setAttribute("transform",`translate(${drag.n.x},${drag.n.y})`);
+  drawEdges();
+});
+gN.addEventListener("pointerup",e=>{
+  if(!drag) return;
+  drag.g.classList.remove("dragging");
+  drag=null;
+  save();
+});
+function cursor(e){
+  const p=svg.createSVGPoint(); p.x=e.clientX; p.y=e.clientY;
+  const m=p.matrixTransform(svg.getScreenCTM().inverse());
+  return [m.x,m.y];
+}
+function save(){
+  const o={}; NODES.forEach(n=>o[n.id]=[n.x,n.y]);
+  localStorage.setItem(KEY, JSON.stringify(o));
+}
+
+document.getElementById("reset").onclick=()=>{
+  NODES.forEach(n=>{[n.x,n.y]=ORIG[n.id]});
+  localStorage.removeItem(KEY);
+  drawNodes(); drawEdges();
+};
+document.getElementById("dl").onclick=()=>{
+  const clone=svg.cloneNode(true);
+  clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
+  const css=document.createElementNS("http://www.w3.org/2000/svg","style");
+  css.textContent=".title{font-weight:bold;font-size:13px;font-family:sans-serif}.line{font-size:11.5px;font-family:sans-serif}.foot{font-size:10.5px;fill:#7fd8d8;font-family:sans-serif}.edgelabel{font-size:10px;fill:#889;font-family:sans-serif}";
+  clone.insertBefore(css, clone.firstChild);
+  const blob=new Blob([clone.outerHTML],{type:"image/svg+xml"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="github-corpus-map.svg"; a.click();
+};
+document.getElementById("dlj").onclick=()=>{
+  const o={}; NODES.forEach(n=>o[n.id]=[n.x,n.y]);
+  const blob=new Blob([JSON.stringify(o,null,1)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="corpus-map-layout.json"; a.click();
+};
+
+drawNodes(); drawEdges();
+</script>
+</body>
+</html>

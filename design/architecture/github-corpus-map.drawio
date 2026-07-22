@@ -1,0 +1,143 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T20:47:00Z" agent="willow" version="24.0.0">
+  <diagram id="corpus-map" name="~/github corpus map 2026-07-20">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1250" math="0" shadow="0" background="#14161a">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- ===== TITLE ===== -->
+        <mxCell id="title" value="&lt;b&gt;~/github corpus map — 60 repos + identity plane · 2026-07-20&lt;/b&gt;&lt;br&gt;⚠ = attention · numbers = dirty files · cyan lines = MCP servers mounted (projects.json)" style="text;html=1;fontColor=#EEEEEE;fontSize=14;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="760" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== IDENTITY PLANE ===== -->
+        <mxCell id="op" value="&lt;b&gt;Sean — operator&lt;/b&gt;" style="rounded=1;arcSize=40;html=1;fillColor=#333333;strokeColor=#888888;fontColor=#EEEEEE;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="860" y="20" width="220" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="envs" value="&lt;b&gt;WORKING ENVIRONMENTS — transport only, never the identity&lt;/b&gt;&lt;br&gt;&lt;br&gt;Claude Code CLI (this session) · Cursor · Codex&lt;br&gt;claude.ai remote session — key-locked branch lane&lt;br&gt;Discord bridge → Grove channels&lt;br&gt;Kart sandbox — execution runtime for all of the above" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23262c;strokeColor=#8888aa;fontColor=#DDDDEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="420" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="personas" value="&lt;b&gt;PERSONAS — voice overlays only&lt;/b&gt;&lt;br&gt;&lt;br&gt;Oakenscroll · Hanuman · Loki · Skirnir · Vishwakarma&lt;br&gt;Jeles · Ada · Publius · Willow · (None)&lt;br&gt;&lt;br&gt;bindings: willow repo → Willow (LOCKED) · almanac → Ada default&lt;br&gt;never changes app_id, Grove sender, or SOIL namespace" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3d2a4a;strokeColor=#9a6ab0;fontColor=#E8D8F0;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="500" y="90" width="440" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="idents" value="&lt;b&gt;AGENT IDENTITIES — fleet ids ($WILLOW_HOME/agents)&lt;/b&gt;&lt;br&gt;&lt;br&gt;willow — orchestrator bench (active) · hanuman — builder/dispatch worker&lt;br&gt;heimdallr — Grove keeper · loki — fleet accountant&lt;br&gt;schmidt — grant workspace · vishwakarma — SAFE builder&lt;br&gt;willow-mcp manifests also registered: ada · jeles · skirnir · utety" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#444444;strokeColor=#999999;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="980" y="90" width="500" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e_op_envs" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;fontColor=#99A4B0;" edge="1" parent="1" source="op" target="envs"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_envs_id" value="a session runs AS one identity" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;fontColor=#99A4B0;fontSize=10;" edge="1" parent="1" source="envs" target="idents"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_per_id" value="voice only" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9a6ab0;dashed=1;fontColor=#B090C0;fontSize=10;" edge="1" parent="1" source="personas" target="idents"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_op_id" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;" edge="1" parent="1" source="op" target="idents"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ===== REPO GROUPS ROW 1 ===== -->
+        <mxCell id="g1" value="&lt;b&gt;CONSTITUTION &amp;amp; PLATFORM&lt;/b&gt;&lt;br&gt;&lt;br&gt;willow (charter seat) — clean ✓&lt;br&gt;willow-2.0 (fleet dev) — 4 ⚠ uncommitted fix&lt;br&gt;willow-mcp (platform) — clean, ⚠ NO seat&lt;br&gt;.willow → willow-config — 411 ⚠ runtime churn&lt;br&gt;willow-canonical (archive)&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#7fd8d8&quot;&gt;MCP: willow→[willow-mcp + cbm] · willow-2.0→[legacy + cbm]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2a2f45;strokeColor=#5a6aa0;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="290" width="360" height="185" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="g3" value="&lt;b&gt;ALMANAC ORG — 13 repos&lt;/b&gt;&lt;br&gt;&lt;br&gt;almanac-data — 9 ⚠ no upstream, FETCH_ERR&lt;br&gt;almanac-template · .github (1)&lt;br&gt;civic · climate · economy · environment · health (1 each)&lt;br&gt;agriculture · education · energy · justice · science · transportation ✓&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#7fd8d8&quot;&gt;MCP: all → [willow legacy] · persona default: Ada · remotes: almanac-data org&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2a2f45;strokeColor=#5a6aa0;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="430" y="290" width="400" height="185" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="g4" value="&lt;b&gt;SAFE APP STORE&lt;/b&gt;&lt;br&gt;&lt;br&gt;safe-app-store-public ✓ (safe-app-store → symlink)&lt;br&gt;safe-app-store.old — 8 ⚠ retired copy&lt;br&gt;safe-app-willow-grove (Grove bus repo)&lt;br&gt;safe-design ✓&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#7fd8d8&quot;&gt;MCP: store→[legacy + law-gazelle + courtlistener] · grove→[legacy]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2a2f45;strokeColor=#5a6aa0;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="860" y="290" width="360" height="185" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="g5" value="&lt;b&gt;WRITING &amp;amp; TEACHING&lt;/b&gt;&lt;br&gt;&lt;br&gt;DispatchesFromReality — 17 ⚠ drafts&lt;br&gt;UTETY — 1 · community — 3 · Jeles — 2&lt;br&gt;jeles-remote ✓ · awesome-sovereign-software ✓&lt;br&gt;quiet-corner ✓ · smallcode ✓&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#7fd8d8&quot;&gt;MCP: DFR→[legacy + law-gazelle] · community→[legacy]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2a2f45;strokeColor=#5a6aa0;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="290" width="320" height="185" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="g8" value="&lt;b&gt;🔒 VAULTS&lt;/b&gt;&lt;br&gt;&lt;br&gt;sean-data-vault — 5 dirty&lt;br&gt;OFF-LIMITS key · gitsync skips it&lt;br&gt;willow-data-vault ✓ public builder&lt;br&gt;willow-gate ✓ custody ledger&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#7fd8d8&quot;&gt;MCP: vault seat→[legacy + law-gazelle], read lane&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5a1a1a;strokeColor=#aa3333;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="290" width="280" height="185" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== REPO GROUPS ROW 2 ===== -->
+        <mxCell id="g2" value="&lt;b&gt;FLEET SATELLITES — no MCP seat&lt;/b&gt;&lt;br&gt;&lt;br&gt;willow-seed ✓ · willow-bot (1)&lt;br&gt;willow-grove — ⚠ empty/detached HEAD&lt;br&gt;codebase-memory-mcp ✓ (cbm server repo)&lt;br&gt;kartikeya ✓ · corpus-lens ✓ · claude-deep-review ✓&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#7fd8d8&quot;&gt;managed by gitsync + ad-hoc sessions only&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2a2f45;strokeColor=#5a6aa0;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="520" width="380" height="180" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="g6" value="&lt;b&gt;UPSTREAM CONTRIB DESK — external maintainers&lt;/b&gt;&lt;br&gt;&lt;br&gt;hermes-agent (⚠ tracks *-stale remote) · redential-cli (1)&lt;br&gt;ctxvault (1) · DontFeedTheAI ✓ · basic-memory ✓ · adjoint ✓&lt;br&gt;Imageination ✓ · courtlistener-mcp (3) · awesome-claude-skills ✓&lt;br&gt;litellm ✓ · python-sdk ✓ · mcp-memory-service ✓ · engram ✓ · sigmap ✓ · claudeclaw ✓&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#7fd8d8&quot;&gt;watched by upstream_watcher · only courtlistener-mcp has a seat&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2a2f45;strokeColor=#5a6aa0;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="450" y="520" width="500" height="180" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="g7" value="&lt;b&gt;VENDOR / REFERENCE&lt;/b&gt;&lt;br&gt;&lt;br&gt;bubblewrap (Kart's sandbox tech)&lt;br&gt;rich · pyfiglet · ngrok-python&lt;br&gt;&lt;br&gt;read-only clones, all clean ✓ · no seat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23262c;strokeColor=#555555;fontColor=#BBBBBB;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="980" y="520" width="270" height="180" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="daemons" value="&lt;b&gt;DAEMONS over the whole tree&lt;/b&gt;&lt;br&gt;&lt;br&gt;gitsync 25min ff-only, vault excluded — ⚠ almanac-data FETCH_ERR&lt;br&gt;upstream_watcher ✓ · grove serve + listen ✓&lt;br&gt;kart workers fast + batch ✓ · discord responder ✓&lt;br&gt;host_divergence_watch — ⚠ stale 4 days&lt;br&gt;~10 watchman channels absent = known built-but-dark set" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3a2a10;strokeColor=#b97700;fontColor=#EEEEEE;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="520" width="600" height="180" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="schn" value="&lt;b&gt;schmidt workspace&lt;/b&gt;&lt;br&gt;~/Desktop/Nest/schmidt&lt;br&gt;outside ~/github · SOIL lane sean/schmidt&lt;br&gt;&lt;font color=&quot;#7fd8d8&quot;&gt;MCP: [willow legacy]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#23262c;strokeColor=#555555;fontColor=#CCCCCC;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="180" width="280" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== MCP SERVERS ===== -->
+        <mxCell id="wmcp" value="&lt;b&gt;willow-mcp&lt;/b&gt;&lt;br&gt;sovereign platform · lease-gated egress&lt;br&gt;mounted ONLY by the charter seat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a4a2a;strokeColor=#3a7a50;fontColor=#C8F0D0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="770" width="260" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="wleg" value="&lt;b&gt;willow (unified legacy)&lt;/b&gt;&lt;br&gt;22 of 23 seats still mount this&lt;br&gt;decommission awaits ratification" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a4a2a;strokeColor=#3a7a50;fontColor=#C8F0D0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="390" y="770" width="260" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="cbm" value="&lt;b&gt;codebase-memory-mcp&lt;/b&gt;&lt;br&gt;code graph · own local index" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a4a2a;strokeColor=#3a7a50;fontColor=#C8F0D0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="700" y="770" width="230" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="lg" value="&lt;b&gt;law-gazelle&lt;/b&gt;&lt;br&gt;legal reads · Nest docs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a4a2a;strokeColor=#3a7a50;fontColor=#C8F0D0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="980" y="770" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="cl" value="&lt;b&gt;courtlistener&lt;/b&gt;&lt;br&gt;CourtListener API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a4a2a;strokeColor=#3a7a50;fontColor=#C8F0D0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="770" width="190" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== BACKENDS ===== -->
+        <mxCell id="pg" value="&lt;b&gt;Postgres&lt;/b&gt;&lt;br&gt;KB 21,810 · FRANK 927 ✓ unbroken&lt;br&gt;tasks 1,675 · jeles 3,488 sessions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3a2a10;strokeColor=#b97700;fontColor=#FFD68A;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="200" y="920" width="280" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="soil" value="&lt;b&gt;SOIL / local store&lt;/b&gt;&lt;br&gt;402 collections · 6,739 records" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3a2a10;strokeColor=#b97700;fontColor=#FFD68A;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="520" y="920" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="oll" value="&lt;b&gt;Ollama&lt;/b&gt;&lt;br&gt;7 models on T500" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3a2a10;strokeColor=#b97700;fontColor=#FFD68A;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="780" y="920" width="180" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="kart" value="&lt;b&gt;Kart sandbox&lt;/b&gt;&lt;br&gt;bwrap · fast + batch lanes&lt;br&gt;0 pending, none stranded ✓" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3a2a10;strokeColor=#b97700;fontColor=#FFD68A;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="920" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="grove" value="&lt;b&gt;Grove bus&lt;/b&gt;&lt;br&gt;Postgres-backed channels&lt;br&gt;Discord bridge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3a2a10;strokeColor=#b97700;fontColor=#FFD68A;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="920" width="190" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== REMOTES ===== -->
+        <mxCell id="remotes" value="&lt;b&gt;GITHUB REMOTES&lt;/b&gt;&lt;br&gt;&lt;br&gt;rudi193-cmd — 30 repos · almanac-data org — 13&lt;br&gt;external upstreams: NousResearch · Redential ·&lt;br&gt;DefendTheDisabled · ComposioHQ · basicmachines ·&lt;br&gt;Filippo-Venturini · irodion · AllHailSeizure · zeroc00I&lt;br&gt;&lt;br&gt;push path: operator-held creds — agent vault PAT&lt;br&gt;lacks willow-mcp push (known gap)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23262c;strokeColor=#555555;fontColor=#BBBBBB;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="770" width="380" height="230" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== EDGES: identities -> groups ===== -->
+        <mxCell id="e1" value="willow" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;fontColor=#99A4B0;fontSize=10;" edge="1" parent="1" source="idents" target="g1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="willow" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;fontColor=#99A4B0;fontSize=10;" edge="1" parent="1" source="idents" target="g3"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="vishwakarma" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;fontColor=#99A4B0;fontSize=10;" edge="1" parent="1" source="idents" target="g4"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="willow" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;fontColor=#99A4B0;fontSize=10;" edge="1" parent="1" source="idents" target="g5"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" value="willow (read lane)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#aa3333;fontColor=#CC8888;fontSize=10;" edge="1" parent="1" source="idents" target="g8"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" value="schmidt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;fontColor=#99A4B0;fontSize=10;" edge="1" parent="1" source="idents" target="schn"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" value="hanuman — dispatch builds (5D9A379D pending)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;dashed=1;fontColor=#99A4B0;fontSize=10;" edge="1" parent="1" source="idents" target="g1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8" value="heimdallr → safe-app-willow-grove" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;dashed=1;fontColor=#99A4B0;fontSize=10;" edge="1" parent="1" source="idents" target="g4"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ===== EDGES: servers -> backends ===== -->
+        <mxCell id="s1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;" edge="1" parent="1" source="wmcp" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;" edge="1" parent="1" source="wmcp" target="kart"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;" edge="1" parent="1" source="wleg" target="pg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;" edge="1" parent="1" source="wleg" target="soil"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;" edge="1" parent="1" source="wleg" target="oll"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;" edge="1" parent="1" source="wleg" target="kart"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9aa4b0;" edge="1" parent="1" source="wleg" target="grove"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ===== EDGES: daemons (dashed amber) ===== -->
+        <mxCell id="d1" value="syncs whole tree, vault excluded" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#b97700;dashed=1;fontColor=#C89A50;fontSize=10;" edge="1" parent="1" source="daemons" target="g6"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="d2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#b97700;dashed=1;" edge="1" parent="1" source="daemons" target="g3"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="d3" value="Discord" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#b97700;dashed=1;fontColor=#C89A50;fontSize=10;" edge="1" parent="1" source="grove" target="remotes"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

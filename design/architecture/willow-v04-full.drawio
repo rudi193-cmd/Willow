@@ -1,0 +1,190 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T22:20:00Z" agent="willow" version="24.0.0">
+  <diagram id="willow-full" name="Willow full picture v0.4">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="legend" value="&lt;b&gt;Willow — the full picture, v0.4 · v0.3 + ask-jeles product layer + search split · 2026-07-20&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;green = live&lt;/font&gt; · &lt;font color=&quot;#b97700&quot;&gt;amber = partial / still on legacy&lt;/font&gt; · &lt;font color=&quot;#c62828&quot;&gt;red = not built&lt;/font&gt; · purple = identity &amp;amp; law · &lt;font color=&quot;#1565c0&quot;&gt;blue = SAFE product&lt;/font&gt;" style="text;html=1;fontSize=12;align=left;" vertex="1" parent="1">
+          <mxGeometry x="30" y="8" width="920" height="44" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== ROW A ====== -->
+        <mxCell id="ext" value="&lt;b&gt;External Projects&lt;/b&gt;&lt;br&gt;hermes-agent · redential-cli · ctxvault&lt;br&gt;basic-memory · adjoint · 10 more&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ upstream desk + upstream_watcher&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="260" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="user" value="&lt;b&gt;User (operator)&lt;/b&gt;&lt;br&gt;holds: vault key · net leases · ratification" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="690" y="60" width="240" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="gate" value="&lt;b&gt;Gate — SSH · PGP · egress permissions&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ pgp_enforced · Kart egress needs 3 keys:&lt;br&gt;task_net cap + consent.internet + operator lease&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ envelope registry ↔ sandbox drift (known flag)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="60" width="340" height="100" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== ROW B: IDENTITY PLANE ====== -->
+        <mxCell id="envs" value="&lt;b&gt;Working environments&lt;/b&gt;&lt;br&gt;Claude Code CLI · Cursor · Codex&lt;br&gt;claude.ai remote (key-locked lane)&lt;br&gt;Discord bridge&lt;br&gt;&lt;i&gt;transport only — never the identity&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="340" y="180" width="270" height="110" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="personas" value="&lt;b&gt;Personas — voice overlays&lt;/b&gt;&lt;br&gt;Oakenscroll · Hanuman · Loki · Skirnir&lt;br&gt;Vishwakarma · Jeles · Ada · Publius · Willow&lt;br&gt;bindings: willow repo→Willow LOCKED · almanac→Ada&lt;br&gt;&lt;i&gt;never changes app_id / Grove sender / namespace&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="650" y="180" width="320" height="110" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="idents" value="&lt;b&gt;Agent identities (fleet ids)&lt;/b&gt;&lt;br&gt;willow — the bench · hanuman — builder&lt;br&gt;heimdallr — Grove · loki — accountant&lt;br&gt;schmidt — grant · vishwakarma — SAFE&lt;br&gt;manifests also: ada · jeles · skirnir · utety" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="180" width="290" height="110" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== WILLOW SEAT ====== -->
+        <mxCell id="seat" value="&lt;b&gt;Willow&lt;/b&gt;&lt;br&gt;the orchestrator bench — persona + folder&lt;br&gt;(~/github/willow, charter seat)&lt;br&gt;via CLI &lt;font color=&quot;#2e7d32&quot;&gt;✓&lt;/font&gt; · Dashboard &lt;font color=&quot;#c62828&quot;&gt;✗&lt;/font&gt;&lt;br&gt;assign → review evidence → clear" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="620" y="330" width="280" height="120" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== GOVERNANCE COLUMN (left) ====== -->
+        <mxCell id="const" value="&lt;b&gt;Constitution — Draft 0.7&lt;/b&gt;&lt;br&gt;CONSTITUTION.md (this repo)&lt;br&gt;ΔΣ=42 seal resolved · 3 operator&lt;br&gt;decisions open (Art VII · X · V)&lt;br&gt;+ nest learning loop: propose/ratify&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ binding gap: rules not yet enforced-by-code&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="330" width="270" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="env2" value="&lt;b&gt;Envelopes&lt;/b&gt;&lt;br&gt;envelopes/pre-approved.json&lt;br&gt;every governance act needs one —&lt;br&gt;magistrate = lookup, never judgment" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="480" width="270" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="frank" value="&lt;b&gt;FRANK ledger&lt;/b&gt;&lt;br&gt;hash-chained record of acts&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ 927 entries, chain unbroken&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="590" width="270" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="hreq" value="&lt;b&gt;human_required queue&lt;/b&gt;&lt;br&gt;3 open (2 onboarding · 1 consent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="690" width="270" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== HUB ====== -->
+        <mxCell id="hub" value="&lt;b&gt;willow-mcp — the hub&lt;/b&gt;&lt;br&gt;session · store · kb · dispatch · task (Kart)&lt;br&gt;handoff · commitment · lineage · code-graph&lt;br&gt;gap_log / gap_promote &lt;font color=&quot;#2e7d32&quot;&gt;✓&lt;/font&gt; · integration_call &lt;font color=&quot;#2e7d32&quot;&gt;✓&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ mounted by charter seat only — web_search/fetch not yet&lt;/font&gt;" style="shape=mxgraph.flowchart.direct_data;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="590" y="500" width="340" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="legacy" value="&lt;b&gt;willow unified server (legacy)&lt;/b&gt;&lt;br&gt;22 of 23 project seats still mount this&lt;br&gt;willow_web_* · mem_jeles_* · Grove verbs&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ retire → willow-mcp (plan on disk, ~3-4 days)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="990" y="500" width="300" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="jeles_remote" value="&lt;b&gt;jeles-remote&lt;/b&gt;&lt;br&gt;https://jeles-remote.fly.dev/search&lt;br&gt;stateless institutional lane&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ live&lt;/font&gt; · &lt;font color=&quot;#b97700&quot;&gt;◐ hub adapter only&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="410" width="260" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== MUSCLES (left-middle) — v0.4: split search ====== -->
+        <mxCell id="kartn" value="&lt;b&gt;Kart — execution&lt;/b&gt;&lt;br&gt;bwrap sandbox · fast + batch lanes&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ live behind hub (task_submit)&lt;/font&gt;" style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;size=0.23;flipV=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="340" y="500" width="220" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="search_prim" value="&lt;b&gt;Web primitives (hub target)&lt;/b&gt;&lt;br&gt;web_search · web_fetch · jeles_search&lt;br&gt;port: willow-2.0/core/web_search.py · web_fetch.py&lt;br&gt;&lt;font color=&quot;#c62828&quot;&gt;✗ not on hub yet (item 5)&lt;/font&gt;" style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;size=0.23;flipV=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="320" y="600" width="260" height="95" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ollama" value="&lt;b&gt;Ollama — local models&lt;/b&gt;&lt;br&gt;7 models on T500 (infer/embed)&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓&lt;/font&gt;" style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;size=0.23;flipV=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="320" y="710" width="260" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="cbm" value="&lt;b&gt;codebase-memory graph&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ own MCP server + index&lt;/font&gt;" style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;size=0.23;flipV=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="320" y="800" width="260" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== FLEET COORDINATION (right-middle) ====== -->
+        <mxCell id="grove" value="&lt;b&gt;Grove bus&lt;/b&gt;&lt;br&gt;Postgres-backed channels · agent inboxes&lt;br&gt;Discord bridge in/out&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ serve + listen + responder&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="990" y="630" width="300" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="desk" value="&lt;b&gt;Dispatch desk&lt;/b&gt;&lt;br&gt;dispatch_send → packet + grant → worker&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ assign ≠ execute: nothing auto-launches&lt;br&gt;the worker (known gap) · 5D9A379D pending&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="990" y="740" width="300" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="daemons" value="&lt;b&gt;Daemons / watchmen&lt;/b&gt;&lt;br&gt;gitsync 25min (⚠ almanac-data FETCH_ERR)&lt;br&gt;kart workers ✓ · grove ✓ · discord ✓&lt;br&gt;host_divergence ⚠ stale · ~10 channels dark&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ inward fleet-repo watcher = next build&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="630" width="290" height="120" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== DATA PLANE (right) ====== -->
+        <mxCell id="vault" value="&lt;b&gt;(USER)-data-vault — target&lt;/b&gt;&lt;br&gt;Postgres and SOIL live in here&lt;br&gt;&lt;font color=&quot;#c62828&quot;&gt;✗ not built — today the data plane is:&lt;/font&gt;&lt;br&gt;Postgres (system svc): KB 21,810 · FRANK · tasks · jeles&lt;br&gt;SOIL: per-project stores (402 collections)&lt;br&gt;.willow: config + handoffs (411 dirty ⚠)&lt;br&gt;sean-data-vault 🔒 operator key, user-granted paths only" style="shape=mxgraph.flowchart.database;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1310" y="330" width="310" height="170" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== SAFE + APPS + REPOS (bottom) ====== -->
+        <mxCell id="safe" value="&lt;b&gt;SAFE&lt;/b&gt;&lt;br&gt;signed app store&lt;br&gt;manifest + keys required&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ manifests 4/4&lt;/font&gt;" style="shape=internalStorage;whiteSpace=wrap;html=1;dx=15;dy=15;rounded=1;arcSize=8;strokeWidth=2;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="700" y="680" width="180" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ask_jeles" value="&lt;b&gt;Ask Jeles (SAFE app)&lt;/b&gt;&lt;br&gt;federated search &lt;i&gt;product&lt;/i&gt; — not hub primitives&lt;br&gt;corpus → local KB → web → institutional&lt;br&gt;classify (nav / research / general) + rank&lt;br&gt;repo: safe-app-store-public/apps/ask-jeles&lt;br&gt;docs: docs/design/verified-corpus.md&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ gap_log → hub&lt;/font&gt; · &lt;font color=&quot;#b97700&quot;&gt;◐ mem_jeles_* → legacy&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="560" y="820" width="340" height="140" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="apps" value="&lt;b&gt;Other SAFE apps&lt;/b&gt;&lt;br&gt;story-timeline · utety-chat ·&lt;br&gt;law-gazelle · grove · …&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ user reaches apps directly&lt;/font&gt;" style="shape=mxgraph.flowchart.multi-document;whiteSpace=wrap;html=1;strokeWidth=2;boundedLbl=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="960" y="1000" width="240" height="85" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="repos" value="&lt;b&gt;Dev Repos — ~/github (60 repos)&lt;/b&gt;&lt;br&gt;willow · willow-2.0 · willow-mcp · kartikeya&lt;br&gt;safe-app-store-public/apps/ask-jeles&lt;br&gt;constitution+platform 5 · almanac org 13 · SAFE 4&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ most seats still on legacy server&lt;/font&gt;" style="shape=mxgraph.flowchart.multi-document;whiteSpace=wrap;html=1;strokeWidth=2;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="300" y="980" width="320" height="120" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="world" value="&lt;b&gt;Outside world&lt;/b&gt;&lt;br&gt;GitHub: github.com/rudi193-cmd · almanac-data org&lt;br&gt;DDG / institutional APIs · Discord (Grove bridge)&lt;br&gt;jeles-remote.fly.dev/search&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ push = operator creds; agent PAT lacks willow-mcp push&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="1000" width="360" height="100" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== EDGES ====== -->
+        <!-- top plane -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="ext" target="user"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="user" target="gate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="works through" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="user" target="envs"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="a session runs AS one identity" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="envs" target="idents"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" value="voice only" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="personas" target="idents"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" value="willow sits the bench" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="idents" target="seat"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="user" target="seat"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- governance -->
+        <mxCell id="e8" value="law binds the bench" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="const" target="seat"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="const" target="env2"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e10" value="acts need an envelope" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="env2" target="hub"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e11" value="every act recorded" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="hub" target="frank"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e12" value="ratify / consent flows up" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="hreq" target="user"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- hub spokes -->
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="seat" target="hub"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="kartn"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e15" value="target verbs (item 5)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="hub" target="search_prim"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="safe"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="repos"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e18" value="Gate — all egress" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" edge="1" parent="1" source="hub" target="gate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e19" value="user-granted paths" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" edge="1" parent="1" source="hub" target="vault"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e20" value="retire →" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="legacy" target="hub"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- legacy still serves -->
+        <mxCell id="e21" value="willow_web_* · mem_jeles_*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="legacy" target="search_prim"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="legacy" target="grove"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- jeles-remote -->
+        <mxCell id="e33" value="integration_call" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="hub" target="jeles_remote"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e34" value="target: jeles_search" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="search_prim" target="jeles_remote"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e35" value="POST /search" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" edge="1" parent="1" source="jeles_remote" target="world"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ask-jeles product layer -->
+        <mxCell id="e36" value="signed app" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" edge="1" parent="1" source="safe" target="ask_jeles"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e37" value="gap_log ✓ (topic: ask-jeles-corpus)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" edge="1" parent="1" source="ask_jeles" target="hub"><mxGeometry x="-0.2" y="15" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry></mxCell>
+        <mxCell id="e38" value="mem_jeles_* via mcp_client.py ◐ retiring" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="ask_jeles" target="legacy"><mxGeometry x="0.25" y="-20" relative="1" as="geometry"><mxPoint as="offset"/><Array as="points"><mxPoint x="920" y="800"/><mxPoint x="1140" y="800"/><mxPoint x="1140" y="560"/></Array></mxGeometry></mxCell>
+        <mxCell id="e40" value="open web: bundled now → hub primitives" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;strokeColor=#1565c0;" edge="1" parent="1" source="ask_jeles" target="search_prim"><mxGeometry x="0.12" y="10" relative="1" as="geometry"><mxPoint as="offset"/><Array as="points"><mxPoint x="500" y="780"/><mxPoint x="280" y="780"/><mxPoint x="280" y="650"/></Array></mxGeometry></mxCell>
+        <mxCell id="e41" value="librarian UI" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="user" target="ask_jeles"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="810" y="140"/><mxPoint x="730" y="140"/></Array></mxGeometry></mxCell>
+        <mxCell id="e42" value="source repo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="repos" target="ask_jeles"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="460" y="960"/><mxPoint x="460" y="890"/></Array></mxGeometry></mxCell>
+
+        <!-- coordination -->
+        <mxCell id="e23" value="packets picked up by identities" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="desk" target="idents"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="desk"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e25" value="Discord" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" edge="1" parent="1" source="grove" target="world"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e26" value="ff-only sync, vault excluded" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="daemons" target="repos"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- data plane -->
+        <mxCell id="e27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="kartn" target="ollama"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e28" value="manifest + keys" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" edge="1" parent="1" source="gate" target="safe"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e29" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="safe" target="apps"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e30" value="uses apps directly" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="user" target="apps"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e31" value="push (operator creds)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" edge="1" parent="1" source="repos" target="world"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="cbm"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

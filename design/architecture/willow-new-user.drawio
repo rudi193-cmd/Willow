@@ -1,0 +1,174 @@
+<mxfile host="Electron" agent="willow">
+  <diagram id="willow-new-user" name="Willow — new user">
+    <mxGraphModel dx="972" dy="496" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="880" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="legend" parent="1" style="text;html=1;fontSize=13;align=left;" value="&lt;b&gt;Willow — smallest picture for a new user&lt;/b&gt;&lt;br&gt;Kart ships with the platform · Jeles &amp;amp; UTETY optional · your data lives in {user}-data-vault" vertex="1">
+          <mxGeometry height="42" width="780" x="30" y="14" as="geometry" />
+        </mxCell>
+        <mxCell id="user" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" value="&lt;b&gt;You&lt;/b&gt;&lt;br&gt;vault key · SSH keys · PGP keys&lt;br&gt;approve network access · ask questions · assign work" vertex="1">
+          <mxGeometry height="76" width="280" x="440" y="64" as="geometry" />
+        </mxCell>
+        <mxCell id="tools" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" value="&lt;b&gt;Your tools&lt;/b&gt;&lt;br&gt;Cursor · Claude Code · Discord&lt;br&gt;&lt;i&gt;where you type — not who the agent is&lt;/i&gt;" vertex="1">
+          <mxGeometry height="76" width="340" x="410" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="willow" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" value="&lt;b&gt;Willow&lt;/b&gt;&lt;br&gt;your orchestrator bench&lt;br&gt;assign agents · review work · hand off context" vertex="1">
+          <mxGeometry height="96" width="320" x="420" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="hub" parent="1" style="shape=mxgraph.flowchart.direct_data;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" value="&lt;b&gt;willow-mcp — core hub&lt;/b&gt;&lt;br&gt;memory · knowledge · sessions · handoffs&lt;br&gt;&lt;i&gt;the platform — not the optional apps&lt;/i&gt;" vertex="1">
+          <mxGeometry height="84" width="380" x="390" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="kart" parent="1" style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;size=0.23;flipV=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" value="&lt;b&gt;Kart&lt;/b&gt;&lt;br&gt;run shell work in a sandbox&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ ships with platform&lt;/font&gt;" vertex="1">
+          <mxGeometry height="76" width="200" x="80" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="gate" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" value="&lt;b&gt;Gate — SSH · PGP · egress&lt;/b&gt;&lt;br&gt;SSH — who can reach your machine&lt;br&gt;PGP — signed apps &amp;amp; trusted actions&lt;br&gt;egress — nothing leaves without your OK" vertex="1">
+          <mxGeometry height="110" width="240" x="820" y="377" as="geometry" />
+        </mxCell>
+        <mxCell id="local" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;" value="&lt;b&gt;Your computer&lt;/b&gt;&lt;br&gt;local AI models&lt;br&gt;your files and repos" vertex="1">
+          <mxGeometry height="72" width="200" x="80" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="vault" parent="1" style="shape=mxgraph.flowchart.database;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#e8eaf6;strokeColor=#3949ab;fontSize=12;" value="&lt;b&gt;{user}-data-vault&lt;/b&gt;&lt;br&gt;your private data store&lt;br&gt;memory · knowledge · configs&lt;br&gt;&lt;font color=&quot;#3949ab&quot;&gt;🔒 only you hold the key&lt;/font&gt;" vertex="1">
+          <mxGeometry height="100" width="220" x="70" y="280" as="geometry" />
+        </mxCell>
+        <mxCell id="world" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;" value="&lt;b&gt;Outside world&lt;/b&gt;&lt;br&gt;websites · GitHub · APIs&lt;br&gt;only when Gate allows" vertex="1">
+          <mxGeometry height="84" width="200" x="900" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="safe" parent="1" style="shape=internalStorage;whiteSpace=wrap;html=1;dx=12;dy=12;rounded=1;strokeWidth=2;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" value="&lt;b&gt;SAFE app store&lt;/b&gt;&lt;br&gt;signed apps · pick at onboarding&lt;br&gt;&lt;i&gt;optional — install only what you need&lt;/i&gt;" vertex="1">
+          <mxGeometry height="72" width="380" x="390" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="jeles" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=12;" value="&lt;b&gt;Jeles&lt;/b&gt; &lt;font color=&quot;#666&quot;&gt;(separate repo)&lt;/font&gt;&lt;br&gt;sourced-knowledge library · research &amp;amp; citations&lt;br&gt;~/github/Jeles&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ optional install · in progress&lt;/font&gt;" vertex="1">
+          <mxGeometry height="96" width="290" x="230" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="utety" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=12;" value="&lt;b&gt;UTETY&lt;/b&gt; &lt;font color=&quot;#666&quot;&gt;(separate repo)&lt;/font&gt;&lt;br&gt;local-first learning · privacy-first tutoring&lt;br&gt;~/github/UTETY&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ optional install&lt;/font&gt;" vertex="1">
+          <mxGeometry height="96" width="290" x="550" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="more" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;dashed=1;fontSize=11;" value="&lt;b&gt;+ SAFE store apps&lt;/b&gt;&lt;br&gt;ask-jeles · utety-chat · story-timeline · …" vertex="1">
+          <mxGeometry height="64" width="200" x="870" y="676" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="tools" value="you work here">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="tools" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="willow" value="sessions run through">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="willow" value="you sit the bench">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="380" y="102" />
+              <mxPoint x="380" y="308" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="willow" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="hub" value="platform core">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="hub" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="vault" value="your data">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5b" edge="1" parent="1" source="vault" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="local" value="hosted on your machine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5c" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="vault" value="vault key">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="102" />
+              <mxPoint x="180" y="102" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5d" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" target="gate" value="SSH &amp; PGP keys">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="760" y="102" />
+              <mxPoint x="940" y="102" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5e" edge="1" parent="1" source="gate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" target="safe" value="signed apps (PGP)">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="940" y="500" />
+              <mxPoint x="770" y="500" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="hub" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" target="gate" value="egress needs your OK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="gate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" target="world" value="after approval">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="hub" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=11;" target="kart" value="run commands (task_submit)">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="340" y="638" />
+              <mxPoint x="180" y="638" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="hub" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="safe" value="catalog">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="safe" value="pick at onboarding">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="320" y="102" />
+              <mxPoint x="320" y="556" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="safe" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="jeles" value="optional install">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="safe" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" target="utety" value="optional install">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="safe" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" target="more" value="optional install">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="jeles" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;strokeColor=#1565c0;" target="gate" value="may use hub APIs">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="390" y="640" />
+              <mxPoint x="940" y="640" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="utety" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;strokeColor=#1565c0;" target="hub" value="may use hub APIs">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="640" />
+              <mxPoint x="700" y="474" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;strokeColor=#1565c0;" target="jeles" value="open directly">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="280" y="102" />
+              <mxPoint x="280" y="706" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;strokeColor=#1565c0;" target="utety" value="open directly">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="102" />
+              <mxPoint x="800" y="706" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e18" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;strokeColor=#1565c0;dashed=1;" target="more" value="open directly">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="840" y="102" />
+              <mxPoint x="1000" y="102" />
+              <mxPoint x="1000" y="622" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

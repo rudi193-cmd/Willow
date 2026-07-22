@@ -1,0 +1,86 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T21:45:00Z" agent="willow" version="24.0.0">
+  <diagram id="willow-target" name="Willow target architecture v0.2">
+    <mxGraphModel dx="900" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="legend" value="&lt;b&gt;Willow v0.2 — Sean's v0.1 topology, status-checked against live wiring 2026-07-20&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;green = live today&lt;/font&gt; · &lt;font color=&quot;#b97700&quot;&gt;amber = partial / split across old+new&lt;/font&gt; · &lt;font color=&quot;#c62828&quot;&gt;red = not built yet&lt;/font&gt;" style="text;html=1;fontSize=12;align=left;" vertex="1" parent="1">
+          <mxGeometry x="30" y="10" width="700" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- User -->
+        <mxCell id="user" value="&lt;b&gt;User (operator)&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="470" y="60" width="160" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- External projects -->
+        <mxCell id="ext" value="&lt;b&gt;External Projects&lt;/b&gt;&lt;br&gt;upstream desk: hermes, redential,&lt;br&gt;ctxvault, basic-memory, …&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ live (upstream_watcher)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="120" y="40" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Gate -->
+        <mxCell id="gate" value="&lt;b&gt;Gate — SSH · PGP · egress permissions&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ pgp_enforced · Kart egress = 3 keys&lt;br&gt;(cap + consent + operator lease)&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ envelope registry ↔ sandbox drift known&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="740" y="40" width="300" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- Willow seat -->
+        <mxCell id="seat" value="&lt;b&gt;Willow&lt;/b&gt;&lt;br&gt;persona + folder for orchestration&lt;br&gt;via CLI &lt;font color=&quot;#2e7d32&quot;&gt;✓&lt;/font&gt; or Dashboard &lt;font color=&quot;#c62828&quot;&gt;✗ not built&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="440" y="150" width="220" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- willow-mcp hub -->
+        <mxCell id="hub" value="&lt;b&gt;willow-mcp — the hub&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ mounted by charter seat only today;&lt;br&gt;22/23 seats still on legacy unified server.&lt;br&gt;Full hub = the decommission build (awaits ratify)&lt;/font&gt;" style="shape=mxgraph.flowchart.direct_data;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="420" y="300" width="260" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- Kart -->
+        <mxCell id="kartn" value="&lt;b&gt;Kart&lt;/b&gt;&lt;br&gt;sandboxed execution&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ live behind willow-mcp (task_submit)&lt;/font&gt;" style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;size=0.23;flipV=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="120" y="250" width="220" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Search -->
+        <mxCell id="search" value="&lt;b&gt;Willow web search / Jeles search&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ live on the LEGACY server only —&lt;br&gt;no willow-mcp verbs yet&lt;/font&gt;" style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;size=0.23;flipV=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="120" y="360" width="220" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- SAFE -->
+        <mxCell id="safe" value="&lt;b&gt;SAFE&lt;/b&gt;&lt;br&gt;signed app store&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ manifests 4/4 pass&lt;/font&gt;" style="shape=internalStorage;whiteSpace=wrap;html=1;dx=15;dy=15;rounded=1;arcSize=8;strokeWidth=2;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="800" y="280" width="160" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- Vault -->
+        <mxCell id="vault" value="&lt;b&gt;(USER)-data-vault&lt;/b&gt;&lt;br&gt;Postgres and SOIL live in here&lt;br&gt;&lt;font color=&quot;#c62828&quot;&gt;✗ today Postgres is a system service and SOIL&lt;br&gt;is per-project — moving the data plane into the&lt;br&gt;vault is a design decision, not yet built&lt;/font&gt;" style="shape=mxgraph.flowchart.database;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="790" y="430" width="260" height="110" as="geometry"/>
+        </mxCell>
+
+        <!-- Apps -->
+        <mxCell id="apps" value="&lt;b&gt;Apps and Documents for Willow&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2e7d32&quot;&gt;✓ SAFE apps live&lt;/font&gt;" style="shape=mxgraph.flowchart.multi-document;whiteSpace=wrap;html=1;strokeWidth=2;boundedLbl=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="540" y="470" width="180" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Dev repos -->
+        <mxCell id="repos" value="&lt;b&gt;Dev Repos / User Projects&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#b97700&quot;&gt;◐ 60 repos in ~/github — most still&lt;br&gt;seat on the legacy server&lt;/font&gt;" style="shape=mxgraph.flowchart.multi-document;whiteSpace=wrap;html=1;strokeWidth=2;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="240" y="470" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- EDGES (his topology, kept) -->
+        <mxCell id="x1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="ext" target="user"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="user" target="gate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="user" target="seat"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="seat" target="hub"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="kartn"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="search"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x7" value="Gate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=10;" edge="1" parent="1" source="hub" target="gate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x8" value="everything in this folder carries manifest + keys" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=10;" edge="1" parent="1" source="gate" target="safe"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="safe"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x10" value="user-granted paths only" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;fontSize=10;" edge="1" parent="1" source="safe" target="vault"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="safe" target="apps"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="apps"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=classic;endArrow=classic;" edge="1" parent="1" source="hub" target="repos"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x14" value="uses app directly" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="user" target="apps"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
