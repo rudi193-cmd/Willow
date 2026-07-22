@@ -352,6 +352,29 @@ flowchart TB
 
 Kart bwrap **without** a network directive shares no network namespace — tasks cannot reach Ollama until `allow_localhost` is explicitly granted (same gate family as `allow_net`, localhost-only scope).
 
+### 9.1 The model-seat rule (ratified 2026-07-22)
+
+**Any policy-generation or judgment seat defaults to the local lane; cloud
+models enter that seat only behind `consent.cloud_llm`.** A "judgment seat" is
+any place a model's output feeds an authorization, classification, triage, or
+policy decision — e.g. a future metered-envelope generator (B-35), the
+guardian-consent seam, PII scan tiers, retrieval reranking.
+
+Why this is safe where it wouldn't be elsewhere: in this architecture the model
+seat carries **no authority** — models propose, deterministic gates enforce,
+the operator signs. Swapping a frontier model for a local 3B–8B degrades draft
+quality, never safety; model size is a performance knob, not a trust knob.
+
+This is the local-first substitution for the just-in-time contextual policy
+generation proposed in *Contextual Agent Security: A Policy for Every Purpose*
+(Tsai & Bagdasarian, HotOS '25, [arXiv:2501.17070](https://arxiv.org/abs/2501.17070),
+the "Conseca" framework). Conseca's prescription — purpose-scoped JIT policies,
+generated only from trusted context, enforced deterministically — maps onto
+what this fleet already runs (per-task signed envelopes, operator-owned trust
+roots, model-free gates). Where Conseca puts a large model in the policy loop,
+this house seats a local one: the trusted-context requirement is strongest when
+the context never leaves the machine and no vendor sits inside the policy loop.
+
 ---
 
 ## Related docs
