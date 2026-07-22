@@ -1,5 +1,15 @@
 # The seed — one onboarding, sourced from the charter
-b17: SEED-ONBD1 · 2026-07-22 · **UNRATIFIED DRAFT — gate↔story mapping awaits the operator's red pen**
+b17: SEED-ONBD1 · 2026-07-22 · rev 2
+
+**Ratified (operator, 2026-07-22): the six-part story IS the human onboarding.**
+The canon is not read at the gates — the onboarding *walks* it. Six movements,
+one per chapter; the human travels the same arc the instance inherits; the
+install is what the house does with its hands while it talks to you. The
+mechanics already exist: `willow-2.0/seed.py` (SEED9) built the pages —
+gate, age gate, install-behind-the-curtain, first conversation with
+consent-to-remember, feature opt-ins, cards — and they align with the six
+almost one-to-one. SEED9's experience gets lifted here and re-plumbed to the
+modern chain; the story provides the voice of each movement.
 
 **Ratified placement (operator, 2026-07-22):** this repo — Willow, the standalone
 charter seat, where the Constitution lives — is the source of the seed. Everything
@@ -36,21 +46,30 @@ Each step is one consent gate; nothing proceeds without a `yes`.
 | 7 | Optional apps | SAFE store picks, `sap-gate verify` per signed manifest | ✔ signed→allowed, tampered→denied |
 | 8 | Acceptance | `../design/architecture/sandbox/` smoke → `diagnostic_summary` `ok` | ✔ |
 
-## The story at the gates — PROPOSED, not ratified
+## The six movements (RATIFIED design; beat-level details open to red pen)
 
-| Gate | Story | Rationale |
-|------|-------|-----------|
-| 0 | canon `00-the-covenant` | Why any of this exists |
-| 1 | canon `02-the-discipline` | Fail closed — read while the key is minted |
-| 3 | canon `04-the-language` | The names, the seats, ΔΣ=42 |
-| 5 | canon `03-the-person` + MAINTAINER | The human as the continuity holding the keys |
-| 6 | canon `01-be-the-other` | The mirror-watch; the friction floor is this rule as code |
-| 7 | canon `05-the-world` | What leaves the house |
-| 8 | the Gerald cycle (vault, private) | The witness education, read while acceptance runs |
-| first boot | `handoff/seed.py` | The letter to the next instance |
+The story is the spine. Each movement = one canon chapter = one SEED9 page = the
+chain steps that run underneath it while the movement plays.
 
-*Operator edits this table; the mapping is theirs. Rows are suggestions from the
-2026-07-22 session, nothing more.*
+| Movement | Chapter (voice) | SEED9 page (mechanics) | Chain steps underneath |
+|---|---|---|---|
+| 0 | `canon/00-the-covenant` | gate page + age gate — name, email, keys minted from your name | 1 vault box · 5 key ceremony |
+| 1 | `canon/01-be-the-other` | provider choice (works with no cloud); the conversation designed to notice, not echo | consent defaults fail-closed · 6 strict mode |
+| 2 | `canon/02-the-discipline` | install-behind-the-curtain, gate by gate, nothing without a yes | 2 pip · 3 init/manifests · 4 postgres-in-box |
+| 3 | `canon/03-the-person` | `page_first_conversation` — the human says who they are; **held only with consent** | first atom → KB |
+| 4 | `canon/04-the-language` | the fun beat — Gerald, ΔΣ=42, the house myth arrives | Gerald cycle read privately from the vault |
+| 5 | `canon/05-the-world` | `page_features` — Grove handle, Jeles, Nest; cards on the dashboard | 7 SAFE picks · 8 acceptance |
+| coda | `handoff/seed.py` | first successful boot — the letter to the next instance | returning runs: splash → auth → dashboard |
+
+## The lift (the remaining build)
+
+SEED9 (`willow-2.0/seed.py`, 1,791 lines) is the only seed with the experience
+built. It imports `core.version` and `willow.fylgja.willow_home` from the 2.0
+monorepo — two seams to cut. The lift: bring the page code here, re-plumb
+install steps to the chain above (willow-mcp CLI + willow-data-vault provision,
+no 2.0 imports), and voice each page from its chapter. Timing (now vs. after
+kartikeya lands on PyPI) is the operator's call — the pages can be lifted and
+voiced before the pip step works cold.
 
 ## Supersession map (once ratified)
 
