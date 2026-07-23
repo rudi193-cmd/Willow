@@ -1,3 +1,11 @@
+---
+name: seed-onboarding
+description: Ratified plan for sourcing the human onboarding from the six-part canon story, chained to the willow-mcp install steps.
+kind: doc
+---
+
+@markdownai v1.0
+
 # The seed — one onboarding, sourced from the charter
 b17: SEED-ONBD1 · 2026-07-22 · rev 2
 
@@ -84,3 +92,10 @@ voiced before the pip step works cold.
 (Trusted Publisher registered after one `invalid-publisher` bounce). Cold proof ran
 same day: fresh venv, PyPI-only packages, empty github root, new box — six
 movements, six chain steps DONE, acceptance verdict `ok`. The seed runs cold.
+
+---
+
+## Constraints
+
+@constraint id="SEED-ONBD-C1" text="Ratified (operator, 2026-07-22): the six-part story IS the human onboarding — the canon is not read at the gates, the onboarding walks it."
+@constraint id="SEED-ONBD-C2" text="Ratified (operator, 2026-07-22): this repo (Willow, the standalone charter seat) is the source of the seed. The Gerald story cycle lives privately in the vault and is only ever referenced here, never embedded."

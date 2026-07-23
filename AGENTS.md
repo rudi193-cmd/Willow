@@ -1,3 +1,11 @@
+---
+name: agents-root
+description: Cold-start map for the willow constitution seat — persona gate, orient entrypoint, MCP server routing, and hard operating rules.
+kind: doc
+---
+
+@markdownai v1.0
+
 # AGENTS.md — willow (constitution seat)
 
 This repo (`~/github/willow`) is the willow fleet's **governance / charter** folder — not
@@ -104,3 +112,14 @@ on the legacy unified server during migration.
 Project `.cursor/mcp.json` must win over `~/.cursor/mcp.json`. Refresh wiring:
 `cd ~/github/willow-2.0 && ./willow.sh project sync willow`. If tool routing looks
 wrong, reload the IDE window.
+
+---
+
+## Constraints
+
+@constraint id="AGENTS-C1" text="MCP-first: use willow MCP tools for fleet data, never raw shell. No psql, sqlite3, or PYTHONPATH= python against the willow stores — ever."
+@constraint id="AGENTS-C2" text="Shell / git / tests go through Kart, never agent shell: willow_run(app_id=willow, task=...). Agent shell has no git creds and is hook-blocked."
+@constraint id="AGENTS-C3" text="kb_search before you build; mem_check before kb_ingest."
+@constraint id="AGENTS-C4" text="Write in your namespace only. File charter/portfolio flags in governance/flags, not the fleet-wide willow/flags."
+@constraint id="AGENTS-C5" text="Archive stale atoms; never delete."
+@constraint id="AGENTS-C6" text="Governance acts need envelopes. Check envelopes/pre-approved.json for active grants before acting. Cross-repo work, merges, or Kart work in willow-2.0 escalate to a full fleet boot."

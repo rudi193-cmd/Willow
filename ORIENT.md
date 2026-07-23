@@ -1,3 +1,9 @@
+---
+name: orient
+description: Project orient ritual for the willow constitution seat — SOIL, git anchors, governance flags, and the six-step loop.
+kind: doc
+---
+
 @markdownai v1.0
 
 # Orient — the constitution seat (`~/github/willow`)
@@ -107,3 +113,9 @@ If MCP tools route to the wrong server, reload the IDE window or re-run project 
 ---
 
 *Draft lineage: 0.1 (2026-07-07, tri-modal seat + project SOIL; companion to `soil/manifest.json`, `.willow/project.json`). Updated 2026-07-16 — willow-mcp-first Jarvis wiring.*
+
+---
+
+## Constraints
+
+@constraint id="ORIENT-C1" text="Do not file new charter/portfolio shapes in fleet willow/flags — use governance/flags here."

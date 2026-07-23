@@ -1,3 +1,11 @@
+---
+name: error-tracking
+description: Operator scratch note distinguishing error tracking (telemetry) from writing errors (durable knowledge) for the fleet.
+kind: doc
+---
+
+@markdownai v1.0
+
 # Error tracking vs writing errors
 
 *Operator scratch — 2026-07-06. Unratified. Companion to AGENT_SERVICES.md (especially S2: answered proposals need bounce reasons).*

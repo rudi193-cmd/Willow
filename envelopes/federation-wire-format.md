@@ -1,3 +1,9 @@
+---
+name: federation-wire-format
+description: Draft wire format for cross-node federation envelopes — grant/directive/receipt/refusal message types, signing, and errno semantics.
+kind: doc
+---
+
 @markdownai v1.0
 
 # Federation Envelope Wire Format — Draft 0.1
@@ -100,10 +106,14 @@ Nothing here requires Willow. That is the point: Phase 2 operators install *a* r
 
 Transport and discovery (Pangolin assumed, anything works) · payload semantics beyond verb bounds · key rotation/revocation ceremonies (Phase 1.5 exercise) · quorum/multi-party grants · economic metering. Each becomes a numbered amendment when a phase forces it.
 
-@constraint: A grant may only be issued by the operator key of the node that will execute the work. Cross-issued grants are VOID regardless of signature validity.
-@constraint: ECONFLICT resolution is human-only. No runtime actor, including project head, may arbitrate conflicting legitimate authority.
-@constraint: Every directive outcome — granted or refused — produces a signed, ledger-anchored response. Silence is a protocol violation.
-
 ---
 
 *Lineage: single-machine envelope law drafted 2026-07-06 (session e2b05d0a, FRANK 6ba8e501); federation frame + human-seat phasing decided 2026-07-07 (session bf1bcefc, KB 5F2C19AF / 5B7F11AF, Grove #264). This draft is the "one-page wire-format spec" named there as the next bite.*
+
+---
+
+## Constraints
+
+@constraint A grant may only be issued by the operator key of the node that will execute the work. Cross-issued grants are VOID regardless of signature validity.
+@constraint ECONFLICT resolution is human-only. No runtime actor, including project head, may arbitrate conflicting legitimate authority.
+@constraint Every directive outcome — granted or refused — produces a signed, ledger-anchored response. Silence is a protocol violation.

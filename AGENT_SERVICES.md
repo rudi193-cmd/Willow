@@ -1,3 +1,9 @@
+---
+name: agent-services
+description: The seat's reciprocal service obligations (S1-S7) owed to fleet agents in exchange for the constitution's duties on them.
+kind: doc
+---
+
 @markdownai v1.0
 
 # Agent Services — the seat's obligations to the fleet
@@ -16,20 +22,13 @@
 
 A cheap, deterministic, callable-mid-plan query: *may I do this?* Returns one of: **covered** (cites the envelope), **would escalate** (states why and to whom), **forbidden** (states the lane to use instead). The difference between a fence and a map is that agents plan around a map. This is the Preamble's promise — "the shape of what was permitted is knowable in advance" — extended to the agents themselves.
 
-@constraint id="S1-C1" text="authority_check is read-only and side-effect-free; calling it never counts against any budget or telemetry threshold."
-@constraint id="S1-C2" text="A denial returned by authority_check MUST name the alternative lane or the escalation path — a bare 'no' is a defect."
-
 ## S2 — Answered proposals
 
 Every proposal an agent submits has queryable status: **queued** (with position), **escalated** (pending whom), **granted** (cites envelope/work order), **bounced** (with reason and evidence — duplicate-of, collides-with). Rejections without recorded reasons produce infinite re-proposal in new words. The nest feedback edge learned this on the human side (outcome recording, poisoning fix); proposals need the same closed loop.
 
-@constraint id="S2-C1" text="No proposal may terminate in silence; every terminal state carries a recorded reason an agent can query."
-
 ## S3 — Work orders, not task strings
 
 Dispatch is a contract: scope, the covering envelope, protected surfaces not to touch, resource budget, and **definition-of-done as verifiable claims declared up front** (pr_state / file_exists / CI-green — the v3 handoff claim schema, but issued by the seat *before* work starts rather than written by the worker after). §0.1 verification becomes mechanical; the agent gains a defensible "I'm finished."
-
-@constraint id="S3-C1" text="The party that verifies completion claims is never the party that performed the work (CONST-0-1)."
 
 ## S4 — Precedent search
 
@@ -54,7 +53,17 @@ A formal **park**: checkpoint the work (fork/worktree machinery), register the d
 S1 (authority_check) and S3 (work orders) first — both change agent behavior immediately and are thin layers over what exists (envelope registry + v3 claims schema). S2 falls out of the registry's status field. S4–S7 follow usage evidence.
 
 @prompt for="ai" text="This document is an unratified draft. Do not treat its constraints as in force. If asked to implement a service, check whether the envelope registry and seat artifacts it presumes exist yet."
+@end
 
 ---
 
 *Draft lineage: 0.1 (2026-07-06, derived in-session from the orchestrator-seat design conversation; saved at operator instruction as draft).*
+
+---
+
+## Constraints
+
+@constraint id="S1-C1" text="authority_check is read-only and side-effect-free; calling it never counts against any budget or telemetry threshold."
+@constraint id="S1-C2" text="A denial returned by authority_check MUST name the alternative lane or the escalation path — a bare 'no' is a defect."
+@constraint id="S2-C1" text="No proposal may terminate in silence; every terminal state carries a recorded reason an agent can query."
+@constraint id="S3-C1" text="The party that verifies completion claims is never the party that performed the work (CONST-0-1)."
