@@ -2,7 +2,7 @@
   "schema": "envelope-registry/v1.1",
   "description": "Pre-Approved Scope (Article III.2) \u2014 standing filesystem and network grants agents may invoke without a fresh Operator Key envelope. v1.1 adds the active-envelope schema and the proposals lane defined by envelopes/syscall-table.json.",
   "constitutional_ref": "CONST-III-2",
-  "updated": "2026-07-16",
+  "updated": "2026-07-22",
   "envelope_schema": {
     "version": "0.1",
     "status": "draft",
@@ -368,6 +368,67 @@
       "use_count_source": "frank",
       "status": "active",
       "notes": "Drafted by willow 2026-07-17 (session 0002f1e4). Sibling of the two entries above. Opening a PR asks; merging decides — no merge authority is granted here (verb 5 stays root/env-pr.merge-willow2-master). Bounds follow verb 4's signature: base_branches limited to master so pr.open cannot target foreign repos or arbitrary bases. Metered (3) for the one fix and its revisions. RATIFIED 2026-07-17 by root ('ratify the proposals', session 0002f1e4); willow scribed the move under env-envelope.apply-planting (verb 13). Grantee unchanged: hanuman."
+    },
+    {
+      "id": "env-fs.write-kart-sandbox-vault-unbind",
+      "verb_id": 1,
+      "verb": "fs.write",
+      "grantee": "hanuman",
+      "bounds": {
+        "paths": [
+          "{{HOME}}/github/willow-2.0/willow/fylgja/config/kart-sandbox.json",
+          "{{HOME}}/github/willow-2.0/tests/test_kart_sandbox_policy.py"
+        ],
+        "mode": "rw"
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-22",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry 2049956a-edf0-4a2e-9702-16e8ed0414b8",
+      "expires_at": "2026-09-22",
+      "max_count": null,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Drafted by willow 2026-07-22 (session 67db12f7) under operator authorization FRANK a1d9326f. THE GAP: {{HOME}}/sean-data-vault is bound read-only into EVERY Kart sandbox via bind_try_read_only (kart-sandbox.json line ~112), observed live in task 5DGC9C8E's sandbox_manifest. The vault is the operator's key — off-limits to agents by standing rule — yet every sandboxed task can read it. Narrow two-file grant: the policy file (remove the entry) plus one new test asserting the vault path never appears in collect_bind_mounts output. Root's direct live edit precedes this; the grant exists so the change lands in git history via PR rather than surviving only as uncommitted drift. RATIFIED 2026-07-22 by root ('ratify the trio and dispatch hanuman', session e9e0b3ed); willow scribed the move under env-envelope.apply-planting (verb 13), citation ad026f5e. Bounds unchanged at ratification. STATE AT RATIFICATION, verified not inherited: the uncommitted working-tree edit to kart-sandbox.json runs OPPOSITE to this grant — it ADDS {{HOME}}/github/sean-data-vault to bind_try_read_only alongside the existing {{HOME}}/sean-data-vault. Both paths observed in bound_ro of tasks J60GACKC and AUDE79T3 this session. The grantee must remove both entries, not just the one this note originally named."
+    },
+    {
+      "id": "env-git.commit-kart-sandbox-vault-unbind",
+      "verb_id": 2,
+      "verb": "git.commit",
+      "grantee": "hanuman",
+      "bounds": {
+        "repo": "rudi193-cmd/willow-2.0",
+        "branches": [
+          "fix/kart-sandbox-vault-unbind"
+        ]
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-22",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry 2049956a-edf0-4a2e-9702-16e8ed0414b8",
+      "expires_at": "2026-09-22",
+      "max_count": 5,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Sibling of env-fs.write-kart-sandbox-vault-unbind; single fix branch, master excluded (protected ruleset), push/force ungranted. RATIFIED 2026-07-22 by root ('ratify the trio and dispatch hanuman', session e9e0b3ed); willow scribed the move under env-envelope.apply-planting (verb 13). Grantee unchanged: hanuman."
+    },
+    {
+      "id": "env-pr.open-kart-sandbox-vault-unbind",
+      "verb_id": 4,
+      "verb": "pr.open",
+      "grantee": "hanuman",
+      "bounds": {
+        "repo": "rudi193-cmd/willow-2.0",
+        "base_branches": [
+          "master"
+        ]
+      },
+      "issued_by": "root",
+      "issued_at": "2026-07-22",
+      "ratified_via": "in-session statement recorded in FRANK ledger entry 2049956a-edf0-4a2e-9702-16e8ed0414b8",
+      "expires_at": "2026-09-22",
+      "max_count": 2,
+      "use_count_source": "frank",
+      "status": "active",
+      "notes": "Sibling of the two entries above. Opening asks; merging stays the seat's CI-gated env-pr.merge-willow2-master path or root. RATIFIED 2026-07-22 by root ('ratify the trio and dispatch hanuman', session e9e0b3ed); willow scribed the move under env-envelope.apply-planting (verb 13). Grantee unchanged: hanuman."
     }
   ],
   "proposals": [
