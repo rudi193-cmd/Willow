@@ -1,5 +1,8 @@
 # Handoff — box-audit remediation (2026-07-25)
 
+> **Superseded by `handoff-2026-07-27-box-audit-remediation.md`** — kept for
+> history (first-day fixes). See the 2026-07-27 doc for current status.
+
 Continuation of the 2026-07-24 fleet box scan (`design/box-scan-2026-07-24.md`).
 This session drove the audit findings to merged fixes across six repos. Below is
 what landed, what's deferred (and on whom), and what's still open, so the next
