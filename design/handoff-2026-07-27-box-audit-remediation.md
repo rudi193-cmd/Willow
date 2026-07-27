@@ -5,11 +5,13 @@ Current status of the 2026-07-24 fleet box scan (`design/box-scan-2026-07-24.md`
 the first day's fixes; this one reflects the state after the second remediation
 push closed the remaining hardening findings and most of the duplication.
 
-**Bottom line:** every **B (hardening)** finding is remediated except low-latent
-**B16**. On the **A (duplication)** side, A1–A10 are done; only low-severity **A11**
-(cleanup) remains. What's left is not a live vulnerability — it's low-severity
-cleanup and a set of **operator/owner actions** to switch on controls that
-shipped off-by-default.
+**Bottom line:** every **B (hardening)** finding is remediated, and every
+substantive **A (duplication)** finding (A1–A10). B16 and A11 are down to their
+last, cosmetic dead-code/dedup remnants (the security-relevant SSRF item and the
+dead nestor copy are closed). Nothing open is a live vulnerability or a build —
+what's left is a handful of cosmetic dedups (deliberately deprioritized) and a
+set of **operator/owner actions** to switch on controls that shipped
+off-by-default.
 
 ## Landed since 2026-07-25
 
@@ -29,6 +31,7 @@ or purely additive/test+CI — so nothing broke on merge.
 | **A4** nest-seed pipeline (~1.3k identical lines) | extracted to canonical `libs/nest-pipeline`; nest-seed consumes it; willow-mcp vendors it with a drift-guard | safe-app-store #110, willow-mcp #192 |
 | **A10** doctrine duplication | retired the superseded Article XIV file; disambiguated "tier"/"consent gate"/"Independent Witness"; cross-linked the sudo-invariant | willow #15 |
 | **A9** trust model in 3 shapes | pinned willow-gate's + willow-mcp's trust ladders to one canonical (golden-vector drift-guard). tier_policy already reconciles `manifest ∩ tier` at enforcement, so it was drift-prevention, not a rewrite | willow-gate #24, willow-mcp #193 |
+| **B16 / A11** (the substantive parts) | source-trail SSRF guard (block loopback/private/link-local/reserved before the stored-URL fetch); removed the dead embedded `nestor` copy in semantic-translator | safe-app-store #111 |
 
 (Prior day, per the 2026-07-25 handoff: B1, B2-submit, B4, B5, B6, B7, B10, B11,
 B12, B14, B15, A3, A8, and the B3 8-app SOIL gate-bypass were already merged.)
@@ -38,10 +41,10 @@ B12, B14, B15, A3, A8, and the B3 8-app SOIL gate-bypass were already merged.)
 **B — hardening:** B1 ✅ · B2 ⚠️ (submit-time enforced; executor recheck deferred
 on kartikeya; flag off) · B3 ✅ · B4 ✅ · B5 ✅ · B6 ✅ · B7 ✅ · B8 ✅ (built +
 wired, off) · B9 ✅ · B10 ✅ · B11 ✅ (one doc-honesty residual) · B12 ✅ (flags
-off) · B13 ✅ (signing/seam deferred) · B14 ✅ · B15 ✅ · **B16 ❌ low-latent**.
+off) · B13 ✅ (signing/seam deferred) · B14 ✅ · B15 ✅ · B16 ◑ (SSRF closed; cosmetic residual).
 
 **A — duplication:** A1 ✅ · A2 ✅ · A3 ✅ · A4 ✅ · A5 ✅ · A6 ✅ · A7 ✅ · A8 ✅ ·
-A9 ✅ · A10 ✅ · **A11 ❌ low cleanup**.
+A9 ✅ · A10 ✅ · A11 ◑ (dead code removed; cosmetic dedup residual).
 
 ## Owner / operator actions — nothing merges these but a human
 
@@ -59,10 +62,23 @@ These gate *turning controls on*, not merging code.
 - **B13:** signing+verifying `promotion.json` and a `semantic_seam` smoke-test need a key-scheme / sandbox decision.
 - **`FLEET_RO_TOKEN`:** the willow-mcp `vendor-sync` CI job now checks **four** vendored copies (friction_floor, subject_consent, mem_ratify, nest-pipeline); each cross-repo diff soft-skips until this read-only PAT is set (only matters if the upstreams are private).
 
-## Still open — low-severity only (no live vulnerability, no build left)
+## Still open — cosmetic dedup only (no live vulnerability, no build left)
 
-- **B16 — low-latent:** SSRF allowlist not wired on `source-trail/sources_db.py` `urlopen` (guard exists dormant in willow-mcp `mai/parser.py`); `willow:willow` dev DB default left as a working runtime default; unscoped utety egress env var; column-name SQL-injection latent (safe today).
-- **A11 — cleanup freebies:** dead `_archived/nestor/` copies, duplicated tokenizers, forked `jeles_persona.json`, the Fernet `vault.py` copy-chain.
+The substantive B16/A11 items are closed (safe-app-store #111): the source-trail
+SSRF guard is wired, and the dead embedded `nestor` copy is gone. Several B16/A11
+items were already handled since the audit — utety's egress is now
+guardian-switched + https-enforced with specific excepts (not the bare swallow
+the audit saw), and the column-name SQL sites got `sql.Identifier` in #101.
+
+What remains is **cosmetic, deliberately deprioritized** (real churn for
+negligible benefit — leave unless a reason appears):
+
+- **B16 residual:** llmphysics' `WILLOW_DB_URL` `setdefault` to
+  `willow:willow@localhost` — a loopback dev-convenience default that already
+  respects any real env var; not worth the ergonomics cost to change.
+- **A11 cosmetic dedups:** the jeles/nestor tokenizer disagreement, the
+  3-generation Fernet `vault.py` copy-chain, the forked `jeles_persona.json`, and
+  a missing `web_search` provenance note. Tidiness, not correctness or security.
 
 ## Patterns / decisions carried forward
 
