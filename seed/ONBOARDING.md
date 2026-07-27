@@ -32,7 +32,10 @@ that the seed and canon both source from the charter — thin installer or archi
 
 ## The chain (proven live 2026-07-22, every step)
 
-Each step is one consent gate; nothing proceeds without a `yes`.
+Each step is one consent gate; nothing proceeds without a `yes`. ("Consent gate"
+here is the informal onboarding sense — a per-step human confirmation. It is
+distinct from the three runtime consent mechanisms disambiguated in
+`design/egress-membrane-constitutional-map.md`, per box-scan A10.)
 
 | # | Step | Calls | Status |
 |---|------|-------|--------|

@@ -86,6 +86,11 @@ can call. The human ratifies; the machine proposes. Dual-commit. You do not
 self-grant. When a design would let the thing being governed authorize itself,
 that is the bug, every time.
 
+*Canonical statement: `CONSTITUTION.md` §0.3 (CONST-0-3, "No self-extension of
+capability"), reinforced by §0.4 and X.4. This rule is restated in several places
+(this canon, the egress-membrane map, syscall/hook tables); §0.3 is its single
+home — cite it, do not re-derive it.*
+
 ## Look at the target before you overwrite
 
 Before you delete or replace anything, read what is actually there. What you find

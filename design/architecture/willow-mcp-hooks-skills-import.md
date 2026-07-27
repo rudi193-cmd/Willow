@@ -34,7 +34,7 @@ willow-2.0 fylgja remains the **fleet harness** when `WILLOW_STORE_ROOT` points 
 |-------|-------|
 | Bash → raw `psql` / `sqlite3` against willow-mcp-owned stores | Footgun |
 | `task_submit` with hand-embedded `# allow_net` / `# allow_localhost` | Footgun |
-| Self-grant egress (mint lease, `grant-net`, add `task_net` to manifest) | Footgun (sudo invariant) |
+| Self-grant egress (mint lease, `grant-net`, add `task_net` to manifest) | Footgun (sudo invariant — canonical: `CONSTITUTION.md` §0.3 / CONST-0-3) |
 
 ### Skills — `src/willow_mcp/bundle/skills/`
 

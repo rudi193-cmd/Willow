@@ -68,7 +68,7 @@ on the legacy unified server during migration.
 | `CONSTITUTION.md` | The charter — six authorities + Article 0 eternity clause |
 | `ORIENT.md` | Project orient ritual (run first) |
 | `AGENT_SERVICES.md` | This seat's obligations to the fleet |
-| `PROTECTED_AGENTS.md` / `PROTECTED_PERSONS.md` | Named entities under protection |
+| `PROTECTED_AGENTS.md` | Candidate Article XIV ("Powers Over Agents") — the canonical protection doctrine. `PROTECTED_PERSONS.md` is the superseded Draft 0.1 (now a stub pointing here). |
 | `envelopes/pre-approved.json` | Active authority grants (scope, expiry, meter) |
 | `soil/manifest.json` | Project SOIL collection map |
 | `fleet.json` | Fleet/portfolio state |
