@@ -6,11 +6,10 @@ the first day's fixes; this one reflects the state after the second remediation
 push closed the remaining hardening findings and most of the duplication.
 
 **Bottom line:** every **B (hardening)** finding is remediated except low-latent
-**B16**. On the **A (duplication)** side, A1–A8 and A10 are done; only **A9**
-(trust-model unification) and low-severity **A11** remain. What's left is not a
-live vulnerability — it's one architectural refactor, low-severity cleanup, and
-a set of **operator/owner actions** to switch on controls that shipped
-off-by-default.
+**B16**. On the **A (duplication)** side, A1–A10 are done; only low-severity **A11**
+(cleanup) remains. What's left is not a live vulnerability — it's low-severity
+cleanup and a set of **operator/owner actions** to switch on controls that
+shipped off-by-default.
 
 ## Landed since 2026-07-25
 
@@ -29,6 +28,7 @@ or purely additive/test+CI — so nothing broke on merge.
 | **A6/A7** signer + ledger convergence | golden-vector guards for the HMAC encoding; `governance_ledger` v2 covers id+project | willow-gate #23, willow-mcp #188, #189 |
 | **A4** nest-seed pipeline (~1.3k identical lines) | extracted to canonical `libs/nest-pipeline`; nest-seed consumes it; willow-mcp vendors it with a drift-guard | safe-app-store #110, willow-mcp #192 |
 | **A10** doctrine duplication | retired the superseded Article XIV file; disambiguated "tier"/"consent gate"/"Independent Witness"; cross-linked the sudo-invariant | willow #15 |
+| **A9** trust model in 3 shapes | pinned willow-gate's + willow-mcp's trust ladders to one canonical (golden-vector drift-guard). tier_policy already reconciles `manifest ∩ tier` at enforcement, so it was drift-prevention, not a rewrite | willow-gate #24, willow-mcp #193 |
 
 (Prior day, per the 2026-07-25 handoff: B1, B2-submit, B4, B5, B6, B7, B10, B11,
 B12, B14, B15, A3, A8, and the B3 8-app SOIL gate-bypass were already merged.)
@@ -41,7 +41,7 @@ wired, off) · B9 ✅ · B10 ✅ · B11 ✅ (one doc-honesty residual) · B12 �
 off) · B13 ✅ (signing/seam deferred) · B14 ✅ · B15 ✅ · **B16 ❌ low-latent**.
 
 **A — duplication:** A1 ✅ · A2 ✅ · A3 ✅ · A4 ✅ · A5 ✅ · A6 ✅ · A7 ✅ · A8 ✅ ·
-**A9 ❌ (trust-model, architectural)** · A10 ✅ · **A11 ❌ low cleanup**.
+A9 ✅ · A10 ✅ · **A11 ❌ low cleanup**.
 
 ## Owner / operator actions — nothing merges these but a human
 
@@ -59,9 +59,8 @@ These gate *turning controls on*, not merging code.
 - **B13:** signing+verifying `promotion.json` and a `semantic_seam` smoke-test need a key-scheme / sandbox decision.
 - **`FLEET_RO_TOKEN`:** the willow-mcp `vendor-sync` CI job now checks **four** vendored copies (friction_floor, subject_consent, mem_ratify, nest-pipeline); each cross-repo diff soft-skips until this read-only PAT is set (only matters if the upstreams are private).
 
-## Still open — builds / refactors (not live vulnerabilities)
+## Still open — low-severity only (no live vulnerability, no build left)
 
-- **A9 — trust model in 3 incompatible shapes** (willow-gate 5-rung ladder vs willow-mcp `session_binder (name, read_only)` vs `PERMISSION_GROUPS`). One identity→authority model; the others derive from it. Architectural — wants a design pass, not a blind refactor.
 - **B16 — low-latent:** SSRF allowlist not wired on `source-trail/sources_db.py` `urlopen` (guard exists dormant in willow-mcp `mai/parser.py`); `willow:willow` dev DB default left as a working runtime default; unscoped utety egress env var; column-name SQL-injection latent (safe today).
 - **A11 — cleanup freebies:** dead `_archived/nestor/` copies, duplicated tokenizers, forked `jeles_persona.json`, the Fernet `vault.py` copy-chain.
 
