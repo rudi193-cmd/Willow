@@ -16,6 +16,13 @@ The egress membrane is **not a new article.** It is the first fully worked *inst
 
 Stated as the recursion: **we did not design a feature; we built the enforcement artifact the charter has been pointing at.** The obligation this creates is small and precise — one new clause, one parameter, two evidence notes, and a set of binding-table registrations — because the kernel already anticipated it.
 
+> **Disambiguation of "consent gate" (box-scan A10).** "Consent gate" is *not* one mechanism; the fleet runs at least three distinct ones, and they must not be treated as interchangeable:
+> 1. **`subject_consent`** — the per-scope grant/revoke chain a data *subject* holds (canonical lib in `safe-app-store/libs/subject-consent`, vendored into `willow-mcp` and `utety`; box-scan A1). Governs whether a learner's data may be used at all.
+> 2. **Legacy `consent.json`** — the older flat consent-flag file / `consent_status` column still present in some paths (e.g. `utety/core/store.py`; box-scan A2). Superseded by (1); kept only for compatibility.
+> 3. **The egress lease** — the time-boxed, operator-confirmed grant that lets *content leave the machine* (this document; `cc553729`; willow-gate / willow-mcp). This is the gate mapped here to Article III + V + X.4.
+>
+> The constitutional anchor for all consent is **Article V (The Human)**, **X.4 (Concurrence)**, and **§0.4** (absence is not consent). The onboarding "consent gate" in `seed/ONBOARDING.md` is a *fourth*, informal use — a per-step human confirmation — not one of the three runtime mechanisms above. There is no single "consent gate" object; cite the specific mechanism.
+
 ---
 
 ## Decision → constitutional home
