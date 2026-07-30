@@ -76,6 +76,54 @@ Discord/Grove reach is a product feature decision, not a dependency). `vault.py`
 Until every blocker above is resolved and the clean-environment gate passes, disabling
 willow-2.0 breaks either execution, orientation, consent, or governance. **This is Phase 1.**
 
+### 3a. First observed reach-back (willow, 2026-07-30, logged at operator direction)
+
+Both `willow-mcp-worker-{fast,batch}.service` units were installed but never enabled, so **no
+Kart worker was alive on either lane**; `fleet_health` reported the batch lane stranded. Starting
+them restored execution (fast lane verified end-to-end: task `G2F70UC2`, bwrap, rc 0). Enabling
+the units is still outstanding — this recurs on every reboot until it is done.
+
+Draining the batch lane surfaced a standing **willow-2.0 reach-back**, task `D0AE504A`:
+
+```
+"${WILLOW_PYTHON:-python3}" /home/sean-campbell/github/willow-2.0/scripts/willow_embed_backfill.py
+```
+
+Queued by `sap_startup` (willow-2.0 `sap/sap_mcp.py`) at every boot. It failed `rc 2` on all three
+attempts with ENOENT. **The script is not missing** — it exists on disk. bwrap reports an unmounted
+path as ENOENT, and the sandbox manifest said so explicitly: `path not mounted in sandbox`.
+
+Mechanism, confirmed against the artifacts — two independent Phase 1 changes each severed the path:
+
+1. `kartikeya/src/kartikeya/sandbox.py:114` `willow_repo_root()` resolves, when `$WILLOW_ROOT` is
+   unset, in the order `$WILLOW_MCP_REPO` → installed `willow_mcp` tree → `~/github/willow-mcp` →
+   legacy `~/github/willow-2.0` (**last**). The new worker units set no `WILLOW_ROOT` — by design,
+   so workers "do not inherit hidden willow-2.0 paths" — so `{{WILLOW_ROOT}}` in
+   `kart-sandbox.json#bind_read_write` now renders to **willow-mcp**. willow-2.0 gets no mount.
+2. The fleet `kart-sandbox.json#bind_try` enumerates ~30 repos and does **not** include willow-2.0.
+   The vendored default's `{{HOME}}/github` blanket was replaced by enumeration in the 2026-07-22
+   vault unbind (`BCFF95C8` → `B05ECA31` → `0AEAFA7A`). Before that, willow-2.0 was reachable
+   through the blanket.
+
+**Reading:** this is Phase 1 working, not a Kart defect. Do **not** re-add willow-2.0 to `bind_try`
+— that reverts two deliberate decommission moves to keep a legacy startup job alive. The gate's
+"zero reach into `willow-2.0/`" condition is now partly enforced *by the sandbox itself*, and this
+job is the first thing it caught.
+
+**Carried into Phase 1 / Phase 3:**
+- Stop `sap_startup` queuing the job (it lives in willow-2.0, itself retire-scope).
+- Port embed-backfill into willow-mcp before Phase 2. Not a path edit: the script imports
+  `core.agent_identity`, `core.embedder`, `core.pg_bridge`, `core.willow_store` — four willow-2.0
+  core modules. Losing it degrades semantic search over `knowledge` / `opus_atoms` / `jeles_atoms`.
+- **Unestablished, needs a probe:** how long this has been failing (pattern says since 2026-07-22;
+  dating the 171 failed task rows needs DB access the seat lacks), and how far behind the
+  embeddings actually are — that decides whether the port is urgent or merely tidy.
+
+**Monitoring finding (§6 candidate):** a startup job failed on every boot for roughly a week and
+nothing surfaced it. It came to light only because the operator asked for a lane restart. Phase 3's
+observation window assumes reach-back is *noticed*; on this evidence it is not. A reach-back
+detector — diff task paths against the sandbox mount policy — should precede Phase 3, not follow it.
+
 ## 4. Unit classification (`systemctl --user`)
 
 **Retire — willow-2.0-only, no survivor depends:**
@@ -107,6 +155,7 @@ the global `~/.cursor/mcp.json` still registers the legacy unified server.
   pin the first Kartikeya version carrying fail-closed authorization.
 - **1b — Production worker:** real lane claims, claim timestamps/ownership, stale recovery,
   terminal timestamps, worker service templates, and install/status/uninstall support.
+  *[built + installed; verified running 2026-07-30 — see §3a. Units are not yet `enable`d.]*
 - **1c — Native project orientation:** explicit logical-to-physical collection aliases,
   archive-first record migration, project-aware `session_enter`, project-scoped v3 handoffs,
   and explicit FRANK status.
