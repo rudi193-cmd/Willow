@@ -2,20 +2,60 @@ name: mem_ratify tests
 
 on:
   push:
-    branches: ["**"]
+    # Main only — an unfiltered push trigger plus pull_request runs CI
+    # twice on every PR commit.
+    branches: [main]
   pull_request:
+  schedule:
+    # Daily drift catcher, off the :00/:30 peak-load minutes — fleet pattern.
+    - cron: "17 5 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lint tools
+        run: pip install ruff==0.15.0 bandit
+
+      - name: Ruff (enforced)
+        run: ruff check mem_ratify
+
+      - name: Bandit (enforced — tree is clean, keep it that way)
+        run: bandit -r mem_ratify -ll -q
+
+  test-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
       - name: Run mem_ratify test suite (stdlib only)
         run: python -m unittest discover -s mem_ratify/tests -t . -p "test_*.py" -v
+
+  # Aggregate gate: branch protection across the fleet requires a single
+  # check named exactly "test". Green only when lint and every leg are.
+  test:
+    needs: [test-matrix, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "lint and all matrix legs green"
