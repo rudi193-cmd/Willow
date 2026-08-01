@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # github-actions only: mem_ratify is stdlib-only, no pip manifests to watch.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
