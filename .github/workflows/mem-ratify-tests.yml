@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -24,6 +28,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install lint tools
         run: pip install ruff==0.15.0 bandit
@@ -51,6 +57,12 @@ jobs:
 
       - name: Run mem_ratify test suite (stdlib only)
         run: python -m unittest discover -s mem_ratify/tests -t . -p "test_*.py" -v
+
+      - name: Same suite under -O
+        # Asserts are stripped under -O. Safety controls must not live in
+        # asserts (utety's A4 pattern) — proving the suite holds optimized
+        # keeps that regression class from landing silently.
+        run: python -O -m unittest discover -s mem_ratify/tests -t . -p "test_*.py"
 
   # Aggregate gate: branch protection across the fleet requires a single
   # check named exactly "test". Green only when lint and every leg are.
