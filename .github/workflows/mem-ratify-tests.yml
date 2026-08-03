@@ -28,8 +28,6 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: pyproject.toml
 
       - name: Install lint tools
         run: pip install ruff==0.15.0 bandit
