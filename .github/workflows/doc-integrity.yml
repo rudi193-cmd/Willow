@@ -1,0 +1,112 @@
+name: doc integrity
+
+# The charter repo's product is prose whose value is that every claim is
+# traceable. A citation that has rotted is worse than none, because it trains a
+# reader to stop checking. Nothing enforced that here until now — willow-grove
+# has had this gate for its own docs; willow had none, and three references were
+# already broken when this landed (registered in tools/doc_gate.py).
+#
+# NOT named `test`. Branch protection across the fleet requires a single check
+# named exactly "test", and that name is taken by mem-ratify-tests.yml. Adding a
+# second `test` would make the required check ambiguous. If this gate should
+# block merges, add `docs` to branch protection — deliberately left as an
+# operator action rather than assumed.
+
+on:
+  push:
+    # Main only — an unfiltered push trigger plus pull_request runs CI
+    # twice on every PR commit.
+    branches: [main]
+  pull_request:
+  schedule:
+    # Daily drift catcher, off the :00/:30 peak-load minutes — fleet pattern.
+    # Offset from mem-ratify's :17 so the two do not contend.
+    - cron: "23 5 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install lint tools
+        run: pip install ruff==0.15.0 bandit
+
+      - name: Ruff (enforced)
+        # The vendored checker is excluded: it is byte-identical to canonical by
+        # design, so lint findings against it belong upstream in willow-grove,
+        # not here. vendor-sync below is what keeps it honest.
+        run: ruff check tools --exclude tools/check_docs.py
+
+      - name: Bandit (enforced)
+        run: bandit -r tools -ll -q
+
+      - name: Gate tests (stdlib only)
+        run: python -m unittest discover -s tools/tests -t . -p "test_*.py" -v
+
+      - name: Same suite under -O
+        # Asserts are stripped under -O. A gate whose checks live in asserts
+        # silently stops gating in an optimized run (utety's A4 pattern).
+        run: python -O -m unittest discover -s tools/tests -t . -p "test_*.py"
+
+      - name: Doc-integrity gate
+        run: python tools/doc_gate.py
+
+  vendor-sync:
+    # The other half of the two-sided drift-guard. The body-hash pin in
+    # tools/tests catches a LOCAL edit to the vendored copy; this catches the
+    # canonical advancing in willow-grove while this copy stays behind — the
+    # direction that left friction_floor running a known-defective detector for
+    # weeks (box-scan A8). Soft-skips when the upstream is unreachable, matching
+    # willow-mcp's check_*_sync.py posture.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out willow-grove (canonical)
+        id: upstream
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          repository: rudi193-cmd/willow-grove
+          path: .willow-grove-upstream
+          fetch-depth: 1
+
+      - name: Diff the vendored checker against canonical
+        run: |
+          UP=.willow-grove-upstream/tools/check_docs.py
+          if [ ! -f "$UP" ]; then
+            echo "::warning::willow-grove unreachable — vendor-sync soft-skipped."
+            echo "The body-hash pin still ran in the gate job; only the"
+            echo "canonical-advanced direction is unchecked on this run."
+            exit 0
+          fi
+          if diff -u "$UP" tools/check_docs.py; then
+            echo "vendored check_docs.py matches canonical."
+          else
+            echo "::error::tools/check_docs.py has drifted from willow-grove's canonical copy."
+            echo "Re-vendor it and update CHECK_DOCS_SHA256 in tools/tests/test_doc_gate.py."
+            exit 1
+          fi
+
+  # Aggregate gate for this workflow. See the note at the top about why this is
+  # `docs` and not `test`.
+  docs:
+    needs: [gate, vendor-sync]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "doc-integrity gate and vendor-sync green"
