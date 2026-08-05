@@ -256,6 +256,89 @@ class EnforcementFlagTests(unittest.TestCase):
         self.assertFalse(d.is_blocking())
 
 
+class IdentityFoldingTests(unittest.TestCase):
+    """Every rule this module enforces is a string comparison.
+
+    Compared raw, a capital letter disabled two charter rules silently:
+    `allowed=True`, no flag, no note. Each test below is the adversarial
+    version of a rule that already had a positive test — the pattern the
+    constitution/cases probes use, where the gap is always the rule whose
+    violation nothing tried.
+    """
+
+    # Definitions line 95 / IV.2 — "three instances of one model are one
+    # witness, not three."
+    def test_same_base_model_collapses_across_casing(self):
+        d = ratify(RatifyRequest.build(
+            "c", "contested", "frontier", "p",
+            [W("a1", "claude-opus-5"), W("a2", "Claude-Opus-5")]))
+        self.assertEqual(d.independent_witness_count, 1)
+        self.assertFalse(d.allowed)
+
+    def test_same_base_model_collapses_across_whitespace(self):
+        d = ratify(RatifyRequest.build(
+            "c", "contested", "frontier", "p",
+            [W("a1", "claude-opus-5"), W("a2", "  claude-opus-5 ")]))
+        self.assertEqual(d.independent_witness_count, 1)
+        self.assertFalse(d.allowed)
+
+    # §0.2 / IV.2 — the proposer is never counted toward its own quorum.
+    def test_proposer_excluded_across_casing(self):
+        d = ratify(RatifyRequest.build(
+            "c", "contested", "frontier", "vishwakarma",
+            [W("Vishwakarma", "m1"), W("b", "m2")]))
+        self.assertEqual(d.independent_witness_count, 1)
+        self.assertFalse(d.allowed)
+
+    def test_double_vote_collapses_across_casing(self):
+        d = ratify(RatifyRequest.build(
+            "c", "contested", "frontier", "p",
+            [W("hanuman", "m1"), W("HANUMAN", "m2")]))
+        self.assertEqual(d.independent_witness_count, 1)
+
+    # An identity that names nobody must not satisfy anything. Fail closed:
+    # empty is "cannot count", never "matches nothing".
+    def test_unnamed_witness_does_not_count(self):
+        d = ratify(RatifyRequest.build(
+            "c", "contested", "frontier", "p", [W("", "m1"), W("   ", "m2")]))
+        self.assertEqual(d.independent_witness_count, 0)
+        self.assertFalse(d.allowed)
+
+    def test_witness_with_no_base_model_does_not_count(self):
+        d = ratify(RatifyRequest.build(
+            "c", "contested", "frontier", "p",
+            [Witness(agent_id="a1", base_model=""), W("a2", "m2")]))
+        self.assertEqual(d.independent_witness_count, 1)
+
+    # IV.3 — at least one Canonical witness fresh vs. the prior Frontier
+    # promotion. The prior-ratifier set is identity too.
+    def test_fresh_witness_check_folds_prior_ratifiers(self):
+        d = ratify(RatifyRequest.build(
+            "c", "frontier", "canonical", "p",
+            [W("Hanuman", "m1"), W("b", "m2")],
+            ledger_evidence_ref="ledger:1", operator_key_signature="sig:1",
+            prior_frontier_ratifiers=["hanuman", "b"]))
+        self.assertFalse(d.allowed)
+        self.assertTrue(any("Canonical composition unmet" in r for r in d.reasons))
+
+    # The liveness anchor: folding must not turn the gate into hardcoded-deny.
+    # A genuinely independent pair still promotes.
+    def test_distinct_identities_still_promote(self):
+        d = ratify(RatifyRequest.build(
+            "c", "contested", "frontier", "p",
+            [W("a1", "claude-opus-5"), W("a2", "gpt-not-a-claude")]))
+        self.assertEqual(d.independent_witness_count, 2)
+        self.assertTrue(d.allowed)
+
+    # Notes quote what the caller supplied, not what was compared, so an audit
+    # trail shows the variant spelling that was folded.
+    def test_notes_preserve_the_original_spelling(self):
+        d = ratify(RatifyRequest.build(
+            "c", "contested", "frontier", "vishwakarma",
+            [W("Vishwakarma", "m1"), W("b", "m2")]))
+        self.assertTrue(any("'Vishwakarma'" in r for r in d.reasons))
+
+
 class PurityTests(unittest.TestCase):
     def test_decision_is_plain_data(self):
         d = ratify(RatifyRequest.build("c", "contested", "frontier", "p", [W("a1")]))
