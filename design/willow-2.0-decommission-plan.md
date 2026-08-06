@@ -388,9 +388,17 @@ no session deposits anything for the next session to find, and the loss is silen
   persona picker and lane banner (gap 4). **Keep the `[CLOCK]` UTC-vs-local stamp** — it has
   no successor and the one-day artifact gap is a real reading hazard.
 
-**Phase 2 — Disable (reversible).**
+**Phase 2 — Disable (reversible).** [**complete on host 2026-08-06** — charter seat `~/github/willow`]
 `systemctl --user disable --now` the retire-list units; de-register `~/.cursor/mcp.json:7`; unwire fylgja.
 Keep backups of every unit file + config. Enable `willow-mcp-serve`.
+
+*Host checklist (this machine):* retire-list + upstream-desk + crash-loop `kart-worker` disabled;
+crontab 2.0 jobs commented (backup `~/.willow/backups/phase2-decommission-2026-08-06/crontab/`);
+fylgja unwired via local `.cursor/hooks.json` (gitignored, willow-mcp `session_start_hook` +
+`pre_tool_hook`); `WILLOW_ROOT`/`PYTHONPATH`/`WILLOW_PYTHON` removed from `.claude/` and
+`.cursor/settings.local.json`; `willow-mcp-worker-{fast,batch}` running; `willow-mcp-serve` enabled.
+**Not changed:** `~/.cursor/mcp.json` global entry (sean-data-vault desk, not willow-2.0 unified);
+`willow-bot.service` (separate ownership). Embed-backfill port still deferred.
 
 **Phase 3 — Observation window (seven clean working days, willow-mcp only).**
 Run day-to-day. Watch for broken tool calls, missing boot context, silent governance gaps (who writes the
