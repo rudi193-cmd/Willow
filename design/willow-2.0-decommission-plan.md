@@ -162,6 +162,43 @@ cron cannot hold an operator-signed envelope by construction. **Deliberately not
 sandbox bind:** it would spend authority on a retiring tree, and with the timer disabled nothing
 enqueues from there.
 
+### 3c. Boot-surface census (willow seat, 2026-08-05, read via codebase-memory)
+
+Read at willow-mcp `35d7285` (PR #294 head) and willow-2.0 `dd780da`. **Source only — not the
+live wiring**; `.claude/settings.json` on this host may differ from what either repo ships.
+
+willow-mcp registers **two** hook events (`SessionStart`; `PreToolUse` × 4 matchers,
+`.claude-plugin/plugin.json`). 2.0 ships **seven** event modules with a `main()`:
+`session_start` · `prompt_submit` · `pre_tool` · `post_tool` · `stop` · `session_stop` · `shutdown`.
+
+The line counts overstate the gap. `session_start_hook.handle()` is 19 lines against 2.0's
+284-line `main()`, but willow-mcp moved the orientation **into the verb**: `server.session_enter`
+(`server.py:2931-2988`) returns project info, ORIENT presence, five store collections (stack,
+portfolio, milestones, commitments, governance flags), `latest_handoff`, collection aliases and
+FRANK status; `dispatch.session_enter` adds `persona_context` + `seed_context` with the exposure
+slice. Most of the *content* has already crossed.
+
+**What has not crossed is the capture side and the continuation side.**
+
+| # | Gap | 2.0 owner | Bites? |
+|---|---|---|---|
+| 1 | **No Stop/SessionEnd hook.** 2.0's `stop.py` writes the stack snapshot the *next* boot renders as `[STACK]`. willow-mcp's closeout is an agent-invoked verb (`session_handoff_write` / `handoff_write_v4`) — agent forgets or session dies, nothing is written. | `events/stop.py` | **yes — producer gap** |
+| 2 | **Corrections lane has no producer.** `_seed_corpus_corrections` (`session_start.py:690`) globs `~/.claude/**/memory/feedback_*.md` → SOIL `corpus/corrections`, idempotent by key; boot reads it back with counts, caps and human-over-automated precedence. willow-mcp's `seed_loader` has the agent seed + exposure slice and **no** corrections/preferences/confirmations lanes. | `events/session_start.py` | **yes — live** |
+| 3 | **SessionStart is continuation-blind.** `handle()` never reads `source`. 2.0 branches on `startup\|resume\|clear\|compact`: lite injection, dedup fingerprint, ledger resume context. (Boot-sentinel inheritance in the same branch dies with §1d — fine. Dedup and lite-inject do not.) | `events/session_start.py` | **yes — token cost per compact** |
+| 4 | No `UserPromptSubmit` hook. Persona picker (cosmetic — voice only), lane banner (dead verbs, good riddance), **`[CLOCK]` UTC-vs-local stamp (load-bearing, no successor)**. | `events/prompt_submit.py` | partly |
+| 5 | No `PostToolUse` hook — feeds `recent_traces` and the `learned denials — automated` lane. willow-mcp has `friction_scan` / `friction_flags_list` as verbs, nothing auto-recording. | `events/post_tool.py` | no |
+| 6 | No boot liveness assembly and **no degraded verdict**. 2.0: `postgres == "unknown" → BOOT DEGRADED — invoke /startup before responding to anything.` willow-mcp owns every input (`fleet_health`, `env_check`, `diagnostic_summary`, `heartbeat.py`, `soil_heartbeat.py`) — nothing assembles them, nothing refuses to proceed. | `events/session_start.py` | safety property |
+
+**The asymmetry, named:** willow-mcp inherited the *read* side of boot and left the *write* side
+in 2.0. Everything that surfaces at session open is a verb you can call; everything that fills
+those surfaces **between** sessions is still a fylgja hook. This is also why cloud agents do not
+notice — they enter, read, leave, and never depend on what the last session deposited.
+
+**Consequence for Phase 1h:** the `PreToolUse` half is a true peer swap and stays as written.
+The `SessionStart` half is **not** — repointing it today loses gaps 3 and 6 and, via gap 2,
+silently stops feeding SOIL from the operator's own feedback files. That half is a build
+(Phases 1i / 1j), not a repoint.
+
 ## 4. Unit classification (`systemctl --user`)
 
 **Retire — willow-2.0-only, no survivor depends:**
@@ -199,7 +236,9 @@ the global `~/.cursor/mcp.json` still registers the legacy unified server.
   archive-first record migration, project-aware `session_enter`, project-scoped v3 handoffs,
   and explicit FRANK status.
 - **1d — Native startup:** invoke `session_enter` through supported-client SessionStart wiring;
-  remove the picker/sentinel protocol rather than porting it.
+  remove the picker/sentinel protocol rather than porting it. *[**Gated on 1i + 1j** as of
+  2026-08-05 — §3c found willow-mcp's SessionStart hook is a 19-line stub and the boot
+  capture path is still 2.0's. Repointing before those land loses state silently.]*
 - **1e — Operator settings:** operator-only willow-mcp consent CLI with atomic fail-closed writes;
   never expose consent enablement as an MCP tool.
 - **1f — Governance continuity:** minimum FRANK append/read, envelope citation/meter enforcement,
@@ -211,7 +250,10 @@ the global `~/.cursor/mcp.json` still registers the legacy unified server.
   reads/writes a project handoff, appends/verifies FRANK, and reports the charter roster — with
   zero reach into `willow-2.0/`. Every acceptance claim requires an independent verifier.
 
-**Phase 1h — Hook membrane handover.** [ready to build; unblocks Phase 2]
+**Phase 1h — Hook membrane handover (`PreToolUse` only).** [ready to build; unblocks Phase 2]
+*Scope narrowed 2026-08-05 by §3c: this phase covers the `PreToolUse` swap and the
+`UserPromptSubmit` banner removal. The `SessionStart` repoint moved to §1d and is gated on
+1i + 1j, because willow-mcp's SessionStart hook is a stub, not a peer.*
 *Mechanism verified 2026-08-05 — see §3b. Written from the mechanism, not the symptom:
 the first draft of this order said "fix fylgja's redirect text," which would have kept the
 2.0 hook alive forever.*
@@ -229,6 +271,36 @@ the first draft of this order said "fix fylgja's redirect text," which would hav
   now names a verb the seat actually holds; (5) then §1d removes the picker/sentinel.
 - **Do it between sessions** (§6), and keep the boot gate for last — it is the one whose
   failure locks the seat out rather than merely annoying it.
+
+**Phase 1i — Session capture path (willow-mcp build).** [prerequisite for §1d]
+*Closes §3c gap 1. The one item here that is not convenience: without it, unwiring 2.0 means
+no session deposits anything for the next session to find, and the loss is silent.*
+- Add a `SessionEnd`/`Stop` hook to willow-mcp (`plugin.json` + `src/willow_mcp/`) that writes
+  the stack snapshot — open tasks, open threads, pending decisions — on session close.
+- It must be a **hook, not a verb.** `session_handoff_write` already exists and is the
+  agent-invoked path; the whole defect is that an agent that forgets, or a session that dies,
+  writes nothing. Capture cannot depend on the agent remembering.
+- Consumer side: `session_enter` already returns `latest_handoff`; extend `orientation` with
+  the snapshot so the read side lands the moment the write side exists.
+- Verify: kill a session without a closeout, open a new one, confirm the snapshot is present.
+
+**Phase 1j — Corrections pump + continuation awareness (willow-mcp build).** [prerequisite for §1d]
+*Closes §3c gaps 2, 3 and 6.*
+- **Corrections pump (gap 2):** port `_seed_corpus_corrections` into `seed_loader` — glob the
+  operator's memory `feedback_*.md`, idempotent put into `corpus/corrections`, and surface
+  corrections / preferences / confirmations as distinct lanes with counts, caps, and the
+  human-over-automated precedence rule 2.0 already encodes. **Check the path grant first:**
+  the pump reads the operator's memory directory, which is not this seat's namespace.
+- **Continuation awareness (gap 3):** teach `session_start_hook.handle()` to read `source`;
+  lite injection on `compact|resume|clear`, dedup fingerprint to suppress an identical
+  re-injection. Do **not** port the boot-sentinel inheritance — that dies with §1d.
+- **Degraded verdict (gap 6):** assemble the liveness inputs willow-mcp already owns
+  (`fleet_health`, `env_check`, `diagnostic_summary`, `soil_heartbeat`) and emit an explicit
+  *boot is degraded, do not act* line. This is a safety property, not a banner — willow-mcp
+  currently has no way to say it.
+- Out of scope, dying with the tree: `PostToolUse` traces / learned-denials (§3c gap 5), the
+  persona picker and lane banner (gap 4). **Keep the `[CLOCK]` UTC-vs-local stamp** — it has
+  no successor and the one-day artifact gap is a real reading hazard.
 
 **Phase 2 — Disable (reversible).**
 `systemctl --user disable --now` the retire-list units; de-register `~/.cursor/mcp.json:7`; unwire fylgja.
@@ -255,6 +327,10 @@ seed/gate); mark the repo read-only / move aside. **Do not delete.** Final confi
   unified server that this project's `.mcp.json` does not wire. There is no legal successor
   for those commands today; the seat reads files one at a time. This is the single largest
   source of per-session friction and Phase 1h closes it.
+- **The capture path fails silently.** §3c: willow-mcp holds the read side of boot, 2.0 still holds
+  the write side. Unwire `SessionStart` before 1i/1j land and sessions stop depositing state — with
+  no error, because every *read* surface still answers. Nothing looks broken until the day a
+  session needs what the last one should have left. This risk is what gates §1d.
 - **Do hook/MCP changes mid-session:** tearing out fylgja changes the live environment. Do unwiring **between** sessions.
 - **Task authority:** `submitted_by` alone is a database assertion. The signed task envelope is
   required so a shared-table writer cannot forge another app's network authority.
