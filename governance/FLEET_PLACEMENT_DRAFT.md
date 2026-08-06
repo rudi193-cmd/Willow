@@ -358,7 +358,7 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 
 ## 5c. Play *(future — sixth face / org, draft)*
 
-**Display:** Play (or **Forge** as flagship name) — craft and possibility under SAFE stores law ([`stores/README.md`](../../safe-app-store-public/stores/README.md) “same forge, same bar”).
+**Display:** Play (or **Forge** as flagship name) — craft and possibility under SAFE stores law ([`stores/README.md`](https://github.com/rudi193-cmd/safe-app-store-public/blob/main/stores/README.md) “same forge, same bar”).
 
 | Playground → promote | Notes |
 |----------------------|--------|
