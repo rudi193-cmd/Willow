@@ -2,7 +2,7 @@
 
 **Status:** RATIFIED — 2026-07-21 (Option A); slices S1–S4 shipped in willow-mcp  
 **Posture:** **Option A — thin product** (agreed operator direction)  
-**Companion:** [willow-mcp-flows.md](willow-mcp-flows.md) · [willow-mcp gap inventory](https://github.com/rudi193-cmd/willow-mcp/blob/master/docs/migrations/willow-2.0-gap-inventory.md) · `willow-mcp/docs/design/hooks-and-skills.md`
+**Companion:** [willow-mcp-flows.md](willow-mcp-flows.md) · [persona-and-hooks.md](persona-and-hooks.md) (draft — persona vs hook split, operator dissent) · [willow-mcp gap inventory](https://github.com/rudi193-cmd/willow-mcp/blob/master/docs/migrations/willow-2.0-gap-inventory.md) · `willow-mcp/docs/design/hooks-and-skills.md`
 
 ---
 

@@ -3,7 +3,8 @@
 .willow/store/**/*.db
 .willow/active-agent
 
-# Local IDE / operator overlays (materialize via willow-2.0: ./willow.sh project sync willow)
+# Local IDE / operator overlays (materialize via willow-mcp: willow-mcp project sync willow
+# or ./willow.sh project sync willow when willow-mcp is installed)
 .cursor/settings.local.json
 .cursor/hooks.json
 .cursor/mcp.json
