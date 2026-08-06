@@ -124,6 +124,44 @@ nothing surfaced it. It came to light only because the operator asked for a lane
 observation window assumes reach-back is *noticed*; on this evidence it is not. A reach-back
 detector — diff task paths against the sandbox mount policy — should precede Phase 3, not follow it.
 
+### 3b. Crossing census (willow seat, 2026-08-05, gate open for the first time)
+
+Signing the nine manifests opened every gated verb and made the seat's own state readable.
+Nine faults surfaced in one session; classified by origin, **five are 2.0 crossover and four
+are not** — which is the number that decides whether unwiring is the fix.
+
+**2.0 crossover — recurring, felt every session:**
+
+| Crossing | Where it lives | Disposition |
+|---|---|---|
+| Hook redirects name `willow_run` / `willow_find` / `soil_list` / `kb_search` — none wired here | fylgja `PreToolUse` | Phase 1h |
+| `[WILLOW-LANES]` banner advertises the same dead verbs | fylgja `UserPromptSubmit` | Phase 1h |
+| Persona picker + boot sentinel gate (cost the first four turns) | fylgja | Phase 1d |
+| `.claude/settings.local.json` exports `WILLOW_ROOT` / `WILLOW_PYTHON` / `PYTHONPATH` into 2.0 | project config | Phase 2 |
+| `willow-metabolic.timer` → `willow.sh metabolic` → nightly `norn_pass` | 2.0 unit | **disabled 2026-08-05** |
+| 5 user crontab lines against `~/willow-2.0` (a second copy outside `github/`) | crontab | Phase 2 |
+
+**Not 2.0 — one-time willow-mcp/host config, three closed the same night:** unsigned manifests
+under PGP enforcement (root cause of the "no_manifest" incident; nine signed, code fix in
+willow-mcp **PR #294**); `mcp_apps` owned by `willow-operator` via `harden-trust-root`, so the
+operator cannot sign into it without `sudo install`; worker units installed-but-never-`enable`d;
+and the `knowledge` schema mapping unconfirmed, which leaves this seat able to read 21,907 atoms
+and write none.
+
+**Why cloud agents do not hit these.** Not a code difference — a fresh home with enforcement
+off, no `harden-trust-root` chown, and no fylgja layer. The local seat is not running worse
+software; it is running the same software through a 2.0 harness.
+
+**The 488-failure backlog, now readable.** 488 failed / 282 completed (63%), not a retry loop —
+attempts terminate correctly at 3. Two causes, both 2.0: `kart-sandbox.json` binds
+`willow-2.0/.venv-dev` read-only but never the repo body, so any task whose *script* lives there
+dies "No such file or directory" while Kart itself names the reason in
+`result.sandbox_manifest.notes`; and the nightly `auto_dream.py … # allow_localhost` is denied
+`network_authorization_denied: signed envelope missing` twice a night, correctly — an unattended
+cron cannot hold an operator-signed envelope by construction. **Deliberately not fixing the
+sandbox bind:** it would spend authority on a retiring tree, and with the timer disabled nothing
+enqueues from there.
+
 ## 4. Unit classification (`systemctl --user`)
 
 **Retire — willow-2.0-only, no survivor depends:**
@@ -155,7 +193,8 @@ the global `~/.cursor/mcp.json` still registers the legacy unified server.
   pin the first Kartikeya version carrying fail-closed authorization.
 - **1b — Production worker:** real lane claims, claim timestamps/ownership, stale recovery,
   terminal timestamps, worker service templates, and install/status/uninstall support.
-  *[built + installed; verified running 2026-07-30 — see §3a. Units are not yet `enable`d.]*
+  *[built + installed; verified running 2026-07-30 — see §3a. **Both lanes started and
+  `enable`d 2026-08-05**; queue drained 13 → 0. Item closed.]*
 - **1c — Native project orientation:** explicit logical-to-physical collection aliases,
   archive-first record migration, project-aware `session_enter`, project-scoped v3 handoffs,
   and explicit FRANK status.
@@ -171,6 +210,25 @@ the global `~/.cursor/mcp.json` still registers the legacy unified server.
   runs isolated and signed-network Kart jobs, writes a consent setting through the operator CLI,
   reads/writes a project handoff, appends/verifies FRANK, and reports the charter roster — with
   zero reach into `willow-2.0/`. Every acceptance claim requires an independent verifier.
+
+**Phase 1h — Hook membrane handover.** [ready to build; unblocks Phase 2]
+*Mechanism verified 2026-08-05 — see §3b. Written from the mechanism, not the symptom:
+the first draft of this order said "fix fylgja's redirect text," which would have kept the
+2.0 hook alive forever.*
+- The successor already exists in-repo: `willow_mcp/pre_tool_hook.py` → `willow_mcp/bundle/
+  hooks/pre_tool_use.py`, seven guards including the sudo invariant (FRANK `90e52ab7`),
+  raw-store access, Write/Edit against owned SQLite, self-granted egress, and the
+  IDE-native web tools. Its redirect hints name `task_submit`, `store_search`,
+  `knowledge_search`, `code_graph_search`, and the IDE `Read` tool — **all live verbs.**
+- So this is not a port and not an edit. It is: stop loading the fylgja hook, load
+  willow-mcp's. Fylgja's hook source is deliberately unreadable to agents
+  (`WILLOW_HOOK_MAINTENANCE=1` for maintainers), so the swap is operator-run.
+- Steps: (1) back up `~/.claude/settings.json` and `.cursor/hooks.json`; (2) repoint the
+  `PreToolUse` matcher at `willow_mcp.pre_tool_hook:main`; (3) drop the fylgja
+  `UserPromptSubmit` banner that advertises the dead verbs; (4) confirm a blocked `ls`
+  now names a verb the seat actually holds; (5) then §1d removes the picker/sentinel.
+- **Do it between sessions** (§6), and keep the boot gate for last — it is the one whose
+  failure locks the seat out rather than merely annoying it.
 
 **Phase 2 — Disable (reversible).**
 `systemctl --user disable --now` the retire-list units; de-register `~/.cursor/mcp.json:7`; unwire fylgja.
@@ -188,8 +246,15 @@ seed/gate); mark the repo read-only / move aside. **Do not delete.** Final confi
 - **Governance continuity:** FRANK append/read and envelope citation/meter enforcement must be
   re-homed before Phase 2; retaining the Postgres chain is intentional, but retaining willow-2.0
   code to access it is not.
-- **Membrane gap:** fylgja currently provides the write-protection/MCP-first membrane. willow-gate is meant to
-  replace it, but operator constraint = no agent in the gate yet. There may be a window with neither. Flag before unwiring.
+- ~~**Membrane gap:**~~ **RESOLVED 2026-08-05.** The window with neither does not exist:
+  willow-mcp already ships the membrane (`bundle/hooks/pre_tool_use.py`, seven guards).
+  willow-gate is not on the critical path for unwiring fylgja, and the operator constraint
+  on installing an agent in the gate does not block Phase 1h. See §3b and Phase 1h.
+- **The redirect targets are the live wound.** Fylgja routes every blocked `ls`/`grep`/`cat`/
+  python to `willow_run` / `willow_find` / `soil_list` / `kb_search` — verbs from the legacy
+  unified server that this project's `.mcp.json` does not wire. There is no legal successor
+  for those commands today; the seat reads files one at a time. This is the single largest
+  source of per-session friction and Phase 1h closes it.
 - **Do hook/MCP changes mid-session:** tearing out fylgja changes the live environment. Do unwiring **between** sessions.
 - **Task authority:** `submitted_by` alone is a database assertion. The signed task envelope is
   required so a shared-table writer cannot forge another app's network authority.
