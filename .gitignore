@@ -3,8 +3,12 @@
 .willow/store/**/*.db
 .willow/active-agent
 
-# Local IDE / operator overlays
+# Local IDE / operator overlays (materialize via willow-2.0: ./willow.sh project sync willow)
 .cursor/settings.local.json
+.cursor/hooks.json
+.cursor/mcp.json
+.mcp.json
+.claude/settings.local.json
 .codex/
 
 # Envelope registry backups (never commit)
