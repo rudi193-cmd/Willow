@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Jeles memo · UTETY</title>
+  <style>
+    html.theme-light {
+      --bg: #f6f0e4;
+      --card: #fffbf3;
+      --text: #2c2620;
+      --text-dim: #5a5040;
+      --muted: #8a7d63;
+      --rust: #a8452a;
+      --gold: #b8860b;
+      --border: #d8cdb6;
+      --scaffold-bg: #fdf6e6;
+    }
+    html.theme-dark {
+      --bg: #0e0a07;
+      --card: #2c2016;
+      --text: #f5efe6;
+      --text-dim: #d4c4ad;
+      --muted: #c9b896;
+      --rust: #f0a88c;
+      --gold: #e8cc80;
+      --border: #5c4228;
+      --scaffold-bg: #302418;
+    }
+    body {
+      font: 16px/1.6 Georgia, serif;
+      max-width: 640px;
+      margin: 1.6rem auto;
+      padding: 0 1rem;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .meta { color: var(--muted); font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; }
+    h1 { font-size: 1.25rem; color: var(--rust); }
+    h2 { font-size: 1rem; margin-top: 1.8rem; color: var(--text-dim); }
+    a { color: var(--rust); }
+    a:hover { color: var(--gold); }
+    .scaffold {
+      background: var(--scaffold-bg);
+      border-left: 3px solid var(--gold);
+      padding: 0.5rem 0.8rem;
+      margin: 1rem 0;
+      font-size: 0.94rem;
+      border-radius: 0 4px 4px 0;
+    }
+  </style>
+  <script>
+    (function () {
+      const q = new URLSearchParams(location.search).get("theme");
+      const key = "utety-playground-theme";
+      const theme = q === "light" || q === "dark" ? q : (localStorage.getItem(key) || "dark");
+      document.documentElement.classList.add("theme-" + theme);
+      if (q) localStorage.setItem(key, theme);
+    })();
+  </script>
+</head>
+<body>
+  <p class="meta">Head Librarian · draft</p>
+  <h1>Readership survey — spring bulletin front page</h1>
+  <p>
+    Faculty opened the PDF for an average of eleven seconds. Students scanned the headline only.
+    The lobby screen was legible at noon and illegible after the espresso machine steam — Ada was right.
+  </p>
+  <p class="scaffold">
+    Recommendation: lead with human-scale language (B) unless the Dean insists on symposium coverage (A).
+    Option C satisfies citation norms but depresses click-through in our informal sample (n = 14, one pigeon).
+  </p>
+  <h2 id="oakenscroll">Oakenscroll (dissent)</h2>
+  <p>
+    If we apologize for the wrong infinity again, let us at least typeset the apology beautifully.
+    I vote A, reluctantly, because the university loves a public mea culpa.
+  </p>
+  <h2 id="ada">Ada (systems)</h2>
+  <p>
+    Whatever you pick, test contrast on the lobby display at 1920×1080 and 1366×768.
+    No autoplay video. No flashing marquees.
+  </p>
+  <p><a href="index.html">← Back to the decision</a></p>
+</body>
+</html>

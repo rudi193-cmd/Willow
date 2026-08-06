@@ -1,0 +1,16 @@
+{
+  "app_id": "vishwakarma",
+  "human_only": false,
+  "role": "architect",
+  "permissions": [
+    "dispatch_read",
+    "store_read",
+    "knowledge_read"
+  ],
+  "deny_tools": [
+    "task_submit"
+  ],
+  "store_scope": [
+    "vishwakarma_*"
+  ]
+}

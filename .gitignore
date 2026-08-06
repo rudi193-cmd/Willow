@@ -16,3 +16,6 @@
 envelopes/pre-approved.json.bak*
 design/architecture/.$*.bkp
 __pycache__/
+
+# Local Nestor dogfood DB (not charter state)
+/data/

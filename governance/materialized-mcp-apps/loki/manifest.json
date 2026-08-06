@@ -1,0 +1,22 @@
+{
+  "app_id": "loki",
+  "human_only": false,
+  "role": "auditor",
+  "permissions": [
+    "dispatch_read",
+    "dispatch_write",
+    "knowledge_read",
+    "frank_read",
+    "fleet_read"
+  ],
+  "deny_tools": [
+    "task_submit",
+    "store_put",
+    "store_update",
+    "store_delete",
+    "knowledge_ingest"
+  ],
+  "store_scope": [
+    "loki_*"
+  ]
+}

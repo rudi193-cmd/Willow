@@ -1,0 +1,13 @@
+{
+  "app_id": "skirnir",
+  "human_only": false,
+  "role": "witness",
+  "permissions": [
+    "dispatch_read",
+    "context"
+  ],
+  "deny_tools": [],
+  "store_scope": [
+    "skirnir_*"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "app_id": "ada",
+  "human_only": false,
+  "role": "operator",
+  "permissions": [
+    "dispatch_read",
+    "dispatch_write",
+    "fleet_read",
+    "knowledge_read"
+  ],
+  "deny_tools": [
+    "task_submit",
+    "store_put",
+    "store_update",
+    "knowledge_ingest"
+  ],
+  "store_scope": [
+    "ada_*"
+  ]
+}
