@@ -1,6 +1,12 @@
 # Willow-2.0 Decommission Plan
 
-Status: **RATIFIED FOR IMPLEMENTATION** · updated 2026-07-17 · seat: willow
+Status: **RATIFIED FOR IMPLEMENTATION** · updated 2026-08-05 · seat: willow
+
+> **Where this actually stands (status pass 2026-08-05, §5).** Phase 1 is substantially
+> complete: five of its seven items were built remotely, in willow-mcp, by agents who never
+> read this plan. **1d is the only remaining build** (gated on the new 1i/1j). Everything else
+> outstanding is local host configuration — hooks, settings, crontab, units. The Phase 1
+> acceptance gate has *not* been run; existence was audited, behaviour was not.
 
 Operator authorization: in-session directive 2026-07-16 19:20 MDT, recorded before work in
 FRANK `045ce21e-21e7-4aa3-9e3f-db701aea0d09`. The authorization covers staged implementation
@@ -199,6 +205,46 @@ The `SessionStart` half is **not** — repointing it today loses gaps 3 and 6 an
 silently stops feeding SOIL from the operator's own feedback files. That half is a build
 (Phases 1i / 1j), not a repoint.
 
+### 3d. The §6 risk already fired — boot handoff severed 2026-07-22 (found 2026-08-05)
+
+While auditing §5 I checked why the boot NEXT was stale and found the cause is not staleness.
+
+The boot anchor (`session_anchor_willow_willow.json`, regenerated every session by 2.0's
+`_run_silent_startup`) reads **`$WILLOW_HOME/handoffs/willow/`** and reports its newest file.
+When willow-mcp's **project-scoped handoffs landed — Phase 1c, this plan's own item** — new
+handoffs began writing one level deeper, to `handoffs/willow/willow/`. Result:
+
+| Path | Newest file |
+|---|---|
+| `handoffs/willow/` ← what boot reads | **2026-07-18a** |
+| `handoffs/willow/willow/` ← where writes go | 2026-08-03 |
+
+**The seat has been booting on an 18-day-old handoff since roughly 2026-07-22.** Eleven-plus
+handoffs written since were never read by anything. That is why every session opened with
+*"NEXT: build the terminal-state gate … dispatch 5D9A379D, pending hanuman"* — a dispatch whose
+status is **`cleared`**, verified 2026-07-21T00:00:35Z, cleared 2026-07-21T21:43:12Z, whose test
+(`test_reclaimed_terminal_row_is_denied_before_shell_launch`) has been on master for two weeks.
+The seat was handed finished work at every session open, and the anchor never checked dispatch
+status before asserting it.
+
+**Why this matters more than the bug.** §6 lists as a *hypothetical* risk: *"the capture path
+fails silently — every read surface keeps answering, so nothing looks broken until a session
+needs what the last one should have left."* It had already happened, two weeks before it was
+written down, caused by a migration step inside this very plan. Boot never errored. It reported
+`flat handoff: 2026-07-24 [verified]` and an authoritative NEXT, and both were wrong in a way no
+surface could show. **Treat that §6 entry as observed, not predicted, when sequencing §1d.**
+
+Three defects, distinct, all owned by 1i/1d:
+1. **Path split** — reader and writer disagree after 1c. Whoever repoints must reconcile both.
+2. **No completion check** — the anchor copies a `next_bite` forward without ever asking whether
+   the dispatch it names is still open. Live state was one `dispatch_read` away.
+3. **No staleness signal** — an 18-day-old handoff renders identically to a fresh one. The
+   `[verified]` tag verifies the JSONL anchor, *not* the recency of what it is anchoring.
+
+*Interim remedy applied 2026-08-05:* a current handoff (`session_handoff-2026-08-05a_willow.md`)
+was written into the shallow path so the next boot reads today's state, with the correction to
+5D9A379D at the top. This is a patch to the symptom — the reader/writer split is unfixed.
+
 ## 4. Unit classification (`systemctl --user`)
 
 **Retire — willow-2.0-only, no survivor depends:**
@@ -225,9 +271,21 @@ Units, registrations, successor repositories, and hook ownership are classified.
 is file-backed and does not need Grove. Project-local MCP wiring already prefers willow-mcp;
 the global `~/.cursor/mcp.json` still registers the legacy unified server.
 
-**Phase 1 — Re-home the backends + strip willow deps (THE work).** [in progress]
+**Phase 1 — Re-home the backends + strip willow deps (THE work).** [**substantially complete** —
+status pass 2026-08-05]
+
+> **Audit note, 2026-08-05.** This section listed five open builds. Audited against
+> willow-mcp `origin/master` @ `9dd6058` (v2.2.4): **five of seven were already done, landed
+> remotely by cloud agents who never read this document.** The plan was tracking work that had
+> finished. What remains is not build work — it is local host configuration. Evidence per item
+> below; caveat in the Gate.
+
 - **1a — Secure executor:** signed per-task network envelope verified at execution; release and
   pin the first Kartikeya version carrying fail-closed authorization.
+  *[**DONE remote.** `src/willow_mcp/egress_authorization.py` + `ExecutorNetworkAuthorizer`;
+  16 tests in `tests/test_egress_authorization.py`; `kartikeya>=0.0.9,<1.0.0` is a hard pin in
+  `pyproject.toml`. The fast-follow terminal-state gate is **also built** —
+  `test_reclaimed_terminal_row_is_denied_before_shell_launch`. See the stale-NEXT note below.]*
 - **1b — Production worker:** real lane claims, claim timestamps/ownership, stale recovery,
   terminal timestamps, worker service templates, and install/status/uninstall support.
   *[built + installed; verified running 2026-07-30 — see §3a. **Both lanes started and
@@ -235,20 +293,48 @@ the global `~/.cursor/mcp.json` still registers the legacy unified server.
 - **1c — Native project orientation:** explicit logical-to-physical collection aliases,
   archive-first record migration, project-aware `session_enter`, project-scoped v3 handoffs,
   and explicit FRANK status.
+  *[**DONE remote.** `gate.collection_aliases` + `docs/migrations/project-collection-aliases.md`;
+  `server.session_enter:2931-2988` returns project info, ORIENT presence, five collections,
+  `latest_project_handoff`, aliases and FRANK status in one payload.]*
 - **1d — Native startup:** invoke `session_enter` through supported-client SessionStart wiring;
-  remove the picker/sentinel protocol rather than porting it. *[**Gated on 1i + 1j** as of
-  2026-08-05 — §3c found willow-mcp's SessionStart hook is a 19-line stub and the boot
-  capture path is still 2.0's. Repointing before those land loses state silently.]*
+  remove the picker/sentinel protocol rather than porting it. *[**THE ONLY REMAINING BUILD.**
+  Gated on 1i + 1j — §3c found willow-mcp's SessionStart hook is a 45-line stub that never reads
+  `source`, and the boot capture path is still 2.0's. Repointing before those land loses state
+  silently. Re-verified at `origin/master` v2.2.4, not a stale-branch artifact.]*
 - **1e — Operator settings:** operator-only willow-mcp consent CLI with atomic fail-closed writes;
   never expose consent enablement as an MCP tool.
+  *[**DONE remote.** `_cmd_consent`, `_cmd_consent_status`, `_cmd_grant_net` in `server.py`;
+  CLI-only, no MCP tool surface — the constraint held.]*
 - **1f — Governance continuity:** minimum FRANK append/read, envelope citation/meter enforcement,
   and charter-roster compilation.
+  *[**DONE remote.** `frank_{append,read,verify}`; `envelopes.py`, `governance_ledger.py`,
+  `authority.py`; roster via `fleet_roster.py` + `_cmd_roster`. The constitutional bundle
+  (`bundle/constitutional/pre-approved.json`, `syscall-table.json`) is vendored into willow-mcp —
+  the charter now travels with the successor.]*
 - **1g — Grove:** resolved as not a dependency; retire unless retained as a separately authorized
   product feature.
 - **Gate:** a session with ONLY willow-mcp (no `mcp__willow__` server, no fylgja) boots, orients, submits AND
   runs isolated and signed-network Kart jobs, writes a consent setting through the operator CLI,
   reads/writes a project handoff, appends/verifies FRANK, and reports the charter roster — with
   zero reach into `willow-2.0/`. Every acceptance claim requires an independent verifier.
+  *[**Every clause now has a live implementation** (99 `@mcp.tool()` on master, up from 73 at
+  gap-inventory Draft 0.2). **The gate is still ungated:** presence is not passing. Nobody has
+  run the end-to-end session with an independent verifier. Do not mark Phase 1 complete on the
+  strength of this status pass — it audited existence, not behaviour.]*
+
+**Two other ledgers are stale, found by the same audit:**
+- **Upstream `docs/migrations/willow-2.0-gap-inventory.md`** (willow-mcp) — last touched
+  2026-07-21. It buckets 169 2.0 tools A/B/C with a 🟢/🟡/🔴 shortlist. **All four 🟢 PORT
+  families have since shipped:** `willow_web_*`, `code_graph_*`, `fork_*`+`env_check`,
+  `human_attestation_*`/`human_required_*`. Its stated top-priority gap — *"Only open-web /
+  guarded-fetch path; willow-mcp has none. Highest-value gap"* — is three callable tools today.
+  Needs a tick-off pass in its own repo.
+- **The handoff injected into this seat at every boot** — see §3d. Not merely stale: severed.
+
+**Residual 2.0 reach in willow-mcp `src/`: one line.** `bundle/constitutional/syscall-table.json:82`
+still cites `willow-2.0/willow/fylgja/config/kart-sandbox.json` as `enforced_by`. Every other
+match is a provenance comment ("ported from", "aligned with"). Tracked as the envelope-registry
+drift; must be re-pointed or the claim dropped before Phase 4 archives the tree it names.
 
 **Phase 1h — Hook membrane handover (`PreToolUse` only).** [ready to build; unblocks Phase 2]
 *Scope narrowed 2026-08-05 by §3c: this phase covers the `PreToolUse` swap and the
@@ -327,10 +413,13 @@ seed/gate); mark the repo read-only / move aside. **Do not delete.** Final confi
   unified server that this project's `.mcp.json` does not wire. There is no legal successor
   for those commands today; the seat reads files one at a time. This is the single largest
   source of per-session friction and Phase 1h closes it.
-- **The capture path fails silently.** §3c: willow-mcp holds the read side of boot, 2.0 still holds
-  the write side. Unwire `SessionStart` before 1i/1j land and sessions stop depositing state — with
-  no error, because every *read* surface still answers. Nothing looks broken until the day a
-  session needs what the last one should have left. This risk is what gates §1d.
+- **The capture path fails silently.** **[OBSERVED 2026-08-05, not hypothetical — see §3d.]**
+  §3c: willow-mcp holds the read side of boot, 2.0 still holds the write side. Unwire
+  `SessionStart` before 1i/1j land and sessions stop depositing state — with no error, because
+  every *read* surface still answers. Nothing looks broken until the day a session needs what the
+  last one should have left. **This already happened:** Phase 1c's project-scoped handoffs moved
+  the write path one directory deeper, the reader was never repointed, and the seat booted on an
+  18-day-old handoff for two weeks without a single error. This risk is what gates §1d.
 - **Do hook/MCP changes mid-session:** tearing out fylgja changes the live environment. Do unwiring **between** sessions.
 - **Task authority:** `submitted_by` alone is a database assertion. The signed task envelope is
   required so a shared-table writer cannot forge another app's network authority.
