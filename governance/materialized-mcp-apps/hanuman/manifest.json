@@ -1,0 +1,21 @@
+{
+  "app_id": "hanuman",
+  "human_only": false,
+  "role": "builder",
+  "permissions": [
+    "dispatch_read",
+    "dispatch_write",
+    "task_queue",
+    "store_read",
+    "knowledge_read",
+    "fork_read",
+    "fork_write"
+  ],
+  "deny_tools": [
+    "kb_promote",
+    "knowledge_ingest"
+  ],
+  "store_scope": [
+    "hanuman_*"
+  ]
+}

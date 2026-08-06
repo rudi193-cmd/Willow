@@ -1,0 +1,19 @@
+{
+  "app_id": "jeles",
+  "human_only": false,
+  "role": "librarian",
+  "permissions": [
+    "dispatch_read",
+    "dispatch_write",
+    "knowledge_read"
+  ],
+  "deny_tools": [
+    "task_submit",
+    "kb_promote",
+    "kb_journal",
+    "knowledge_ingest"
+  ],
+  "store_scope": [
+    "jeles_*"
+  ]
+}

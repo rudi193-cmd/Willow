@@ -1,0 +1,50 @@
+{
+  "schema": "nestor-fleet-gap-seals/v1",
+  "topic": "decommission/phase1-gate",
+  "recorded_at": "2026-08-06T10:45:00Z",
+  "verifier": "sean campbell",
+  "source": "nestor db ~/github/.willow/nestor-phase1-gaps/nestor.db",
+  "seals": [
+    {
+      "gate": "G3",
+      "gap_id": "6571abd11e38",
+      "nestor_pair_id": "5c0d5d16-5490-4834-9451-337b0deeb9e4",
+      "commitment": "Phase 1 · G3 · Sealed: block Phase 1 sign-off until schema confirm + Kart complete.",
+      "soil_status": "resolved",
+      "hanuman_dispatch": null,
+      "note": "Policy hold — operator must witness schema + Kart before Phase 1 sign-off."
+    },
+    {
+      "gate": "G5",
+      "gap_id": "f3eddc7031ea",
+      "nestor_pair_id": "fab79d62-3893-4fd1-851c-260d4e7e6c38",
+      "commitment": "Phase 1 · G5 · Sealed: assign Hanuman to fix latest_handoff for agent handoffs.",
+      "soil_status": "resolved",
+      "hanuman_dispatch": "6A5ACEA7"
+    },
+    {
+      "gate": "G6",
+      "gap_id": "0a8f0c86ed87",
+      "nestor_pair_id": "0e71a9b2-39df-4197-ad99-a37646f29a62",
+      "commitment": "Phase 1 · G6 · Sealed: grant Loki FRANK tools on manifest for audits.",
+      "soil_status": "resolved",
+      "hanuman_dispatch": "66FB3F14"
+    },
+    {
+      "gate": "G1",
+      "gap_id": "85a7e39fa236",
+      "nestor_pair_id": "3bef9f8c-b9d2-4a9e-b4ad-6e8352eb58d6",
+      "commitment": "Phase 1 · G1 · Sealed: assign Hanuman to fix specialist orient (root + SOIL scope).",
+      "soil_status": "resolved",
+      "hanuman_dispatch": "48E2E789"
+    },
+    {
+      "gate": "G9",
+      "gap_id": "6b968134b988",
+      "nestor_pair_id": "9e4b3ce6-ec62-459e-925c-bf59e25c1373",
+      "commitment": "Phase 1 · G9 · Sealed: defer STACK E2E to pre–Phase 2 cutover.",
+      "soil_status": "resolved",
+      "hanuman_dispatch": null
+    }
+  ]
+}

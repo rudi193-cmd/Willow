@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spring bulletin · UTETY</title>
+  <!--
+    Color tokens: ~/github/UTETY/utety/web/render.py (_CSS) — reading-room chrome.
+    Campus maroon/gold (lobby, utety-chat): ~/github/willow-canonical/utety.html :root.
+  -->
+  <style>
+    /* Semantic tokens — light (render.py) */
+    html.theme-light {
+      --bg: #f6f0e4;
+      --surface: #2c2620;
+      --surface-text: #f6f0e4;
+      --card: #fffbf3;
+      --card-alt: #ffffff;
+      --border: #d8cdb6;
+      --text: #2c2620;
+      --text-dim: #5a5040;
+      --muted: #8a7d63;
+      --rust: #a8452a;
+      --rust-hover: #8f3a24;
+      --gold: #b8860b;
+      --gold-dim: #9a7830;
+      --green: #3f7d4e;
+      --maroon-band: #3d0f18;
+      --accent-link: #a8452a;
+      --accent-link-hover: #6b1f2a;
+      --sticky-bg: color-mix(in srgb, #f6f0e4 90%, transparent);
+      --mock-a: #fdf6e6;
+      --mock-b: #f0ebe0;
+      --mock-c: #fffef9;
+    }
+    /* Dark — willow-canonical/utety.html + utety-chat quad night */
+    html.theme-dark {
+      --bg: #0e0a07;
+      --surface: #1a1108;
+      --surface-text: #f5efe6;
+      --card: #2c2016;
+      --card-alt: #241a12;
+      --border: #5c4228;
+      --text: #f5efe6;
+      --text-dim: #d4c4ad;
+      --muted: #c9b896;
+      --rust: #f0a88c;
+      --rust-hover: #f5c4b0;
+      --gold: #e8cc80;
+      --gold-dim: #c9a050;
+      --green: #9ed49e;
+      --maroon-band: #3d0f18;
+      --accent-link: #f0d898;
+      --accent-link-hover: #fff0c8;
+      --sticky-bg: color-mix(in srgb, #0e0a07 94%, #1a1108);
+      --mock-a: #2a1c10;
+      --mock-b: #241a12;
+      --mock-c: #302418;
+    }
+    html.theme-dark .byline { opacity: 1; color: #d4c4ad; }
+    html.theme-dark .section-title { color: #e0d0b8; }
+    html.theme-dark .mock-cover { color: #d4c4ad; }
+    html.theme-dark .headline { color: var(--text); }
+    html.theme-dark .choice-c.is-selected {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 1px var(--gold-dim);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+    .site-masthead {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      padding: 1.1rem 1.4rem;
+      background: var(--surface);
+      color: var(--surface-text);
+    }
+    .masthead-main { flex: 1; }
+    .theme-toggle {
+      font: inherit;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.4rem 0.65rem;
+      border: 1px solid var(--gold-dim);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--gold);
+      cursor: pointer;
+    }
+    .theme-toggle:hover { border-color: var(--gold); color: var(--surface-text); }
+    .crest {
+      font-weight: bold;
+      letter-spacing: 0.28em;
+      border: 2px solid var(--gold);
+      padding: 0.35rem 0.6rem;
+      border-radius: 3px;
+      font-size: 0.85rem;
+    }
+    .site-masthead h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: normal;
+    }
+    .byline {
+      margin: 0.15rem 0 0;
+      font-size: 0.82rem;
+      opacity: 0.85;
+      font-style: italic;
+    }
+    .dean-band {
+      background: var(--maroon-band);
+      color: var(--surface-text);
+      padding: 0.65rem 1.4rem;
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      border-bottom: 2px solid var(--gold-dim);
+    }
+    .wrap { max-width: 640px; margin: 1.6rem auto; padding: 0 1rem 5rem; }
+    .eyebrow {
+      display: inline-block;
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--rust);
+      margin-bottom: 0.5rem;
+    }
+    h2 { margin: 0.1rem 0 0.6rem; font-size: 1.35rem; }
+    .subtitle { font-style: italic; color: var(--text-dim); margin: 0 0 1rem; }
+    .deadline {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--gold);
+      border-radius: 6px;
+      padding: 0.9rem 1rem;
+      font-size: 0.95rem;
+      box-shadow: 0 1px 0 rgba(0,0,0,.15);
+    }
+    .section-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin: 1.8rem 0 0.6rem;
+    }
+    .intro { max-width: 62ch; margin: 0; }
+    .choices { display: flex; flex-direction: column; gap: 0.65rem; margin-top: 1rem; }
+    .choice {
+      background: var(--card-alt);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .choice:hover { border-color: var(--gold); }
+    .choice.is-selected { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+    .choice label {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.75rem;
+      padding: 0.9rem 1rem;
+      cursor: pointer;
+      align-items: start;
+    }
+    .choice input { margin-top: 0.35rem; accent-color: var(--rust); }
+    .choice-letter { font-weight: bold; color: var(--rust); }
+    .headline { font-size: 1.08rem; font-weight: bold; margin: 0 0 0.35rem; }
+    .blurb { margin: 0; color: var(--text-dim); font-size: 0.94rem; }
+    .mock-cover {
+      margin-top: 0.65rem;
+      height: 72px;
+      border-radius: 4px;
+      background: var(--mock-a);
+      border: 1px dashed var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+    .choice-b .mock-cover { background: var(--mock-b); }
+    .choice-c .mock-cover {
+      background: var(--mock-c);
+      border-style: solid;
+      border-color: var(--gold-dim);
+    }
+    details.context {
+      margin-top: 1.5rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.2rem 1.2rem 0.8rem;
+    }
+    details.context summary {
+      cursor: pointer;
+      font-weight: bold;
+      padding: 0.75rem 0;
+      color: var(--rust);
+    }
+    .refs { list-style: none; padding: 0; margin: 0; }
+    .refs li { padding: 0.5rem 0; border-top: 1px dashed var(--border); }
+    .refs a { color: var(--accent-link); }
+    .refs a:hover { color: var(--accent-link-hover); }
+    .actions {
+      position: sticky;
+      bottom: 0;
+      margin-top: 1.5rem;
+      padding: 1rem 0;
+      background: var(--sticky-bg);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .actions .preview { flex: 1; min-width: 200px; font-size: 0.9rem; color: var(--text-dim); }
+    .actions .preview strong { color: var(--text); display: block; }
+    button.primary {
+      background: var(--rust);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 0.6rem 1.2rem;
+      font-size: 1rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    button.primary:hover { background: var(--rust-hover); }
+    .toast {
+      display: none;
+      margin-top: 0.75rem;
+      padding: 0.6rem 0.9rem;
+      background: var(--green);
+      color: #fff;
+      border-radius: 5px;
+      font-size: 0.9rem;
+    }
+    .toast.show { display: block; }
+    footer {
+      margin-top: 2rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+    footer code { font-size: 0.9em; opacity: 0.85; }
+  </style>
+  <script>
+    (function () {
+      const key = "utety-playground-theme";
+      const theme = localStorage.getItem(key) || "dark";
+      document.documentElement.classList.add("theme-" + theme);
+    })();
+  </script>
+</head>
+<body>
+  <header class="site-masthead">
+    <div class="crest">UTETY</div>
+    <div class="masthead-main">
+      <h1>Dept. of Numerical Ethics &amp; Accidental Cosmology</h1>
+      <p class="byline">University of Precausal Studies · fiction playground</p>
+    </div>
+    <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle light and dark theme">Light</button>
+  </header>
+  <div class="dean-band">Office of the Dean · Spring bulletin · front page</div>
+
+  <div class="wrap">
+    <span class="eyebrow">Your decision</span>
+    <h2>Which story leads the PDF and the lobby screen?</h2>
+    <p class="subtitle">Three treatments from Jeles; pick one tone for the semester.</p>
+    <p class="deadline">
+      <strong>Due</strong> Thursday before faculty tea. One sealed choice — not another workshop.
+    </p>
+
+    <p class="section-title">Options</p>
+    <p class="intro">
+      Symposium apology, open dome night, or citation-heavy field guide. Context links below.
+    </p>
+
+    <div class="choices" id="choices">
+      <article class="choice choice-a" data-letter="A">
+        <label>
+          <input type="radio" name="front" value="A">
+          <div>
+            <span class="choice-letter">A</span>
+            <p class="headline">“We counted the wrong infinity (and we are sorry, sort of)”</p>
+            <p class="blurb">Symposium on repair and public trust. Oakenscroll at the chalkboard.</p>
+            <div class="mock-cover">Cover · scaffold gold / paper cream</div>
+          </div>
+        </label>
+      </article>
+      <article class="choice choice-b" data-letter="B">
+        <label>
+          <input type="radio" name="front" value="B">
+          <div>
+            <span class="choice-letter">B</span>
+            <p class="headline">“Open dome night — bring a sweater and a question”</p>
+            <p class="blurb">Community-first, low jargon. Ada’s lobby banner: readable at 3 a.m.</p>
+            <div class="mock-cover">Cover · campus cream-dark</div>
+          </div>
+        </label>
+      </article>
+      <article class="choice choice-c" data-letter="C">
+        <label>
+          <input type="radio" name="front" value="C" checked>
+          <div>
+            <span class="choice-letter">C</span>
+            <p class="headline">“Accidental cosmology: a field guide for the merely adjacent”</p>
+            <p class="blurb">Jeles layout — corner brackets, confidence badge, small headline.</p>
+            <div class="mock-cover">Cover · sourced-card gold corners</div>
+          </div>
+        </label>
+      </article>
+    </div>
+
+    <details class="context" open>
+      <summary>Background &amp; references</summary>
+      <ul class="refs">
+        <li><a href="memo.html" id="memo-link">Jeles memo — readership survey</a></li>
+        <li><a href="memo.html#oakenscroll">Oakenscroll dissent</a></li>
+        <li><a href="memo.html#ada">Ada — lobby contrast note</a></li>
+      </ul>
+    </details>
+
+    <div class="actions">
+      <div class="preview" id="preview">
+        <strong>Commitment</strong>
+        <span id="preview-text">C — Field guide layout; Jeles citation style.</span>
+      </div>
+      <button type="button" class="primary" id="seal">Record choice (pretend seal)</button>
+    </div>
+    <p class="toast" id="toast" role="status"></p>
+
+    <footer>Playground only. Palette from UTETY <code>render.py</code> + campus maroon from <code>utety.html</code>.</footer>
+  </div>
+  <script>
+    const THEME_KEY = "utety-playground-theme";
+    function currentTheme() {
+      return document.documentElement.classList.contains("theme-light") ? "light" : "dark";
+    }
+    function applyTheme(theme) {
+      document.documentElement.classList.remove("theme-light", "theme-dark");
+      document.documentElement.classList.add("theme-" + theme);
+      localStorage.setItem(THEME_KEY, theme);
+      const btn = document.getElementById("theme-toggle");
+      if (btn) btn.textContent = theme === "dark" ? "Light" : "Dark";
+      const memo = document.getElementById("memo-link");
+      if (memo) memo.href = "memo.html?theme=" + theme;
+    }
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      applyTheme(currentTheme() === "dark" ? "light" : "dark");
+    });
+    applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+
+    const labels = {
+      A: "A — Symposium / apology tone for the spring lead.",
+      B: "B — Open dome night; community-first, plain language.",
+      C: "C — Field guide layout; Jeles citation style.",
+    };
+    const cards = document.querySelectorAll(".choice");
+    const preview = document.getElementById("preview-text");
+    const toast = document.getElementById("toast");
+    function sync() {
+      const picked = document.querySelector('input[name="front"]:checked').value;
+      cards.forEach((c) => c.classList.toggle("is-selected", c.dataset.letter === picked));
+      preview.textContent = labels[picked];
+    }
+    document.getElementById("choices").addEventListener("change", sync);
+    sync();
+    document.getElementById("seal").addEventListener("click", () => {
+      const picked = document.querySelector('input[name="front"]:checked').value;
+      toast.textContent = "Recorded (fiction): " + labels[picked];
+      toast.classList.add("show");
+    });
+  </script>
+</body>
+</html>
