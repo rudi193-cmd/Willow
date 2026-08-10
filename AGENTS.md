@@ -1,8 +1,14 @@
 # AGENTS.md — willow (constitution seat)
 
-This repo (`~/github/willow`) is the willow fleet's **governance / charter** folder — not
-the code. The muscle lives in the sibling `willow-2.0/`; secrets in `.willow/`. A
-constitution belongs above both and is owned by neither, which is why it lives here.
+This repo (`~/github/willow-memory/willow`) is the willow fleet's **governance / charter**
+folder — not the code. The muscle lives in the sibling `willow-mcp/`; secrets in
+`~/.willow/`. A constitution belongs above both and is owned by neither, which is why it
+lives here.
+
+> **Layout moved 2026-08-10** — [`governance/LOCAL_GITHUB_LAYOUT.md`](governance/LOCAL_GITHUB_LAYOUT.md).
+> `~/github/` is one directory per GitHub org. `~/github/willow` and `~/github/.willow` no
+> longer exist; `~/.willow` symlinks to `~/github/willow-memory/.willow`. **`willow-2.0` is
+> tier F — archived, not cloned on this box.** Paths and commands below are post-move.
 
 **Fleet identity is `willow`** (`WILLOW_AGENT_NAME`). Persona is a voice overlay only —
 it never changes the agent id, the MCP `app_id`, the Grove sender, or the SOIL namespace.
@@ -28,19 +34,17 @@ let MCP unlock, then** run the project orient. The gate outranks ORIENT's advice
 2. **`CONSTITUTION.md`** — the law this seat serves (Draft 0.7; Article 0 is fixed and
    unamendable). Read with `mai_read_file` — it is a `@markdownai` doc and the IDE Read
    tool is hook-blocked on it.
-3. **Cross-repo contract** — this repo does *not* carry the contract; it lives in the
-   sibling `willow-2.0/`, which is **outside this Cursor workspace**. Native file-read
-   will not reach it — open it with `mai_read_file` using the **absolute path**, or open
-   Cursor as a multi-root workspace (`willow` + `willow-2.0`):
-   - `mai_read_file("/home/sean-campbell/github/willow-2.0/willow.md")` — full contract
-   - `.../willow-2.0/docs/CONTRACT.md` — public snapshot
-   - `.../willow-2.0/docs/INDEX.md` — doc router
-   - `.../willow-2.0/sap/mcp_registry.json` — tool registry
-   - `.../willow-2.0/willow/fylgja/skills/boot.md` — full boot steps
+3. **Cross-repo contract** — this repo does *not* carry the contract. The old
+   `willow-2.0/willow.md` is **archived and not on disk**; do not send agents to it. The
+   live product docs are in the sibling `~/github/willow-memory/willow-mcp/`:
+   - `README.md` — tool surface, consent/egress model, env var table
+   - `DEVELOPER.md` · `ARCHITECT.md` — build and design
+   - `docs/` — deploy runbooks, migrations, design notes
+   - `src/willow_mcp/deploy/mcp_projects.seed.json` — authoritative `willow` project entry
 
 ## Which MCP server for what
 
-**Operator Jarvis seat (`~/github/willow`):** `willow-mcp` is the **first-priority** MCP
+**Operator Jarvis seat (`~/github/willow-memory/willow`):** `willow-mcp` is the **first-priority** MCP
 server — the shipped product surface. Use it for all seat work unless a tool exists only
 on the legacy unified server during migration.
 
@@ -56,8 +60,11 @@ on the legacy unified server during migration.
   `WILLOW_HUMAN_ORCHESTRATOR=1` (required for `dispatch_send`, `verify_handoff`,
   `agent_clear`). Specialist workspaces must omit it.
 - **Agent-agnostic wiring:** `.cursor/mcp.json`, `.mcp.json`, `.claude/settings.local.json`,
-  and `.codex/config.toml` are materialized by `./willow.sh project sync willow` from
-  `$WILLOW_HOME/mcp/projects.json` (run from `willow-2.0` dev engine).
+  and `.codex/config.toml` are materialized from `$WILLOW_HOME/mcp/projects.json` by
+  `willow-mcp project sync willow` (the `willow-mcp` CLI — `./willow.sh` went with
+  `willow-2.0`). The `willow` and `github` entries are re-overlaid from
+  `willow-mcp/src/willow_mcp/deploy/mcp_projects.seed.json` on every load, so edit the
+  **seed**, not `projects.json`.
 - **Code search** may resolve to indexed repos via `codebase-memory-mcp`; charter prose
   in this folder is markdown + JSON, not the primary code index target.
 
@@ -76,7 +83,9 @@ on the legacy unified server during migration.
 ## Operating rules (hard)
 
 - **MCP-first.** Use willow MCP tools for fleet data, never raw shell. No `psql`,
-  `sqlite3`, or `PYTHONPATH= python` against the willow stores — ever.
+  `sqlite3`, or `PYTHONPATH= python` against the willow stores — ever. *Exception, stated
+  so it is not silently violated:* if the MCP server is not actually wired (no tools
+  present in the session), say so and stand it up — do not pretend the rule was followed.
 - **Shell / git / tests → Kart**, never agent shell:
   `willow_run(app_id="willow", task=...)`. Python or nested quotes go in
   `script_body=` (executes as Python, not shell). Agent shell has no git creds and is
@@ -89,18 +98,29 @@ on the legacy unified server during migration.
   **not** the fleet-wide `willow/flags`.
 - **Archive stale atoms; never delete.**
 - **Governance acts need envelopes.** Check `envelopes/pre-approved.json` for active
-  grants before acting. Cross-repo work, merges, or Kart work in `willow-2.0` escalate
-  to a full fleet boot.
+  grants before acting. Cross-repo work, merges, or Kart work in `willow-mcp` /
+  `kartikeya` escalate to a full fleet boot. **Note:** the `pre_approved[]` filesystem
+  grants still name pre-move paths (`{{HOME}}/github/willow`, `{{HOME}}/github/.willow`,
+  `{{HOME}}/github/willow-2.0`) and their `enforced_by` points into the archived
+  `willow-2.0` sandbox config — the registry needs a ratified path update.
 
 ## Environment (the project MCP sets these; they must match for SOIL routing)
 
 - `WILLOW_AGENT_NAME=willow` · `app_id=willow` · `WILLOW_PG_DB=willow_20`
-- `WILLOW_STORE_ROOT=~/github/willow/.willow/store`
-- `WILLOW_PROJECT_ROOT=~/github/willow` · `WILLOW_HANDOFF_PROJECT=willow`
+- `WILLOW_HOME=~/github/willow-memory/.willow` (via the `~/.willow` symlink)
+- `WILLOW_STORE_ROOT=~/github/willow-memory/.willow/store` — the fleet store. The
+  project-local `.willow/store` override is deliberately dropped by
+  `mcp_projects._skip_store_override()`; charter SOIL lives in the fleet home.
+- `WILLOW_PROJECT_ROOT=~/github/willow-memory/willow` · `WILLOW_HANDOFF_PROJECT=willow`
 - MCP servers: **`willow-mcp`** (product venv:
-  `~/github/.willow/venvs/willow-mcp/bin/python -m willow_mcp`,
+  `~/github/willow-memory/.willow/venvs/willow-mcp/bin/python -m willow_mcp`,
   `WILLOW_HUMAN_ORCHESTRATOR=1`), and **`codebase-memory-mcp`**.
 
-Project `.cursor/mcp.json` must win over `~/.cursor/mcp.json`. Refresh wiring:
-`cd ~/github/willow-2.0 && ./willow.sh project sync willow`. If tool routing looks
-wrong, reload the IDE window.
+Fleet env lives in `~/.willow/env`. `WILLOW_ROOT`, `WILLOW_GROVE_ROOT`, `WILLOW_SAFE_ROOT`,
+and `WILLOW_AGENTS_ROOT` are **commented out** there — their pre-move targets no longer
+exist on this box. Kart's sandbox and SAP gate read them; without `WILLOW_SAFE_ROOT` the
+SAP gate drops to RESTRICTED.
+
+Project `.cursor/mcp.json` must win over `~/.cursor/mcp.json`. Refresh wiring with
+`willow-mcp project sync willow` (see CLAUDE.md for the full command block). If tool
+routing looks wrong, reload the IDE window.
