@@ -3,11 +3,11 @@
 .willow/store/**/*.db
 .willow/active-agent
 
-# Local IDE / operator overlays (materialize via willow-mcp: willow-mcp project sync willow
-# or ./willow.sh project sync willow when willow-mcp is installed)
-.cursor/settings.local.json
-.cursor/hooks.json
-.cursor/mcp.json
+# Local IDE / operator overlays (materialize via willow-mcp: willow-mcp project sync willow).
+# Keep tracked seat rules; everything else under .cursor/ is host-local until a template lands.
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .mcp.json
 .claude/settings.local.json
 .codex/

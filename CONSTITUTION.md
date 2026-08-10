@@ -4,9 +4,9 @@
 
 *Being the charter of the willow fleet: the document that stands above the machinery and governs it.*
 
-> This file is not code. It does not execute. It is the law that the code is written to enforce, the standard against which the enforcement is judged, and the record of what was decided when the human was still in the room. It lives here — in the folder named for the whole, beside `willow-2.0` where the muscle lives and `.willow` where the secrets live — because a constitution belongs above both, owned by neither.
+> This file is not code. It does not execute. It is the law that the code is written to enforce, the standard against which the enforcement is judged, and the record of what was decided when the human was still in the room. It lives here — in the folder named for the whole, beside `willow-mcp` where the muscle lives and `.willow` where the secrets live — because a constitution belongs above both, owned by neither.
 >
-> Draft 0.7. Ratified by no one yet. Preamble and Article 0 (the eternity clause) are laid and fixed. Articles I–XIII now carry full text; parameters marked *(proposed default — operator-adjustable)* await the operator's number. What remains open: three of the four Open Operator Decisions (ΔΣ=42's meaning, Decision #3, is now recovered from the KB and resolved 2026-07-15), ratification itself, and the two runtime build gaps (the machine-readable projection and the compliance-test suite, both of which live in `willow-2.0`).
+> Draft 0.7. Ratified by no one yet. Preamble and Article 0 (the eternity clause) are laid and fixed. Articles I–XIII now carry full text; parameters marked *(proposed default — operator-adjustable)* await the operator's number. What remains open: three of the four Open Operator Decisions (ΔΣ=42's meaning, Decision #3, is now recovered from the KB and resolved 2026-07-15), ratification itself, and two runtime build gaps — the machine-readable projection (a `willow-mcp` build) and the *executable* compliance-test suite (Appendix B runners in `willow-mcp` / `mem_ratify`). Declarative Trace-ID case cards for §0.2–§0.5 already live in `governance/compliance/cases/`.
 >
 > **Trace IDs:** every Article carries a stable identifier (`CONST-0`, `CONST-I`, …); clauses inherit it (`CONST-0-1` … `CONST-0-6`; `CONST-I-1` …). Gateway logs, ledger entries, exceptions, and compliance tests reference the ID, not the prose. No orphan authority; no orphan enforcement.
 
@@ -451,9 +451,9 @@ Every autonomous fleet eventually develops an economy; ignoring it delays rather
 | XI — Review | Constitutional Review queue (sibling of `human_required`): suspension flag + permanent resolution record *(to build)* |
 | XII — Resources | Kart budgets/quotas; token accounting; allocation envelopes |
 
-**The binding gap.** As written, this document is prose nothing reads at runtime. For it to bind the fleet at 3am, its decision-class tables must be compiled into a machine-readable projection (the `nest_rules.json` shape), keyed by Trace ID, and wired into the boot-time injection every agent already receives. Until that projection exists, the constitution governs *this conversation* by our choosing to honor it — not the fleet. **This is a `willow-2.0` build, not a document edit — it is the bridge from charter to law, and it shares the queued `nest_rules_propose`/`ratify` work.**
+**The binding gap.** As written, this document is prose nothing reads at runtime. For it to bind the fleet at 3am, its decision-class tables must be compiled into a machine-readable projection (the `nest_rules.json` shape), keyed by Trace ID, and wired into the boot-time injection every agent already receives. Until that projection exists, the constitution governs *this conversation* by our choosing to honor it — not the fleet. **This is a `willow-mcp` build, not a document edit — it is the bridge from charter to law, and it shares the queued `nest_rules_propose`/`ratify` work.**
 
-> **Name-collision note (box-scan A10).** The `nest_rules.json` named *here* is the **unbuilt constitutional rules-as-data projection** — the machine-readable compilation of these decision-class tables, keyed by Trace ID. It is **not** the same object as the *shipped* `nest_rules.json` file-classifier in the nest content pipeline (the nest-seed / `willow_mcp.nest` code vendored across `willow-mcp` and `safe-app-store`; see box-scan A4). The two share a filename only; this projection engine is the canonical referent whenever `nest_rules.json` appears in charter or governance prose (e.g. Appendix A line "the `nest_rules` pattern", and `design/egress-membrane-constitutional-map.md`). Naming the projection artifact distinctly is deferred to the `willow-2.0` build and flagged for owner.
+> **Name-collision note (box-scan A10).** The `nest_rules.json` named *here* is the **unbuilt constitutional rules-as-data projection** — the machine-readable compilation of these decision-class tables, keyed by Trace ID. It is **not** the same object as the *shipped* `nest_rules.json` file-classifier in the nest content pipeline (the nest-seed / `willow_mcp.nest` code vendored across `willow-mcp` and `safe-app-store`; see box-scan A4). The two share a filename only; this projection engine is the canonical referent whenever `nest_rules.json` appears in charter or governance prose (e.g. Appendix A line "the `nest_rules` pattern", and `design/egress-membrane-constitutional-map.md`). Naming the projection artifact distinctly is deferred to the `willow-mcp` build and flagged for owner.
 
 ---
 
@@ -466,7 +466,7 @@ Every autonomous fleet eventually develops an economy; ignoring it delays rather
 - A constitutional amendment that invalidates its required compliance tests may not enter force (see Article VIII).
 - Tests reference clauses by Trace ID, not prose, so law ↔ implementation ↔ test form a closed, auditable loop.
 
-*[Test suite is a `willow-2.0` build, to be authored alongside the machine-readable projection.]*
+**Homes (2026-08-10).** Declarative Trace-ID case cards for the eternity-clause probes that already exist (`CONST-0-2` … `CONST-0-5`) live in [`governance/compliance/cases/`](governance/compliance/cases/) — constants and forbidden-act prose only, no archived-engine imports. Executable adversarial runners that attack *current* gates are a `willow-mcp` / `mem_ratify` build, to be authored alongside the machine-readable projection. Historical willow-2.0 probe bodies remain in the greenfield archive for provenance; they are not the living suite.
 
 ---
 
