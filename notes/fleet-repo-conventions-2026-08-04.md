@@ -17,7 +17,7 @@ standardize.
 | **Default branch** | **Split.** `main`: willow, willow-gate, utety, willow-tech-manual, willow-data-vault. `master`: willow-mcp, willow-grove, willow-2.0, jeles, nestor, safe-app-store. | `git ls-remote --symref <url> HEAD` |
 | **Required check name** | `test`, everywhere. Each repo's CI ends in an aggregate job named exactly that, so branch protection reads identically across the fleet. | the `test` job in each `tests.yml` / `ci.yml`, and the comments saying so |
 | **Push-trigger branch filter** | **Now uniform** — `[main, master]` in every branch-filtered `push` trigger. `dependabot-automerge.yml` already carried the hedge everywhere; the eight PRs above applied it to the other 14 triggers. | `on.push.branches` via `yaml.safe_load`, all 20 workflows |
-| **PR template** | 7 of 8 have `.github/pull_request_template.md`. **willow has none.** willow-grove's carries repo-specific evidence commands; the other six share generic `<command>` placeholders. | file presence + diff of the Evidence blocks |
+| **PR template** | ~~7 of 8 have `.github/pull_request_template.md`. **willow has none.**~~ **Corrected 2026-08-10 — every repo has one.** `rudi193-cmd/.github/pull_request_template.md` sits at that repo's **root**, and every repo owned by the account inherits it, willow included. The seven in-repo copies are byte-identical vendored duplicates. willow-grove's carries repo-specific evidence commands. | file presence, plus `gh api repos/rudi193-cmd/.github/contents` and an owner check (`.owner.type == User`) |
 
 ## Not uniform, and the one that will bite
 
@@ -56,6 +56,33 @@ configured.
 - **`willow-2.0` was skipped** in the trigger hedge. It is ratified for
   retirement; CI churn on a repo being switched off is waste. If it outlives the
   decommission plan, it needs the same one-line change.
+
+## Drift recorded 2026-08-10 — 17 PRs bypassed the template
+
+Every PR opened in one session — 4 on willow, 6 on willow-mcp, 2 on willow-gate,
+5 on willow-config — was written as a freeform body instead of the shared
+`Bite / What was done / Evidence / Out of scope / Next bite` shape. They are
+merged and are being **left as they are**: the history is a truer record of what
+happened than a backfill would be, and rewriting sixteen merged bodies to look
+compliant after the fact is its own kind of dishonesty.
+
+Two things made it easy to miss, and both are worth knowing:
+
+- **The row above was wrong in the direction that permits the mistake.** It read
+  as "willow has no template", which invites a freeform body there. The template
+  was inherited, not absent — and the check that produced the row looked for a
+  file *in the repo*.
+- **Nothing gates the body.** `pr-title.yml` gates the PR *title*, on
+  `[opened, edited, reopened, synchronize]`, and it works — it caught a `fix:`
+  prefix on a PR that changed nothing installable and refused it. There is no
+  equivalent for the body, so a template can be silently overridden on every PR
+  for a day and the checks stay green.
+
+That asymmetry is the same failure class the rest of this note is about: a
+control that looks live and never runs. The title gate proves the shape is
+cheap to enforce. Whether the body deserves the same treatment — presence of the
+five headings, or `Evidence` boxes that are checked — is an operator decision,
+not something to add quietly.
 
 ## Why any of this is written down
 
