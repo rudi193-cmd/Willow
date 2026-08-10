@@ -103,14 +103,71 @@ bespoke code.
 
 ---
 
+## Correction — the count was 13, it is 17
+
+Four more units reference `willow-2.0`, and the original audit could not see them:
+they are **dangling symlinks** into `~/github/willow-2.0/systemd/`.
+
+| unit | state when found |
+|---|---|
+| `upstream-watcher.service` | **running** — see below |
+| `journal-watcher.service` | inactive |
+| `repo-fleet-sweep.service` | inactive |
+| `repo-fleet-sweep.timer` | inactive (`NEXT` was already `-`) |
+
+The audit globbed `~/.config/systemd/user/*.service` and grepped their *contents*
+for dead paths. **A broken symlink has no readable content**, so every one of
+these scored zero dead-path references and never appeared in the list. The method
+could only see units it could read.
+
+That matters beyond bookkeeping, because systemd does not need the file. It keeps
+running whatever it loaded while the target still existed — which is how
+`upstream-watcher.service` reported `is-enabled: not-found` and `is-active:
+active` at the same time.
+
+**Check for this directly, not by grepping unit bodies:**
+
+```bash
+find ~/.config/systemd/user -type l ! -exec test -e {} \; -print
+systemctl --user list-units --state=active --plain | awk '{print $1}' \
+  | while read u; do [ "$(systemctl --user is-enabled "$u" 2>/dev/null)" = not-found ] \
+      && echo "ACTIVE but unresolvable: $u"; done
+```
+
+### `upstream-watcher.service` — resolved 2026-08-10
+
+`hanuman/bin/upstream_watcher.py watch`, **PID 2997, running since Aug 5** — four
+days nineteen hours, having survived the greenfield reset. Its `cwd` followed the
+old tree into `~/github-archive-greenfield-2026-08-10/`, and its environment still
+carried `WILLOW_HOME=~/github/.willow`, so it had been writing to the pre-move
+fleet home the entire time.
+
+This is the answer to the "residue" question below, and it corrects three claims
+in the first audit — that no process held those files open (`lsof`/`fuser` were
+not installed, so the check found nothing and I read absence of tooling as
+absence of a writer), that nothing wrote during a 90-second window (the
+watcher's interval is longer), and that a `find -newermt` probe showed no recent
+writes (the predicate did not parse as intended).
+
+Stopped with `systemctl --user stop` so SQLite closed cleanly; all eight
+databases pass `integrity_check`. Both links (`upstream-watcher.service` and the
+`default.target.wants/` copy) removed, `daemon-reload` run, and no process
+referencing `willow-2.0` remains on the machine.
+
 ## Related residue
 
-`~/github/.willow/store/upstream_steward/` holds 8 SQLite files under the
-**pre-move** fleet home; the same directory in the current home is empty. That
-is `willow-upstream-desk`'s state, orphaned by the same move that stranded the
-unit. Last written 13:47 on 2026-08-10; no process holds the files open. If the
-desk is rebuilt, that state is what it would resume from — decide before it is
-discarded.
+~~`~/github/.willow/store/upstream_steward/` holds 8 SQLite files under the
+pre-move fleet home … no process holds the files open.~~ **Resolved
+2026-08-10.** It was not orphaned residue: `upstream-watcher.service` was still
+running and still writing it, per the correction above.
+
+The state moved to the current box at
+`$WILLOW_HOME/store/upstream_steward/` — 8 databases, **164 rows**, copied with
+per-file sha256 verification before the source was removed. `cursor`, `digest`
+and `heartbeat` carry 31 rows each, `pending` 48, `log` 21, `voice` 2; `config`
+and `desk_intel` are empty. If the desk is rebuilt, this is what it resumes from.
+
+The pre-move home `~/github/.willow/` is now empty of files.
 
 ---
 
