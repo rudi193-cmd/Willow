@@ -126,5 +126,13 @@ discarded.
    per-repo venv that does not exist; the fleet venv is `$WILLOW_HOME/venvs/`.
    Its two siblings are already correct.
 
-Enabling anything is a separate act, and Postgres (step 1 of the greenfield
-wire-up) has not been done — the workers take `--require-postgres`.
+Enabling anything is a separate act.
+
+**Correction (2026-08-10, same day):** an earlier revision of this line said
+Postgres — step 1 of the greenfield wire-up — had not been done, and that the
+workers' `--require-postgres` was therefore blocked. It is done. The reset
+archived the *filesystem*, not the database cluster: `willow_20` is live with 36
+tables and ~21.9k knowledge rows, and `pg_isready` is green. The dumps under
+`repo-drops/reset-2026-08-10/pg/` are a backup, not a pending restore. So
+`--require-postgres` is satisfied and enabling the workers is gated only on the
+operator's decision.
