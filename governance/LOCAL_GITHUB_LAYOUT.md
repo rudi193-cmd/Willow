@@ -48,7 +48,8 @@ This document is how **`~/github/`** should look after a clean reclone: **one di
 │   ├── dotgithub/
 │   ├── hornbook/                 # base seat (draft)
 │   ├── UTETY/
-│   └── Jeles/
+│   ├── Jeles/
+│   └── oakenscrolls-office/      # cite-and-grade office (own repo; playground copy is stale)
 │
 ├── almanac-data/                 # meta-repo + all verticals (single org folder)
 │   ├── .almanac/                 # caretaker local state (gitignored)
@@ -190,6 +191,7 @@ gh repo clone rudi193-cmd/kartikeya         ~/github/willow-memory/kartikeya
 gh repo clone rudi193-cmd/Willow            ~/github/willow-memory/willow
 gh repo clone rudi193-cmd/UTETY             ~/github/hornbook-knowledge/UTETY
 gh repo clone rudi193-cmd/Jeles             ~/github/hornbook-knowledge/Jeles
+gh repo clone rudi193-cmd/oakenscrolls-office ~/github/hornbook-knowledge/oakenscrolls-office
 gh repo clone rudi193-cmd/terpsi-music      ~/github/terpsi-programs/terpsi-music
 gh repo clone rudi193-cmd/safe-app-store-public ~/github/safe-app-store-public
 gh repo clone rudi193-cmd/willow-config     ~/github/willow-memory/.willow
