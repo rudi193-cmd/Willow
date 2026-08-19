@@ -96,6 +96,7 @@ This document is how **`~/github/`** should look after a clean reclone: **one di
 |------|------|--------|
 | `~/github/safe-app-store-public/` | D | Monorepo + `apps/*`; most never promote. Symlink `~/safe-app-store` here. |
 | `~/github/workshop/` | E | `sean-data-vault`, `quiet-corner`, `DispatchesFromReality`, `community`, `courtlistener-mcp`, forks — operator discretion. |
+| `~/github/willow-memory/willow-grove` | B′ | Clone of `rudi193-cmd/safe-app-willow-grove` — fleet dev list (Grove bus); not tier F. |
 | `~/github/archive/` | F | Cold storage after `mv` of old flat tree; not for daily work. |
 | `~/Desktop/Nest` | intake | Runtime drop zone — not a repo root ([`FLEET_PLACEMENT_DRAFT.md`](FLEET_PLACEMENT_DRAFT.md) §9). |
 
@@ -189,6 +190,7 @@ gh repo clone rudi193-cmd/willow-mcp        ~/github/willow-memory/willow-mcp
 gh repo clone rudi193-cmd/willow-gate       ~/github/willow-memory/willow-gate
 gh repo clone rudi193-cmd/kartikeya         ~/github/willow-memory/kartikeya
 gh repo clone rudi193-cmd/Willow            ~/github/willow-memory/willow
+gh repo clone rudi193-cmd/safe-app-willow-grove ~/github/willow-memory/willow-grove
 gh repo clone rudi193-cmd/UTETY             ~/github/hornbook-knowledge/UTETY
 gh repo clone rudi193-cmd/Jeles             ~/github/hornbook-knowledge/Jeles
 gh repo clone rudi193-cmd/oakenscrolls-office ~/github/hornbook-knowledge/oakenscrolls-office

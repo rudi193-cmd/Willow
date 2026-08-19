@@ -269,7 +269,7 @@ Some human usages need a **charter fork** or a **different face**, not another r
 | **E — Workshop** | Staging until transfer; forks; grants | `rudi193-cmd` / personal |
 | **F — Cut / archive** | Legacy lines, duplicate paths, retired engine | remove after backup |
 
-**Not on any org:** `willow-2.0` → **tier F** (cut/archive), not ongoing workshop cargo.
+**Not on any org:** `willow-2.0` → **tier F** (cut/archive on disk; **leave live on GitHub remote**).
 
 ---
 
@@ -293,9 +293,12 @@ Some human usages need a **charter fork** or a **different face**, not another r
 | `.github` | clone when wired | Platform org profile |
 | **`willow-mcp`** | `~/github/willow-mcp` | Shipped MCP server |
 | **`willow-gate`** | `~/github/willow-gate` | Manifest / auth gate |
-| **`kartikeya`** | `~/github/kartikeya` | Kart worker (platform bundle with hub + gate) |
+| **`kartikeya`** | `~/github/willow-memory/kartikeya` | Kart worker (platform bundle with hub + gate) |
+| **`safe-app-willow-grove`** | `~/github/willow-memory/willow-grove` | Grove fleet bus (Heimdallr seat) — **dev clone**; active on GitHub |
 
-**Not here:** `willow-2.0`, charter `willow`, hornbook flagships, `nestor`.
+**Fleet dev clones (operator box, 2026-08-18):** `willow`, `willow-mcp`, `willow-gate`, `kartikeya`, `safe-app-willow-grove` (`willow-grove` on disk). Not cloned locally: tier-F / remote-only repos below.
+
+**Not here:** `willow-2.0` (remote-only — see §8), charter `willow` path unsettled, hornbook flagships, `nestor` (lives under Die-Namic-Systems).
 
 **Unsettled:** `~/github/willow` (constitution) — see §11 “Still unknown”.
 
@@ -392,7 +395,16 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 
 ## 8. Tier F — Cut / archive
 
-- `willow-1.7`, `willow-1.9`, **`willow-2.0`**, `willow-nest`, `willow-canonical`, `willow-compose`
+**Remote-only (leave on GitHub — do not delete, do not re-clone on the operator box):**
+
+| Repo | GitHub state | Local box |
+|------|--------------|-----------|
+| **`willow-2.0`** | live, still merging | tier F — frozen copy under `github-archive-*`; no `~/github` clone |
+| **`jeles-remote`** | archived | no clone — superseded by `hornbook-knowledge/Jeles` |
+
+**Cut / archive (no ongoing dev):**
+
+- `willow-1.7`, `willow-1.9`, **`willow-nest`**, `willow-canonical`, `willow-compose`
 - duplicate almanac clone paths on disk
 - stale CBM / `projects.json` keys for deleted upstreams
 
@@ -574,13 +586,14 @@ terpsi-music (until promoted — Terpsi face §11 FUTURE, or hornbook interim)
 schmidt grant workspace
 forks and experiments
 
-CUT OR ARCHIVE
+CUT OR ARCHIVE (local disk / no dev clone — see §8 for remote-only)
 willow-1.7
 willow-1.9
-willow-2.0
+willow-2.0          ← leave on GitHub remote; frozen under github-archive-* only
 willow-nest
 willow-canonical
 willow-compose
+jeles-remote        ← archived on GitHub; leave remote
 duplicate almanac clone paths on disk
 
 Still unknown
