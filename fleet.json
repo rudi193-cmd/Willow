@@ -1,6 +1,6 @@
 {
   "schema": "fleet-roster/v1",
-  "description": "Canonical fleet identity roster for the Willow constitution repo. Runtime SAFE manifests live in willow-2.0/core/safe_agents.py and must stay aligned.",
+  "description": "Canonical fleet identity roster for the Willow constitution repo. The willow-2.0 runtime (core/safe_agents.py) it was formerly aligned against is archived and not on disk as of 2026-08-10; the live runtime is willow-mcp. Roster-to-runtime alignment is UNRESOLVED — see gap fleet/roster-design-intent-unrecorded and the roster-sync HOLD at FRANK 7d071410.",
   "updated": "2026-07-06",
   "constitutional_ref": "CONST-I",
   "soil_manifest": "soil/manifest.json",

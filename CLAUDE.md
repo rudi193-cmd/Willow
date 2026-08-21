@@ -68,9 +68,23 @@ $W/willow-mcp-init                                          # scaffold $WILLOW_H
 $W/willow-mcp onboard --project-root ~/github/willow-memory/willow
 ```
 
-**The `willow` and `github` entries in `projects.json` are not editable in place.**
-`load_registry()` overlays them from `willow-mcp/src/willow_mcp/deploy/mcp_projects.seed.json`
-on every load and persists the result, so a local edit silently reverts. Fix the seed.
+**`projects.json` entries ARE editable in place — including `willow` and `github`.**
+An earlier version of this file said `load_registry()` re-overlaid those two from
+`willow-mcp/.../deploy/mcp_projects.seed.json` on every load, so local edits reverted and you
+had to fix the seed. **That is no longer true.** The overlay was removed upstream for exactly
+the reason it was dangerous — it silently replaced operator entries and `persist=True` wrote
+the loss to disk (see the comment at `mcp_projects.py:load_registry`). The seed now only
+bootstraps a registry that does not exist yet. Corrected 2026-08-20; FRANK `7d9d1faf`.
+
+> **Known defect — `project sync` is not deterministic.** `_willow_mcp_server_block()`
+> seeds its base env with `WILLOW_STORE_ROOT = store_root()`, which reads the **ambient
+> process environment**, before any registry override is considered. A shell exporting
+> `WILLOW_STORE_ROOT` bakes that value into every `.mcp.json` it syncs, silently. The
+> `_skip_store_override()` guard does not catch this: it filters the registry entry's
+> declared override, never the base value. **Check `env | grep WILLOW_STORE_ROOT` before
+> running `project sync`** — the fleet store (`$WILLOW_HOME/store`) is correct for the
+> charter seat; the project-local `.willow/store` is not. FRANK `58b6912c` (first
+> diagnosis, wrong mechanism) → `7d9d1faf` (corrected).
 
 **Charter test/lint loop** (stdlib-only; mirrors `.github/workflows/`):
 
