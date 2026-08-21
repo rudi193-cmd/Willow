@@ -84,16 +84,23 @@ Otherwise stay in this orient loop.
 | Envelope | Expires | Meter |
 |----------|---------|-------|
 | `env-envelope.apply-planting` | — | unmetered |
-| `env-pr.merge-willow2-master` | 2026-09-06 | 20 merges | **DEAD TARGET** |
+| `env-pr.merge-willow2-master` | 2026-09-06 | 20 merges |
 | `env-dispatch-fleet-sessions` | 2026-08-06 | 40 dispatches |
 
 Full bounds: `envelopes/pre-approved.json` — **that file is authoritative; this table drifts.**
 
-> **Unratified defect (2026-08-20).** Five envelopes in `active[]` are unexpired grants
-> against `rudi193-cmd/willow-2.0`, a repo that no longer exists:
-> `env-pr.merge-willow2-master`, `env-git.commit-kart-fast-timeout`,
-> `env-pr.open-kart-fast-timeout`, `env-git.commit-kart-sandbox-vault-unbind`,
-> `env-pr.open-kart-sandbox-vault-unbind`. Separately, all three `pre_approved[]`
+> **CORRECTION (2026-08-21).** An earlier version of this note called
+> `rudi193-cmd/willow-2.0` *"a repo that no longer exists"* and marked its merge
+> envelope **DEAD TARGET**. That was **false**, and it was written into the charter.
+> Checked against GitHub: willow-2.0 was **pushed 2026-08-19**, is not archived, and is
+> actively merging (PRs #909–#911; "ratatosk: speak real Grove MCP protocol", "finish
+> MCP SDK 2.0 migration in mai"). Tier F means **not cloned on this box** —
+> `FLEET_PLACEMENT_DRAFT.md` §8 says exactly that: *"live, still merging | tier F —
+> frozen copy under `github-archive-*`; no `~/github` clone."* Not-on-disk was read as
+> not-existing. **The five willow-2.0 envelopes are live grants against a live repo and
+> are not defective on that ground.** What remains true, and is a separate matter:
+>
+> **Unratified defect (2026-08-20).** All three `pre_approved[]`
 > filesystem grants carry `enforced_by = willow-2.0/willow/fylgja/config/kart-sandbox.json`,
 > which is not on disk. The **actual** enforcer is
 > `$WILLOW_HOME/kart-sandbox.json` (verified 2026-08-20 from a Kart task's
