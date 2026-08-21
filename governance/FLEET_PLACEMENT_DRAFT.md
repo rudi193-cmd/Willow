@@ -27,7 +27,7 @@ Personal account + SAFE playground hold everything else until **promote**, **tra
 | Rename all orgs to `willow-*` | `almanac-data` has contributors and public URLs; Hornbook/Die-Namic legs stay legible as separate faces |
 | Fold everything into `willow-memory` | Recreates the “60-repo one org” problem |
 
-Display on the die: **Artifact · Leg** — e.g. Willow · Memory, Homestead · Sovereign, Play · Forge. GitHub org = **`artifact-leg`** (`willow-memory`, `homestead-sovereign`, `forge-play`, …).
+Display on the die: **Artifact · Leg** — e.g. Willow · Memory, Homestead · Affairs, Play · Forge. GitHub org = **`artifact-leg`** (`willow-memory`, `homestead-affairs`, `forge-play`, …).
 
 ### Base repo pattern *(orchestrator seat — leaning 2026-08-03)*
 
@@ -37,11 +37,11 @@ Display on the die: **Artifact · Leg** — e.g. Willow · Memory, Homestead · 
 
 | Org | Base repo *(no suffix)* | Role |
 |-----|-------------------------|------|
-| `willow-memory` | **`willow`** | Optional **orchestrator seat** for the platform face — charter, governance, envelopes, fleet portfolio state for Willow · Memory. **Target home** for `~/github/willow` (constitution repo). |
+| `willow-memory` | **`willow`** | Optional **orchestrator seat** for the platform face — charter, governance, envelopes, fleet portfolio state for Willow · Memory. **Target home** for the constitution repo — on disk at `~/github/willow-memory/willow` since 2026-08-10; the GitHub repo `rudi193-cmd/Willow` is not yet transferred. |
 | `almanac-data` | **`almanac`** | Optional seat for Almanac · Data — meta/orchestration (`propagate-engine`, vertical index, org handoffs). Local `~/github/almanac-data` meta folder may become this repo or re-home into it. |
 | `hornbook-knowledge` | **`hornbook`** | Optional seat for Hornbook · Knowledge — portfolio, envelopes, orient for UTETY/Jeles work (not student program ops → Terpsi). |
 | `Die-Namic-Systems` | **`die-namic`** *(or `die` — pick one)* | Optional seat for the verification face; **`nestor`** remains the shipped brain product on the same org. |
-| **`homestead-sovereign`** *(draft)* | **`homestead`** | Optional orchestrator seat for Homestead · Sovereign. |
+| **`homestead-affairs`** *(draft)* | **`homestead`** | Optional orchestrator seat for Homestead · Affairs. |
 | **`forge-play`** *(draft)* | **`play`** | Optional seat; **`forge`** flagship app repo separate. |
 | **`terpsi-programs`** *(draft)* | **`terpsi`** | Optional seat; **`terpsi-core`**, **`terpsi-template`**, skins are siblings. |
 
@@ -123,7 +123,7 @@ The **die** is a **cube**: six **faces** (public product legs) and **one center*
                              |
                     [ Die-Namic · Nestor ]  ← center (Möbius twist)
                              |
-    Terpsi · Programs -------+---------- Homestead · Sovereign
+    Terpsi · Programs -------+---------- Homestead · Affairs
                              |
                     +--------+---------+
                     |  Play            |
@@ -137,7 +137,7 @@ The **die** is a **cube**: six **faces** (public product legs) and **one center*
 |--------|--------|--------------------------------|
 | **Willow · Memory** | **Almanac · Data** | Operator/runtime self vs **public** map of the world |
 | **Hornbook · Knowledge** | **Terpsi · Programs** | Open learning & citation vs **ward** institutional records |
-| **Homestead · Sovereign** | **Play · Forge** | Ground you hold vs workshop; remedy without capture vs craft under the bar |
+| **Homestead · Affairs** | **Play · Forge** | Ground you hold vs workshop; remedy without capture vs craft under the bar |
 
 **Center:** **Die-Namic** — `Nestor` verifies passage between faces; pins every face’s **published** schemas; exports seal / entity resolve. Org: `Die-Namic-Systems`; base seat: **`die-namic`**; product: **`nestor`**.
 
@@ -148,7 +148,7 @@ The **die** is a **cube**: six **faces** (public product legs) and **one center*
 | 1 | **Willow · Memory** | `willow-memory` | `willow` | `willow-mcp`, `willow-gate`, `kartikeya` |
 | 2 | **Hornbook · Knowledge** | `hornbook-knowledge` | `hornbook` | `UTETY`, `Jeles` |
 | 3 | **Almanac · Data** | `almanac-data` | `almanac` | `almanac-template`, `*-almanac` |
-| 4 | **Homestead · Sovereign** | **`homestead-sovereign`** | `homestead` | **`homestead-law`** *(promoted `law-gazelle`)*, `awesome-sovereign-software` |
+| 4 | **Homestead · Affairs** | **`homestead-affairs`** | `homestead` | **`homestead-law`** *(promoted `law-gazelle`)*, `awesome-sovereign-software` |
 | 5 | **Play · Forge** | **`forge-play`** | `play` | `forge`, promoted SAFE toys |
 | 6 | **Terpsi · Programs** | **`terpsi-programs`** | `terpsi` | `terpsi-core`, `terpsi-template`, `terpsi-music`, skins |
 
@@ -156,9 +156,18 @@ The **die** is a **cube**: six **faces** (public product legs) and **one center*
 
 **Not on a face:** charter **law** lives on face 1 (`willow-memory/willow`); **Nestor** lives at **center** org, not on the rim.
 
-#### Homestead · Sovereign — sixth face *(ratified naming 2026-08-03)*
+#### Homestead · Affairs — sixth face *(leg name ratified 2026-08-20; org+face ratified 2026-08-03)*
 
-**Artifact:** **Homestead** (place you hold when government is thin or hostile). **Leg:** **Sovereign** (five-point test, exit, anti-capture). **Org:** **`homestead-sovereign`**.
+**Artifact:** **Homestead** (place you hold when government is thin or hostile). **Leg:** **Affairs** (household handling its own deeds and disputes — five-point test, exit, anti-capture). **Org:** **`homestead-affairs`**.
+
+> **Naming reconciled — RATIFIED 2026-08-20 by root.** The 2026-08-03 entry named the leg
+> **Sovereign**; `LOCAL_GITHUB_LAYOUT.md` (2026-08-10, citing SAFE `die-rules.md`) named the
+> face **Homestead · Affairs**. Evidence settling it: `homestead-affairs/homestead-law/README.md`
+> opens "**Homestead · Affairs** — module one. The household handling its own deeds and
+> disputes. Prose name: **Law Gazelle**." Root ratified **Affairs** in session on 2026-08-20;
+> willow scribed under `env-envelope.apply-planting` (verb 13). The 2026-08-03 *Sovereign*
+> naming is superseded. Org handle `homestead-affairs` was already repointed to match GitHub.
+> *Sovereign* survives as the leg's **content** (the five-point test), not its name.
 
 **Critical promotion rule — read this before adding repos:**
 
@@ -199,7 +208,7 @@ flowchart TB
   subgraph corpus["Catalog expansion — many repos"]
     AD["Almanac · Data"]
     HK["Hornbook · Knowledge"]
-    SV["Homestead · Sovereign"]
+    SV["Homestead · Affairs"]
     PL["Play · Forge"]
     TP["Terpsi · Programs"]
   end
@@ -215,7 +224,7 @@ flowchart TB
 | **willow-memory** | `willow-memory` | More **operators, agents, sessions**, Kart tasks, MCP apps | **`willow`** seat + platform bundle (mcp, gate, kartikeya) | Not where almanacs or Terpsi skins live |
 | **Hornbook** | Knowledge | `hornbook-knowledge` | More **learners, courses, reading rooms**, citation corpora | **UTETY**, **Jeles**, chat/ask apps; marketing sites | Not FERPA program ops at scale (→ Terpsi) |
 | **Almanac** | Data | `almanac-data` | More **public datasets cataloged**, more **community contributors** | **`almanac-template` → N verticals** (`propagate-engine.sh`); engine merges template-first | Data stays at sources; almanac holds the **map** |
-| **Homestead · Sovereign** *(draft)* | `homestead-sovereign` | More curated sovereign apps + **homestead-law** installs | **`homestead-law`** (promoted law-gazelle) + **`awesome-sovereign-software`** | Not almanac catalogs |
+| **Homestead · Affairs** *(draft)* | `homestead-affairs` | More curated sovereign apps + **homestead-law** installs | **`homestead-law`** (promoted law-gazelle) + **`awesome-sovereign-software`** | Not almanac catalogs |
 | **Play** | Forge *(draft)* | TBD | More **kids / hobbyists** touching SAFE toys; more **graduations** from forge | **Forge** flagship + promoted `apps/*` (arcade, playgate, …) | Not ward-record programs (→ Terpsi) |
 | **Terpsi** | Programs *(draft face)* | TBD (`terpsi-programs`?) | More **institutions** (bands, schools, camps) and **programs per district** | **`terpsi-core` + `terpsi-template` + skins** (`terpsi-music`, `terpsi-quiet-corner`, …); SMB vs Enterprise = **deploy profile**, not duplicate codebases | Not UTETY/Jeles (→ Hornbook); skins from `docs/SKINS.md` |
 
@@ -262,7 +271,7 @@ Some human usages need a **charter fork** or a **different face**, not another r
 | **A — Brain** | Nestor (verification / passage) | `Die-Namic-Systems` |
 | **B — Platform** | MCP hub, gate, Kart worker | `willow-memory` |
 | **C — Flagships** | Education + catalog products | `hornbook-knowledge`, `almanac-data` |
-| **C′ — Homestead · Sovereign** (future org) | Local remedy / exit / homestead law stack | **`homestead-sovereign`** |
+| **C′ — Homestead · Affairs** (future org) | Local remedy / exit / homestead law stack | **`homestead-affairs`** |
 | **C″ — Play** (future org) | Forge, toys, arcade under SAFE law | **`forge-play`** |
 | **C‴ — Terpsi** (future org) | Institutional program ops (skins) | **`terpsi-programs`** |
 | **D — Playground** | SAFE `apps/*` incubating | `safe-app-store-public` |
@@ -278,7 +287,7 @@ Some human usages need a **charter fork** or a **different face**, not another r
 | Repo | Local today | Notes |
 |------|-------------|--------|
 | `.github` | clone when wired | Org profile — points to Nestor + three branch orgs |
-| **`nestor`** | `~/github/nestor` | Brain; PoC in `apps/semantic-translator` until lift |
+| **`nestor`** | `~/github/Die-Namic-Systems/nestor` | Brain; PoC in `apps/semantic-translator` until lift |
 
 **Not here:** Terpsi product repo (→ hornbook when promoted), `willow-mcp`, SAFE monorepo, `willow-2.0`.
 
@@ -291,16 +300,19 @@ Some human usages need a **charter fork** or a **different face**, not another r
 | Repo | Local today | Notes |
 |------|-------------|--------|
 | `.github` | clone when wired | Platform org profile |
-| **`willow-mcp`** | `~/github/willow-mcp` | Shipped MCP server |
-| **`willow-gate`** | `~/github/willow-gate` | Manifest / auth gate |
+| **`willow-mcp`** | `~/github/willow-memory/willow-mcp` | Shipped MCP server |
+| **`willow-gate`** | `~/github/willow-memory/willow-gate` | Manifest / auth gate |
 | **`kartikeya`** | `~/github/willow-memory/kartikeya` | Kart worker (platform bundle with hub + gate) |
 | **`safe-app-willow-grove`** | `~/github/willow-memory/willow-grove` | Grove fleet bus (Heimdallr seat) — **dev clone**; active on GitHub |
 
 **Fleet dev clones (operator box, 2026-08-18):** `willow`, `willow-mcp`, `willow-gate`, `kartikeya`, `safe-app-willow-grove` (`willow-grove` on disk). Not cloned locally: tier-F / remote-only repos below.
 
-**Not here:** `willow-2.0` (remote-only — see §8), charter `willow` path unsettled, hornbook flagships, `nestor` (lives under Die-Namic-Systems).
+**Not here:** `willow-2.0` (remote-only — see §8), hornbook flagships, `nestor` (lives under Die-Namic-Systems).
 
-**Unsettled:** `~/github/willow` (constitution) — see §11 “Still unknown”.
+**Charter on disk: settled (2026-08-20).** The constitution repo lives at
+`~/github/willow-memory/willow`, and has since the 2026-08-10 layout move. What remains
+open is the **GitHub transfer** of `rudi193-cmd/Willow` onto the `willow-memory` org — §10.
+Local path and remote owner are separate questions; only the second is outstanding.
 
 ---
 
@@ -309,9 +321,9 @@ Some human usages need a **charter fork** or a **different face**, not another r
 | Repo / surface | Local today | Playground (tier D) |
 |----------------|-------------|---------------------|
 | `.github` | clone when wired | — |
-| **Terpsi** (promoted from `terpsi-music`) | `~/github/terpsi-music` until transfer | `marching-arts`, `field-acoustics`, `band-camp-arcade` |
-| **UTETY** | `~/github/UTETY` | `apps/utety-chat` |
-| **Jeles** | `~/github/Jeles` | `apps/ask-jeles` |
+| **Terpsi** (promoted from `terpsi-music`) | `~/github/terpsi-programs/terpsi-music` until transfer | `marching-arts`, `field-acoustics`, `band-camp-arcade` |
+| **UTETY** | `~/github/hornbook-knowledge/UTETY` | `apps/utety-chat` |
+| **Jeles** | `~/github/hornbook-knowledge/Jeles` | `apps/ask-jeles` |
 | **Squarespace + custom domain** | (hosted) | Terpsi **marketing only** — no student data; verify domain on **this org** in GitHub Settings |
 
 **Product hub** for Terpsi stays **on-prem** (`terpsi-music` docs / `ARCHITECTURE.md`) — not on Squarespace. Same pattern as UTETY: public site ≠ campus/hub.
@@ -325,28 +337,28 @@ Some human usages need a **charter fork** or a **different face**, not another r
 | Repo | Local today |
 |------|-------------|
 | `.github` | `almanac-data-dotgithub` or org clone |
-| **`almanac-template`** | `~/github/almanac-template` |
-| **`climate-almanac`** | `~/github/climate-almanac` |
-| **`civic-almanac`** | `~/github/civic-almanac` |
-| **`health-almanac`** | `~/github/health-almanac` |
-| **`economy-almanac`** | `~/github/economy-almanac` |
-| **`environment-almanac`** | `~/github/environment-almanac` |
-| **`justice-almanac`** | `~/github/justice-almanac` |
-| **`education-almanac`** | `~/github/education-almanac` |
-| **`science-almanac`** | `~/github/science-almanac` |
-| **`energy-almanac`** | `~/github/energy-almanac` |
-| **`agriculture-almanac`** | `~/github/agriculture-almanac` |
-| **`transportation-almanac`** | `~/github/transportation-almanac` |
+| **`almanac-template`** | `~/github/almanac-data/almanac-template` |
+| **`climate-almanac`** | `~/github/almanac-data/climate-almanac` |
+| **`civic-almanac`** | `~/github/almanac-data/civic-almanac` |
+| **`health-almanac`** | `~/github/almanac-data/health-almanac` |
+| **`economy-almanac`** | `~/github/almanac-data/economy-almanac` |
+| **`environment-almanac`** | `~/github/almanac-data/environment-almanac` |
+| **`justice-almanac`** | `~/github/almanac-data/justice-almanac` |
+| **`education-almanac`** | `~/github/almanac-data/education-almanac` |
+| **`science-almanac`** | `~/github/almanac-data/science-almanac` |
+| **`energy-almanac`** | `~/github/almanac-data/energy-almanac` |
+| **`agriculture-almanac`** | `~/github/almanac-data/agriculture-almanac` |
+| **`transportation-almanac`** | `~/github/almanac-data/transportation-almanac` |
 
-Playground until promote: e.g. `nasa-archive` → almanac verticals. **`law-gazelle`** → **`homestead-sovereign/homestead-law`** (not a separate `gazelle` org repo).
+Playground until promote: e.g. `nasa-archive` → almanac verticals. **`law-gazelle`** → **`homestead-affairs/homestead-law`** (not a separate `gazelle` org repo).
 
 Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac-data/`).
 
 ---
 
-## 5b. `homestead-sovereign` *(future — sixth face)*
+## 5b. `homestead-affairs` *(future — sixth face)*
 
-**Display:** **Homestead · Sovereign**.
+**Display:** **Homestead · Affairs**.
 
 | Repo | Role |
 |------|------|
@@ -355,7 +367,7 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 | **`awesome-sovereign-software`** | Catalog + report (keep name) |
 | **`homestead-law`** | **Promoted `law-gazelle`** — Law Gazelle / Gazelle product; grows as settler-order modules inside this repo |
 
-**Org:** **`homestead-sovereign`**. **Not on this face:** almanac catalogs, Terpsi ward programs, Hornbook learning, Play toys, Nestor (center org).
+**Org:** **`homestead-affairs`**. **Not on this face:** almanac catalogs, Terpsi ward programs, Hornbook learning, Play toys, Nestor (center org).
 
 ---
 
@@ -377,7 +389,7 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 - **Monorepo:** `~/github/safe-app-store-public` (symlink `safe-app-store`).
 - **Nestor PoC:** `apps/semantic-translator`
 - **Forge:** unpromoted app — **Play** face when promoted (§5c)
-- **`law-gazelle`** → **`homestead-law`** on `homestead-sovereign`
+- **`law-gazelle`** → **`homestead-law`** on `homestead-affairs`
 - Most `apps/*` never promote — stay D or delete
 
 ---
@@ -386,7 +398,7 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 
 - `sean-data-vault`, `quiet-corner`, `DispatchesFromReality`, `community`, `courtlistener-mcp`
 - **`nestor`** until transferred to `Die-Namic-Systems`
-- **`terpsi-music`** until promoted/transferred to `hornbook-knowledge`
+- **`terpsi-music`** until promoted/transferred to `terpsi-programs` (per LOCAL_GITHUB_LAYOUT.md target tree, 2026-08-10 — supersedes the earlier hornbook interim)
 - `schmidt` grant workspace (not `~/Desktop/Nest`)
 - forks and experiments
 - `projects.json`: only seats you actively open
@@ -419,14 +431,14 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 
 ## 10. Still open
 
-- [ ] Charter repo → **`willow-memory/willow`** (base seat); transfer from personal / `~/github/willow`
+- [ ] Charter repo → **`willow-memory/willow`** (base seat); transfer the GitHub repo `rudi193-cmd/Willow` onto the org. Already cloned locally at `~/github/willow-memory/willow`; the `Willow`→`willow` rename is a separate, undecided step.
 - [ ] Create **`almanac`**, **`hornbook`**, **`die-namic`** base repos on live orgs (or rename meta clones)
 - [ ] `SAFE` / `safe-app-store-public` — which org when promoted
 - [ ] Terpsi **domain** string in §11 MID
 - [ ] `projects.json` + `*-dotgithub` clones match four orgs
 - [ ] Redraw corpus map to match §11
-- [ ] Stand up **`homestead-sovereign`** org; transfer **`awesome-sovereign-software`**; promote **`law-gazelle` → `homestead-law`**
-- [ ] Create GitHub org **`forge-play`**, **`terpsi-programs`**, **`homestead-sovereign`**
+- [x] Stand up **`homestead-affairs`** org; transfer **`awesome-sovereign-software`** — done 2026-08-20, along with `homestead`, `homestead-health`, `homestead-law`, `homestead-ledger`. `law-gazelle → homestead-law` promotion still open (the repo exists; the SAFE-app promotion path is unverified).
+- [x] Create GitHub org **`forge-play`**, **`terpsi-programs`**, **`homestead-affairs`** — all three live; operator is admin on all seven orgs.
 - [ ] **Terpsi face** org + move cargo out of Hornbook §11; `terpsi-core` / `terpsi-template` repo names
 
 ---
@@ -435,6 +447,7 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 
 | Date | Editor | Change |
 |------|--------|--------|
+| 2026-08-20 | willow | Repointed org handle `homestead-sovereign` → live `homestead-affairs` (handle only; leg name left as ratified, disagreement flagged at §112). `terpsi-music` destination corrected to `terpsi-programs` per LOCAL_GITHUB_LAYOUT.md. Ticked §10 org-creation and homestead-transfer items. Executed on operator instruction: transferred `Nestor` → `Die-Namic-Systems`; `Jeles`, `UTETY`, `oakenscrolls-office` → `hornbook-knowledge`; `homestead`, `homestead-health`, `homestead-law`, `homestead-ledger`, `awesome-sovereign-software` → `homestead-affairs`. Nine repos; `Forge` cloned locally but deliberately NOT transferred. |
 | 2026-08-03 | willow | Initial drafts through §11 arrangement |
 | 2026-08-03 | Sean | §11 sort; `.github` on all four orgs |
 | 2026-08-03 | willow | **Sync pass:** §1–§10 aligned to §11 org repo lists |
@@ -445,7 +458,7 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 | 2026-08-03 | Sean | **Möbius** cross-org dependency topology (Nestor ↔ faces, pins only) |
 | 2026-08-03 | Sean | **Cube:** 6 faces; `forge-play`, `terpsi-programs`; Die-Namic center |
 | 2026-08-03 | Sean | Play org → **`forge-play`** (not `play-forge`) |
-| 2026-08-03 | Sean | **Homestead · Sovereign**; **`homestead-law`** = promoted law-gazelle (not sibling gazelle repo) |
+| 2026-08-03 | Sean | **Homestead · Affairs**; **`homestead-law`** = promoted law-gazelle (not sibling gazelle repo) |
 
 ---
 
@@ -474,7 +487,7 @@ https://github.com/willow-memory
 
 TOP
 .github
-willow (charter / orchestrator seat — transfer from ~/github/willow)
+willow (charter / orchestrator seat — transfer rudi193-cmd/Willow; on disk at willow-memory/willow)
 willow-mcp
 willow-gate
 kartikeya
@@ -514,8 +527,8 @@ energy-almanac
 agriculture-almanac
 transportation-almanac
 
-FUTURE — homestead-sovereign (org not live yet)
-https://github.com/homestead-sovereign
+FUTURE — homestead-affairs (org not live yet)
+https://github.com/homestead-affairs
 
 TOP
 .github
@@ -571,7 +584,7 @@ PLAYGROUND — safe-app-store-public apps (incubate, most never promote)
 marching-arts
 field-acoustics
 semantic-translator (Nestor PoC)
-law-gazelle (→ homestead-law on homestead-sovereign when promoted)
+law-gazelle (→ homestead-law on homestead-affairs when promoted)
 nasa-archive
 …most other apps/*
 

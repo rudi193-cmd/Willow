@@ -72,7 +72,7 @@ Say which office you're in: **governance** | **pm** | **pa**. One `next_bite`; w
 ## When to escalate to fleet boot
 
 - Postgres / MCP degraded and you need `fleet_status` before any work
-- Cross-repo dispatch, merge envelopes, or Kart work in `willow-2.0`
+- Cross-repo dispatch, merge envelopes, or Kart work in `willow-mcp` / `kartikeya`
 - Operator explicitly asks for full `/boot`
 
 Otherwise stay in this orient loop.
@@ -84,17 +84,29 @@ Otherwise stay in this orient loop.
 | Envelope | Expires | Meter |
 |----------|---------|-------|
 | `env-envelope.apply-planting` | — | unmetered |
-| `env-pr.merge-willow2-master` | 2026-08-06 | 20 merges |
+| `env-pr.merge-willow2-master` | 2026-09-06 | 20 merges | **DEAD TARGET** |
 | `env-dispatch-fleet-sessions` | 2026-08-06 | 40 dispatches |
 
-Full bounds: `envelopes/pre-approved.json`.
+Full bounds: `envelopes/pre-approved.json` — **that file is authoritative; this table drifts.**
+
+> **Unratified defect (2026-08-20).** Five envelopes in `active[]` are unexpired grants
+> against `rudi193-cmd/willow-2.0`, a repo that no longer exists:
+> `env-pr.merge-willow2-master`, `env-git.commit-kart-fast-timeout`,
+> `env-pr.open-kart-fast-timeout`, `env-git.commit-kart-sandbox-vault-unbind`,
+> `env-pr.open-kart-sandbox-vault-unbind`. Separately, all three `pre_approved[]`
+> filesystem grants carry `enforced_by = willow-2.0/willow/fylgja/config/kart-sandbox.json`,
+> which is not on disk. The **actual** enforcer is
+> `$WILLOW_HOME/kart-sandbox.json` (verified 2026-08-20 from a Kart task's
+> `sandbox_manifest.config_source`, `config_is_vendored_default: false`).
+> Retiring the dead grants and repointing `enforced_by` are root's acts, not the seat's.
 
 ---
 
 ## Env (must match for SOIL routing)
 
-Materialized by `./willow.sh project sync willow` (from `willow-2.0` dev engine) into
-`.cursor/mcp.json`, `.mcp.json`, `.claude/settings.local.json`, and `.codex/config.toml`:
+Materialized by `willow-mcp project sync willow` (the `willow-mcp` CLI, from
+`$WILLOW_HOME/venvs/willow-mcp/bin`) into `.cursor/mcp.json`, `.mcp.json`,
+`.claude/settings.local.json`, and `.codex/config.toml`:
 
 - **`willow-mcp` first** — shipped product MCP; always `app_id=willow`
 - `WILLOW_HUMAN_ORCHESTRATOR=1` on the MCP server env (operator Jarvis seat only)
