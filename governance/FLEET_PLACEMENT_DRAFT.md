@@ -37,7 +37,7 @@ Display on the die: **Artifact · Leg** — e.g. Willow · Memory, Homestead · 
 
 | Org | Base repo *(no suffix)* | Role |
 |-----|-------------------------|------|
-| `willow-memory` | **`willow`** | Optional **orchestrator seat** for the platform face — charter, governance, envelopes, fleet portfolio state for Willow · Memory. **Target home** for the constitution repo — on disk at `~/github/willow-memory/willow` since 2026-08-10; the GitHub repo `rudi193-cmd/Willow` is not yet transferred. |
+| `willow-memory` | **`willow`** | Optional **orchestrator seat** for the platform face — charter, governance, envelopes, fleet portfolio state for Willow · Memory. **Home** of the constitution repo: `willow-memory/Willow` (transferred 2026-08-21; capital W kept). On disk at `~/github/willow-memory/willow`. |
 | `almanac-data` | **`almanac`** | Optional seat for Almanac · Data — meta/orchestration (`propagate-engine`, vertical index, org handoffs). Local `~/github/almanac-data` meta folder may become this repo or re-home into it. |
 | `hornbook-knowledge` | **`hornbook`** | Optional seat for Hornbook · Knowledge — portfolio, envelopes, orient for UTETY/Jeles work (not student program ops → Terpsi). |
 | `Die-Namic-Systems` | **`die-namic`** *(or `die` — pick one)* | Optional seat for the verification face; **`nestor`** remains the shipped brain product on the same org. |
@@ -311,7 +311,7 @@ Some human usages need a **charter fork** or a **different face**, not another r
 
 **Charter on disk: settled (2026-08-20).** The constitution repo lives at
 `~/github/willow-memory/willow`, and has since the 2026-08-10 layout move. What remains
-open is the **GitHub transfer** of `rudi193-cmd/Willow` onto the `willow-memory` org — §10.
+settled too: `willow-memory/Willow`, transferred 2026-08-21 with the capital W kept.
 Local path and remote owner are separate questions; only the second is outstanding.
 
 ---
@@ -431,7 +431,7 @@ Cull duplicate local layouts (flat `~/github/*-almanac` vs nested under `almanac
 
 ## 10. Still open
 
-- [ ] Charter repo → **`willow-memory/willow`** (base seat); transfer the GitHub repo `rudi193-cmd/Willow` onto the org. Already cloned locally at `~/github/willow-memory/willow`; the `Willow`→`willow` rename is a separate, undecided step.
+- [x] Charter repo → **`willow-memory/Willow`** — transferred 2026-08-21. **The capital W is kept**, deliberately: a rename plus a transfer on the repo every other doc points at stacks two redirects for a cosmetic gain. On disk at `~/github/willow-memory/willow` (folder is lowercase; the repo is not).
 - [ ] Create **`almanac`**, **`hornbook`**, **`die-namic`** base repos on live orgs (or rename meta clones)
 - [ ] `SAFE` / `safe-app-store-public` — which org when promoted
 - [ ] Terpsi **domain** string in §11 MID
@@ -487,7 +487,7 @@ https://github.com/willow-memory
 
 TOP
 .github
-willow (charter / orchestrator seat — transfer rudi193-cmd/Willow; on disk at willow-memory/willow)
+Willow (charter / orchestrator seat — willow-memory/Willow; on disk at willow-memory/willow)
 willow-mcp
 willow-gate
 kartikeya

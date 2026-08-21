@@ -38,7 +38,7 @@ This document is how **`~/github/`** should look after a clean reclone: **one di
 ├── willow-memory/
 │   ├── .willow/                  # willow-config + fleet runtime; symlink ~/.willow → here
 │   ├── dotgithub/
-│   ├── willow/                   # charter — target after transfer from rudi193-cmd/Willow
+│   ├── willow/                   # charter — willow-memory/Willow (capital W kept)
 │   ├── willow-mcp/
 │   ├── willow-gate/
 │   └── kartikeya/
@@ -184,12 +184,13 @@ gh repo clone almanac-data/.github "$HOME/github/almanac-data/dotgithub"
 ln -snf dotgithub "$HOME/github/almanac-data/org-dotgithub"
 cd ~/github/almanac-data && ./scripts/link-repos.sh
 
-# Products still on rudi193-cmd until transfer — clone into org folders
+# Transferred to willow-memory 2026-08-21. safe-app-willow-grove stays on
+# rudi193-cmd (private; converging with willow-grove) — see §3.
 gh repo clone rudi193-cmd/nestor            ~/github/Die-Namic-Systems/nestor
-gh repo clone rudi193-cmd/willow-mcp        ~/github/willow-memory/willow-mcp
-gh repo clone rudi193-cmd/willow-gate       ~/github/willow-memory/willow-gate
-gh repo clone rudi193-cmd/kartikeya         ~/github/willow-memory/kartikeya
-gh repo clone rudi193-cmd/Willow            ~/github/willow-memory/willow
+gh repo clone willow-memory/willow-mcp        ~/github/willow-memory/willow-mcp
+gh repo clone willow-memory/willow-gate       ~/github/willow-memory/willow-gate
+gh repo clone willow-memory/kartikeya         ~/github/willow-memory/kartikeya
+gh repo clone willow-memory/Willow            ~/github/willow-memory/willow
 gh repo clone rudi193-cmd/safe-app-willow-grove ~/github/willow-memory/willow-grove
 gh repo clone rudi193-cmd/UTETY             ~/github/hornbook-knowledge/UTETY
 gh repo clone rudi193-cmd/Jeles             ~/github/hornbook-knowledge/Jeles
