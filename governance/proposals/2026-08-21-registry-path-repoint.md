@@ -84,15 +84,50 @@ on disk. The **actual** enforcer is `$WILLOW_HOME/kart-sandbox.json` — verifie
 (`config_is_vendored_default: false`). Every `enforced_by` in the law is
 currently a dangling reference.
 
-### 4. Fix the planting envelope's registry path
+### 4. ~~Fix the planting envelope's registry path~~ — **WITHDRAWN, and it was wrong**
 
-`env-envelope.apply-planting` — the envelope licensing this seat to exist —
-carries `registry_path: "envelopes/pre-approved.json"`, resolved by the enforcer
-under `$WILLOW_HOME/constitutional/`, where a **starter stub** sits instead of
-the real 466-line registry. **Verb 13 is unenforceable today** (gap
-`a089df0ae05f`, FRANK `20c2bd75`). Either the path is absolutised or the real
-registry is restored to the enforced location. Root's act either way, and the
-seat has been citing this authority all session while it does not resolve.
+**Corrected 2026-08-21 by executing it instead of reading about it.**
+
+This section claimed the enforced registry held *"a starter stub"* and that
+**"verb 13 is unenforceable today."** Both false, and the claim was repeated
+several times in session before it was checked.
+
+What is actually true, established by calling `envelope_apply`:
+
+1. The enforced registry holds **exactly one entry** — `env-envelope.apply-planting`
+   itself. Not a stub: tranche 0, deliberately.
+2. **Root already fixed this on 2026-08-11**, and the entry records it in a
+   `restored[]` block: *"Enforced registry found empty 2026-08-11; empty since
+   the 2026-08-10 layout move. Re-issued alone as tranche 0 so verb 13 returns
+   and every later entry can be scribed under citation."* `registry_path` was
+   changed **relative → absolute**; no other field altered. Filed as
+   `willow-mcp #332(a)`. Root did it by hand and said why: *"the seat held no
+   verb 13 to scribe with, because this entry is what grants it."*
+3. Tonight's only real blocker was a **directory permission**.
+   `$WILLOW_HOME/constitutional` was `0o775` — group-writable — and
+   `paths.py:33` refuses on `st_uid != euid or S_IMODE & 0o022`. `chmod 755` on
+   the directory and `644` on its files, and verb 13 returns `ok: true`.
+
+Two `EAMBIG` refusals were hit on the way, both correct and both naming the
+fault precisely: `untrusted ownership or permissions on source path`, then
+`bounds mismatch [registry_path]` when the call passed the relative form the
+**charter copy** still carries.
+
+**Which surfaces the one real finding in this section.** The charter's
+`envelopes/pre-approved.json` still has the **relative** `registry_path` and no
+`restored[]` block. The enforced copy has both. **The registry in this repo is
+behind the one that governs** — the opposite of what this document assumed, and
+the reason to read the enforced copy first.
+
+Proposed instead: **sync the charter registry to the enforced copy** for this
+entry (absolute path + the `restored[]` provenance), so the committed law and
+the enforced law agree.
+
+**What is NOT fixed, per the envelope's own words:** *"Pinning the path here
+fixes this entry; it does not fix the class, and the syscall table's verb 13
+bounds signature still describes a relative path."* Gap `006e0144da95` stands.
+Every envelope minted against that signature inherits the defect —
+`constitutional/syscall-table.json`, verb 12.
 
 ---
 
@@ -127,9 +162,10 @@ not, it is unique and should be stated as one or the other.
 ## Ratification
 
 Verb 12 (registry edit) is root-only and non-grantable. This document is the
-proposal; willow scribes the result under `env-envelope.apply-planting` (verb
-13) **if and when** §4 makes that envelope enforceable again — which is
-currently the open question underneath all of this.
+proposal; willow scribes the result under `env-envelope.apply-planting`
+(verb 13), **which is live** — verified 2026-08-21, `ok: true`, citation
+`367deea1`. §4 originally made this conditional on repairing that envelope; it
+needed no repair, only `chmod 755` on the trust directory.
 
 *Drafted from measurement, not recall: every path checked against the filesystem,
 every repo against the GitHub API, every "did the work land" against upstream
